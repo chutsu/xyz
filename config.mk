@@ -67,7 +67,7 @@ endif
 CFLAGS += \
 	-I$(INC_DIR) \
 	-I$(DEPS_DIR)/include \
-	-I$(DEPS_DIR)/glad \
+	-I$(DEPS_DIR)/src/glad \
 	-fPIC \
 	$(STB_CFLAGS) \
 	$(FREETYPE_CFLAGS) \

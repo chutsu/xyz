@@ -62,16 +62,10 @@ deps: ## Install dependencies
 		libassimp-dev \
 		libglfw3-dev
 
-docs: ## Build docs
-	@cd docs && livereload .
-
 setup:
 	@mkdir -p $(BLD_DIR)
 	@cp -r deps/fonts $(BLD_DIR)
 	@cp -r src/test_data $(BLD_DIR)
-
-clean:  ## Clean
-	@rm -rf $(BLD_DIR)
 
 $(BLD_DIR)/test_%: src/test_%.c libxyz
 	@echo "TEST [$(notdir $@)]"
@@ -89,7 +83,7 @@ $(BLD_DIR)/xyz_ceres.o: src/xyz_ceres.cpp Makefile
 		-I/usr/include/eigen3
 
 $(BLD_DIR)/libglad.a:
-	@gcc -c deps/glad/glad.c -o $(BLD_DIR)/glad.o \
+	@gcc -c deps/src/glad/glad.c -o $(BLD_DIR)/glad.o \
 		&& ar rcs $(BLD_DIR)/libglad.a $(BLD_DIR)/glad.o
 
 $(BLD_DIR)/libxyz.a: $(LIBXYZ_OBJS)
@@ -119,9 +113,7 @@ libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
 # 	rm $(PREFIX)/include/xyz_ceres.h
 # 	rm $(PREFIX)/include/xyz_gui.h
 
-tests: $(TESTS) ## Build tests
-
-run_tests: tests ## Run tests
+tests: $(TESTS) ## Build and run tests
 	@cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
 
 tools:
@@ -136,3 +128,9 @@ all: libxyz tests
 cppcheck: ## Run cppcheck on xyz.c
 	# @cppcheck src/xyz.c src/xyz.h
 	@cppcheck src/xyz_gui.c src/xyz_gui.h
+
+clean:  ## Clean
+	@rm -rf $(BLD_DIR)
+
+docs: ## Build docs
+	@cd docs && livereload .
