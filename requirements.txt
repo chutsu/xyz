@@ -1,0 +1,7 @@
+numpy
+scipy
+matplotlib
+pyyaml
+sphinx
+sphinx-rtd-theme
+sphinx-reload
