@@ -4733,7 +4733,7 @@ int test_imu_factor(void) {
   // Check Jacobians
   const double tol = 1e-4;
   const double step_size = 1e-8;
-  const int verbose = 1;
+  const int verbose = 0;
   eye(factor.sqrt_info, 15, 15);
   CHECK_FACTOR_J(0, factor, imu_factor_eval, step_size, tol, verbose);
   CHECK_FACTOR_J(1, factor, imu_factor_eval, step_size, tol, verbose);
@@ -5169,7 +5169,7 @@ int test_marg_factor(void) {
   }
   param_index_add(param_index, EXTRINSIC_PARAM, 1, cam_ext, &col_idx);
   param_index_add(param_index, CAMERA_PARAM, 0, cam.data, &col_idx);
-  param_index_print(param_index);
+  // param_index_print(param_index);
   // -- Misc
   const int sv_size = col_idx;
   const int r_size = (factor_idx * 2);
@@ -5214,12 +5214,12 @@ int test_marg_factor(void) {
   // marg_factor_eval(marg);
 
   // Print timings
-  printf("marg->time_hessian_form:     %.4fs\n", marg->time_hessian_form);
-  printf("marg->time_schur_complement: %.4fs\n", marg->time_schur_complement);
-  printf("marg->time_hessian_decomp:   %.4fs\n", marg->time_hessian_decomp);
-  printf("marg->time_fejs:             %.4fs\n", marg->time_fejs);
-  printf("------------------------------------\n");
-  printf("marg->time_total:            %.4fs\n", marg->time_total);
+  // printf("marg->time_hessian_form:     %.4fs\n", marg->time_hessian_form);
+  // printf("marg->time_schur_complement: %.4fs\n", marg->time_schur_complement);
+  // printf("marg->time_hessian_decomp:   %.4fs\n", marg->time_hessian_decomp);
+  // printf("marg->time_fejs:             %.4fs\n", marg->time_fejs);
+  // printf("------------------------------------\n");
+  // printf("marg->time_total:            %.4fs\n", marg->time_total);
 
   marg_factor_free(marg);
   rbt_free(marg_params);
@@ -5554,7 +5554,7 @@ int test_inertial_odometry_batch(void) {
   // Solve
   solver_t solver;
   solver_setup(&solver);
-  solver.verbose = 1;
+  solver.verbose = 0;
   solver.param_index_func = &inertial_odometry_param_order;
   solver.cost_func = &inertial_odometry_cost;
   solver.linearize_func = &inertial_odometry_linearize_compact;
@@ -5769,7 +5769,7 @@ int test_bundle_adjustment(void) {
   solver_t solver;
   solver_setup(&solver);
 
-  solver.verbose = 1;
+  solver.verbose = 0;
   solver.max_iter = 5;
   solver.cost_func = &bundle_adjuster_cost;
   solver.param_index_func = &bundle_adjuster_param_order;
@@ -5861,13 +5861,11 @@ int test_morton_codes_3d(void) {
   uint32_t y = 2;
   uint32_t z = 3;
   uint32_t code = morton_encode_3d(x, y, z);
-  printf("code: %d\n", code);
 
   uint32_t x_ = 0;
   uint32_t y_ = 0;
   uint32_t z_ = 0;
   morton_decode_3d(code, &x_, &y_, &z_);
-  printf("decode : %d, %d, %d\n", x_, y_, z_);
 
   return 0;
 }
@@ -5955,6 +5953,10 @@ int test_umeyama(void) {
   MU_ASSERT(fabs(scale_est[0] - scale_gnd[0]) < 1e-2);
   MU_ASSERT(rot_diff(R_est, R_gnd) < 1e-2);
   MU_ASSERT(vec3_norm(t_diff) < 1e-2);
+
+  // Clean up
+  free(X);
+  free(Y);
 
   return 0;
 }
@@ -6083,7 +6085,7 @@ int test_octree(void) {
                                    voxel_max_points,
                                    octree_points,
                                    n);
-  printf("time taken: %f[s]\n", toc());
+  // printf("time taken: %f[s]\n", toc());
 
   // Clean up
   free(octree_points);
