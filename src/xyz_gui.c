@@ -2537,7 +2537,7 @@ gl_image_t *gl_image_malloc(const int x,
     0, 3, 1, // First Triangle
     2, 1, 3  // Second Triangle
   };
-  const size_t num_vertices = 4;
+  // const size_t num_vertices = 4;
   const size_t vertex_size = sizeof(gl_float_t) * 4;
   const size_t vbo_size = sizeof(vertices);
   const size_t ebo_size = sizeof(indices);

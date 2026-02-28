@@ -87,24 +87,7 @@ deps: ## Install dependencies
 		libassimp-dev \
 		libglfw3-dev
 
-
 libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
-
-# install: ## Install libxyz
-# 	mkdir -p $(PREFIX)
-# 	mkdir -p $(PREFIX)/lib
-# 	mkdir -p $(PREFIX)/include
-# 	ln -sf $(CUR_DIR)/xyz.py $(PYTHON3_PATH)/xyz.py
-# 	ln -sf $(CUR_DIR)/build/libxyz.a $(PREFIX)/lib/libxyz.a
-# 	ln -sf $(CUR_DIR)/*.h $(PREFIX)/include/*.h
-# 	ln -sf $(CUR_DIR)/xyz.h         $(PREFIX)/include/xyz.h
-# 	ln -sf $(CUR_DIR)/xyz_gui.h     $(PREFIX)/include/xyz_gui.h
-
-# uninstall: ## Uninstall libxyz
-# 	rm $(PYTHON3_PATH)/xyz.py
-# 	rm $(PREFIX)/lib/libxyz.a
-# 	rm $(PREFIX)/include/xyz.h
-# 	rm $(PREFIX)/include/xyz_gui.h
 
 tests: $(TESTS) ## Build and run tests
 	@cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
@@ -114,7 +97,6 @@ tools:
 
 ci: ## Run CI tests
 	@make tests CI_MODE=1 --no-print-directory
-	@./build/test_xyz
 
 cppcheck: ## Run cppcheck on xyz.c
 	@cppcheck src/xyz.c src/xyz.h

@@ -1,6 +1,5 @@
 #include "munit.h"
-#include "xyz.h"
-// #include "xyz_gui.h"
+#include "xyz_gui.h"
 
 static GLFWwindow *test_setup(void) {
   // GLFW
