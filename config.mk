@@ -26,8 +26,6 @@ FREETYPE_CFLAGS := $(shell pkg-config --cflags freetype2)
 FREETYPE_LDFLAGS := $(shell pkg-config --libs freetype2)
 BLAS_LDFLAGS := -lblas -llapack -llapacke
 SUITESPARSE_LDFLAGS := -llapack -lcamd -lamd -lccolamd -lcolamd -lcholmod -lcxsparse
-CERES_CFLAGS := -I$(DEPS_DIR)/include/eigen3
-CERES_LDFLAGS := -lgflags -lglog -lceres
 ASSIMP_LDFLAGS := -lassimp
 APRILTAG_LDFLAGS := -lapriltag
 YAML_LDFLAGS := -lyaml
@@ -70,8 +68,7 @@ CFLAGS += \
 	-I$(DEPS_DIR)/src/glad \
 	-fPIC \
 	$(STB_CFLAGS) \
-	$(FREETYPE_CFLAGS) \
-	$(CERES_CFLAGS)
+	$(FREETYPE_CFLAGS)
 
 
 # LDFLAGS
@@ -81,7 +78,6 @@ LDFLAGS= \
 	-L$(DEPS_DIR)/lib \
 	$(RPATH) \
 	$(XYZ_LDFLAGS) \
-	$(CERES_LDFLAGS) \
 	$(APRILTAG_LDFLAGS) \
 	$(OPENGL_LDFLAGS) \
 	$(SUITESPARSE_LDFLAGS) \
@@ -104,13 +100,10 @@ ARFLAGS = rvs
 
 # TARGETS
 LIBXYZ := $(BLD_DIR)/libxyz.a
-LIBXYZ_OBJS := \
-	$(BLD_DIR)/xyz.o
+LIBXYZ_OBJS := $(BLD_DIR)/xyz.o
 
 
 # TESTS
 TESTS := \
-	$(BLD_DIR)/test_xyz \
-	$(BLD_DIR)/test_gui
-	# $(BLD_DIR)/test_ceres \
-	# $(BLD_DIR)/test_se
+	$(BLD_DIR)/test_xyz
+	# $(BLD_DIR)/test_gui

@@ -4,7 +4,33 @@ include config.mk
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
 		| awk 'BEGIN {FS = ":.*?## "}; \
-		{printf "\033[1;34m%-14s\033[0m%s\n", $$1, $$2}'
+		{printf "\033[1;34m%-10s\033[0m%s\n", $$1, $$2}'
+
+setup:
+	@mkdir -p $(BLD_DIR)
+	@cp -r deps/fonts $(BLD_DIR)
+	@cp -r src/test_data $(BLD_DIR)
+
+$(BLD_DIR)/test_%: src/test_%.c libxyz
+	@echo "TEST [$(notdir $@)]"
+	@$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lxyz
+
+$(BLD_DIR)/%.o: src/%.c src/%.h Makefile
+	@echo "CC [$(notdir $<)]"
+	@$(CC) $(CFLAGS) -c $< -o $@
+
+$(BLD_DIR)/libglad.a:
+	@gcc -c deps/src/glad/glad.c -o $(BLD_DIR)/glad.o \
+		&& ar rcs $(BLD_DIR)/libglad.a $(BLD_DIR)/glad.o
+
+$(BLD_DIR)/libxyz.a: $(LIBXYZ_OBJS)
+	@echo "AR [libxyz.a]"
+	@$(AR) $(ARFLAGS) \
+		$(BLD_DIR)/libxyz.a \
+		$(LIBXYZ_OBJS) \
+		> /dev/null 2>&1
+
+all: deps libxyz ci ## Buld all
 
 deps: ## Install dependencies
 	@# Update apt
@@ -42,7 +68,6 @@ deps: ## Install dependencies
 		liblapacke-dev \
 		libmetis-dev \
 		libsuitesparse-dev \
-		libceres-dev \
 		libeigen3-dev
 
 	@# Computer vision
@@ -62,36 +87,6 @@ deps: ## Install dependencies
 		libassimp-dev \
 		libglfw3-dev
 
-setup:
-	@mkdir -p $(BLD_DIR)
-	@cp -r deps/fonts $(BLD_DIR)
-	@cp -r src/test_data $(BLD_DIR)
-
-$(BLD_DIR)/test_%: src/test_%.c libxyz
-	@echo "TEST [$(notdir $@)]"
-	@$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lxyz
-
-$(BLD_DIR)/%.o: src/%.c src/%.h Makefile
-	@echo "CC [$(notdir $<)]"
-	@$(CC) $(CFLAGS) -c $< -o $@
-
-$(BLD_DIR)/xyz_ceres.o: src/xyz_ceres.cpp Makefile
-	@echo "CXX [$(notdir $<)]"
-	@g++ -Wall -O3 \
-		-c $< \
-		-o $(BLD_DIR)/$(basename $(notdir $<)).o \
-		-I/usr/include/eigen3
-
-$(BLD_DIR)/libglad.a:
-	@gcc -c deps/src/glad/glad.c -o $(BLD_DIR)/glad.o \
-		&& ar rcs $(BLD_DIR)/libglad.a $(BLD_DIR)/glad.o
-
-$(BLD_DIR)/libxyz.a: $(LIBXYZ_OBJS)
-	@echo "AR [libxyz.a]"
-	@$(AR) $(ARFLAGS) \
-		$(BLD_DIR)/libxyz.a \
-		$(LIBXYZ_OBJS) \
-		> /dev/null 2>&1
 
 libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
 
@@ -103,14 +98,12 @@ libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
 # 	ln -sf $(CUR_DIR)/build/libxyz.a $(PREFIX)/lib/libxyz.a
 # 	ln -sf $(CUR_DIR)/*.h $(PREFIX)/include/*.h
 # 	ln -sf $(CUR_DIR)/xyz.h         $(PREFIX)/include/xyz.h
-# 	ln -sf $(CUR_DIR)/xyz_ceres.h   $(PREFIX)/include/xyz_ceres.h
 # 	ln -sf $(CUR_DIR)/xyz_gui.h     $(PREFIX)/include/xyz_gui.h
 
 # uninstall: ## Uninstall libxyz
 # 	rm $(PYTHON3_PATH)/xyz.py
 # 	rm $(PREFIX)/lib/libxyz.a
 # 	rm $(PREFIX)/include/xyz.h
-# 	rm $(PREFIX)/include/xyz_ceres.h
 # 	rm $(PREFIX)/include/xyz_gui.h
 
 tests: $(TESTS) ## Build and run tests
@@ -123,10 +116,8 @@ ci: ## Run CI tests
 	@make tests CI_MODE=1 --no-print-directory
 	@./build/test_xyz
 
-all: libxyz tests
-
 cppcheck: ## Run cppcheck on xyz.c
-	# @cppcheck src/xyz.c src/xyz.h
+	@cppcheck src/xyz.c src/xyz.h
 	@cppcheck src/xyz_gui.c src/xyz_gui.h
 
 clean:  ## Clean
