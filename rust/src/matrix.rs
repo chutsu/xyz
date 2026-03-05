@@ -2,7 +2,11 @@ use std::fmt;
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Mul;
+use std::ops::Neg;
 use std::ops::Sub;
+
+use crate::vector::Vector3d;
+use crate::vector::Vector4d;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Matrix3                                                                   //
@@ -10,7 +14,7 @@ use std::ops::Sub;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Matrix3d {
-  data: [f64; 9],
+  pub data: [f64; 9],
 }
 
 // Implementing Default trait for Matrix3d
@@ -35,72 +39,177 @@ impl Matrix3d {
     self.data[row * 3 + col] = value;
   }
 
-  pub fn dot(&self, rhs: &Matrix3d) -> Matrix3d {
-    let mut res = [0.0; 9];
-
-    res[0] = self.data[0] * rhs.data[0]
-      + self.data[1] * rhs.data[3]
-      + self.data[2] * rhs.data[6];
-    res[1] = self.data[0] * rhs.data[1]
-      + self.data[1] * rhs.data[4]
-      + self.data[2] * rhs.data[7];
-    res[2] = self.data[0] * rhs.data[2]
-      + self.data[1] * rhs.data[5]
-      + self.data[2] * rhs.data[8];
-
-    res[3] = self.data[3] * rhs.data[0]
-      + self.data[4] * rhs.data[3]
-      + self.data[5] * rhs.data[6];
-    res[4] = self.data[3] * rhs.data[1]
-      + self.data[4] * rhs.data[4]
-      + self.data[5] * rhs.data[7];
-    res[5] = self.data[3] * rhs.data[2]
-      + self.data[4] * rhs.data[5]
-      + self.data[5] * rhs.data[8];
-
-    res[6] = self.data[6] * rhs.data[0]
-      + self.data[7] * rhs.data[3]
-      + self.data[8] * rhs.data[6];
-    res[7] = self.data[6] * rhs.data[1]
-      + self.data[7] * rhs.data[4]
-      + self.data[8] * rhs.data[7];
-    res[8] = self.data[6] * rhs.data[2]
-      + self.data[7] * rhs.data[5]
-      + self.data[8] * rhs.data[8];
-
-    Matrix3d { data: res }
+  pub fn eye() -> Self {
+    let mut data = [0.0; 9];
+    data[0] = 1.0;
+    data[4] = 1.0;
+    data[8] = 1.0;
+    Self { data }
   }
-}
 
-impl Add<&Matrix3d> for &Matrix3d {
-  type Output = Matrix3d;
+  pub fn trace(&self) -> f64 {
+    self.data[0] + self.data[4] + self.data[8]
+  }
 
-  fn add(self, rhs: &Matrix3d) -> Self::Output {
+  #[allow(non_snake_case)]
+  pub fn transpose(&self) -> Self {
+    let A = self.data;
+    let mut B = [0.0; 9];
+
+    B[0] = A[0];
+    B[1] = A[3];
+    B[2] = A[6];
+
+    B[3] = A[1];
+    B[4] = A[4];
+    B[5] = A[7];
+
+    B[6] = A[2];
+    B[7] = A[5];
+    B[8] = A[8];
+
+    Self { data: B }
+  }
+
+  pub fn add(&self, rhs: &Matrix3d) -> Self {
     let mut result = Matrix3d::default();
     for i in 0..9 {
       result.data[i] = self.data[i] + rhs.data[i];
     }
     result
   }
-}
 
-impl Sub<&Matrix3d> for &Matrix3d {
-  type Output = Matrix3d;
-
-  fn sub(self, rhs: &Matrix3d) -> Self::Output {
+  pub fn sub(&self, rhs: &Matrix3d) -> Self {
     let mut result = Matrix3d::default();
     for i in 0..9 {
       result.data[i] = self.data[i] - rhs.data[i];
     }
     result
   }
+
+  pub fn scale(&self, rhs: f64) -> Self {
+    let mut result = Matrix3d::default();
+    for i in 0..9 {
+      result.data[i] = rhs * self.data[i];
+    }
+    result
+  }
+
+  #[allow(non_snake_case)]
+  pub fn dot(&self, rhs: &Matrix3d) -> Self {
+    let A = self.data;
+    let B = rhs.data;
+    let mut C = [0.0; 9];
+
+    C[0] = A[0] * B[0] + A[1] * B[3] + A[2] * B[6];
+    C[1] = A[0] * B[1] + A[1] * B[4] + A[2] * B[7];
+    C[2] = A[0] * B[2] + A[1] * B[5] + A[2] * B[8];
+
+    C[3] = A[3] * B[0] + A[4] * B[3] + A[5] * B[6];
+    C[4] = A[3] * B[1] + A[4] * B[4] + A[5] * B[7];
+    C[5] = A[3] * B[2] + A[4] * B[5] + A[5] * B[8];
+
+    C[6] = A[6] * B[0] + A[7] * B[3] + A[8] * B[6];
+    C[7] = A[6] * B[1] + A[7] * B[4] + A[8] * B[7];
+    C[8] = A[6] * B[2] + A[7] * B[5] + A[8] * B[8];
+
+    Matrix3d { data: C }
+  }
+
+  #[allow(non_snake_case)]
+  pub fn dot_vec(&self, rhs: &Vector3d) -> Vector3d {
+    let M = self.data;
+    let v = rhs.data;
+    let mut y = [0.0; 3];
+
+    y[0] = M[0] * v[0] + M[1] * v[1] + M[2] * v[2];
+    y[1] = M[3] * v[0] + M[4] * v[1] + M[5] * v[2];
+    y[2] = M[6] * v[0] + M[7] * v[1] + M[8] * v[2];
+
+    Vector3d { data: y }
+  }
+
+  pub fn is_close(&self, rhs: &Self, epsilon: f64) -> bool {
+    self.data.iter().zip(rhs.data.iter()).all(|(&a, &b)| {
+      let diff = if a > b { a - b } else { b - a };
+      diff < epsilon
+    })
+  }
 }
 
+// -- Matrix3d + Matrix3d
+impl Add<&Matrix3d> for &Matrix3d {
+  type Output = Matrix3d;
+
+  fn add(self, rhs: &Matrix3d) -> Self::Output {
+    self.add(rhs)
+  }
+}
+
+// -- Matrix3d - Matrix3d
+impl Sub<&Matrix3d> for &Matrix3d {
+  type Output = Matrix3d;
+
+  fn sub(self, rhs: &Matrix3d) -> Self::Output {
+    self.sub(rhs)
+  }
+}
+
+// -- Matrix3d * f64
+impl Mul<f64> for &Matrix3d {
+  type Output = Matrix3d;
+
+  fn mul(self, rhs: f64) -> Self::Output {
+    self.scale(rhs)
+  }
+}
+
+// -- f64 * Matrix3d
+impl Mul<&Matrix3d> for f64 {
+  type Output = Matrix3d;
+
+  fn mul(self, rhs: &Matrix3d) -> Self::Output {
+    rhs * self
+  }
+}
+
+// -- Matrix3d * Vector3d
+impl Mul<&Vector3d> for &Matrix3d {
+  type Output = Vector3d;
+
+  fn mul(self, rhs: &Vector3d) -> Self::Output {
+    self.dot_vec(rhs)
+  }
+}
+
+// -- Matrix3d * Matrix3d
 impl Mul<&Matrix3d> for &Matrix3d {
   type Output = Matrix3d;
 
   fn mul(self, rhs: &Matrix3d) -> Self::Output {
     self.dot(rhs)
+  }
+}
+
+// --- Neg
+impl Neg for Matrix3d {
+  type Output = Matrix3d;
+
+  #[allow(non_snake_case)]
+  fn neg(self) -> Self {
+    let mut M = [0.0; 9];
+
+    M[0] = -self.data[0];
+    M[1] = -self.data[1];
+    M[2] = -self.data[2];
+    M[3] = -self.data[3];
+    M[4] = -self.data[4];
+    M[5] = -self.data[5];
+    M[6] = -self.data[6];
+    M[7] = -self.data[7];
+    M[8] = -self.data[8];
+
+    Matrix3d { data: M }
   }
 }
 
@@ -111,21 +220,329 @@ mod matrix3_tests {
 
   #[test]
   #[allow(non_snake_case)]
-  fn test_matrix3_new() {
+  fn test_matrix3() {
     // Create and use a matrix
-    let mut matrix_a =
-      Matrix3d::new([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+    #[rustfmt::skip]
+    let A = Matrix3d::new([
+      1.0, 2.0, 3.0,
+      4.0, 5.0, 6.0,
+      7.0, 8.0, 9.0
+    ]);
+    let b = Vector3d::new([1.0, 2.0, 3.0]);
 
-    let element = matrix_a.at(0, 1); // Using the get method
-    println!("Element at (0,1): {}", element);
+    #[rustfmt::skip]
+    let expected_add = Matrix3d::new([
+      2.0, 4.0, 6.0,
+      8.0, 10.0, 12.0,
+      14.0, 16.0, 18.0
+    ]);
 
-    matrix_a.set(1, 1, 10.0); // Using the set method
-    println!("After setting (1,1) to 10: {:?}", matrix_a);
+    #[rustfmt::skip]
+    let expected_sub = Matrix3d::new([
+      0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0,
+    ]);
 
-    // Demonstrate addition
-    let matrix_b = Matrix3d::new([9.0, 8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]);
-    let sum = matrix_a.add(&matrix_b);
-    println!("Sum of matrices: {:?}", sum);
+    #[rustfmt::skip]
+    let expected_scale = Matrix3d::new([
+      2.0, 4.0, 6.0,
+      8.0, 10.0, 12.0,
+      14.0, 16.0, 18.0
+    ]);
+
+    let expected_dot_vec = Vector3d::new([14.0, 32.0, 50.0]);
+
+    #[rustfmt::skip]
+    let expected_dot = Matrix3d::new([
+      30.0, 36.0, 42.0,
+      66.0, 81.0, 96.0,
+      102.0, 126.0, 150.0
+    ]);
+
+    assert!((&A + &A).is_close(&expected_add, 1e-10));
+    assert!((&A - &A).is_close(&expected_sub, 1e-10));
+    assert!((2.0 * &A).is_close(&expected_scale, 1e-10));
+    assert!((&A * 2.0).is_close(&expected_scale, 1e-10));
+    assert!((&A * &b).is_close(&expected_dot_vec, 1e-10));
+    assert!((&A * &A).is_close(&expected_dot, 1e-10));
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Matrix4                                                                   //
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, Copy)]
+pub struct Matrix4d {
+  pub data: [f64; 16],
+}
+
+// Implementing Default trait for Matrix4d
+impl Default for Matrix4d {
+  fn default() -> Self {
+    Self { data: [0.0; 16] }
+  }
+}
+
+impl Matrix4d {
+  pub fn new(data: [f64; 16]) -> Self {
+    Self { data }
+  }
+
+  pub fn at(&self, row: usize, col: usize) -> &f64 {
+    assert!(row < 4 && col < 4, "Index out of bounds");
+    &self.data[row * 4 + col]
+  }
+
+  pub fn set(&mut self, row: usize, col: usize, value: f64) {
+    assert!(row < 4 && col < 4, "Index out of bounds");
+    self.data[row * 4 + col] = value;
+  }
+
+  fn eye() -> Self {
+    let mut data = [0.0; 16];
+    data[0] = 1.0;
+    data[5] = 1.0;
+    data[10] = 1.0;
+    data[15] = 1.0;
+    Self { data }
+  }
+
+  #[allow(non_snake_case)]
+  fn transpose(&self) -> Self {
+    let A = self.data;
+
+    #[rustfmt::skip]
+    let B = [
+        A[0], A[4], A[8], A[12],
+        A[1], A[5], A[9], A[13],
+        A[2], A[6], A[10], A[14],
+        A[3], A[7], A[11], A[15],
+    ];
+
+    Self { data: B }
+  }
+
+  fn add(&self, rhs: &Matrix4d) -> Self {
+    let mut result = Matrix4d::default();
+    for i in 0..16 {
+      result.data[i] = self.data[i] + rhs.data[i];
+    }
+    result
+  }
+
+  fn sub(&self, rhs: &Matrix4d) -> Self {
+    let mut result = Matrix4d::default();
+    for i in 0..16 {
+      result.data[i] = self.data[i] - rhs.data[i];
+    }
+    result
+  }
+
+  fn scale(&self, rhs: f64) -> Self {
+    let mut result = Matrix4d::default();
+    for i in 0..16 {
+      result.data[i] = rhs * self.data[i];
+    }
+    result
+  }
+
+  #[allow(non_snake_case)]
+  pub fn dot(&self, rhs: &Matrix4d) -> Self {
+    let A = self.data;
+    let B = rhs.data;
+    let mut C = [0.0; 16];
+
+    // Row 0
+    C[0] = A[0] * B[0] + A[1] * B[4] + A[2] * B[8] + A[3] * B[12];
+    C[1] = A[0] * B[1] + A[1] * B[5] + A[2] * B[9] + A[3] * B[13];
+    C[2] = A[0] * B[2] + A[1] * B[6] + A[2] * B[10] + A[3] * B[14];
+    C[3] = A[0] * B[3] + A[1] * B[7] + A[2] * B[11] + A[3] * B[15];
+
+    // Row 1
+    C[4] = A[4] * B[0] + A[5] * B[4] + A[6] * B[8] + A[7] * B[12];
+    C[5] = A[4] * B[1] + A[5] * B[5] + A[6] * B[9] + A[7] * B[13];
+    C[6] = A[4] * B[2] + A[5] * B[6] + A[6] * B[10] + A[7] * B[14];
+    C[7] = A[4] * B[3] + A[5] * B[7] + A[6] * B[11] + A[7] * B[15];
+
+    // Row 2
+    C[8] = A[8] * B[0] + A[9] * B[4] + A[10] * B[8] + A[11] * B[12];
+    C[9] = A[8] * B[1] + A[9] * B[5] + A[10] * B[9] + A[11] * B[13];
+    C[10] = A[8] * B[2] + A[9] * B[6] + A[10] * B[10] + A[11] * B[14];
+    C[11] = A[8] * B[3] + A[9] * B[7] + A[10] * B[11] + A[11] * B[15];
+
+    // Row 3
+    C[12] = A[12] * B[0] + A[13] * B[4] + A[14] * B[8] + A[15] * B[12];
+    C[13] = A[12] * B[1] + A[13] * B[5] + A[14] * B[9] + A[15] * B[13];
+    C[14] = A[12] * B[2] + A[13] * B[6] + A[14] * B[10] + A[15] * B[14];
+    C[15] = A[12] * B[3] + A[13] * B[7] + A[14] * B[11] + A[15] * B[15];
+
+    Self { data: C }
+  }
+
+  #[allow(non_snake_case)]
+  pub fn dot_vec(&self, rhs: &Vector4d) -> Vector4d {
+    let M = self.data;
+    let v = rhs.data;
+    let mut y = [0.0; 4];
+
+    y[0] = M[0] * v[0] + M[1] * v[1] + M[2] * v[2] + M[3] * v[3];
+    y[1] = M[4] * v[0] + M[5] * v[1] + M[6] * v[2] + M[7] * v[3];
+    y[2] = M[8] * v[0] + M[9] * v[1] + M[10] * v[2] + M[11] * v[3];
+    y[3] = M[12] * v[0] + M[13] * v[1] + M[14] * v[2] + M[15] * v[3];
+
+    Vector4d { data: y }
+  }
+
+  pub fn is_close(&self, rhs: &Self, epsilon: f64) -> bool {
+    self.data.iter().zip(rhs.data.iter()).all(|(&a, &b)| {
+      let diff = if a > b { a - b } else { b - a };
+      diff < epsilon
+    })
+  }
+}
+
+// -- Matrix4d + Matrix4d
+impl Add<&Matrix4d> for &Matrix4d {
+  type Output = Matrix4d;
+
+  fn add(self, rhs: &Matrix4d) -> Self::Output {
+    self.add(rhs)
+  }
+}
+
+// -- Matrix3d * f64
+impl Mul<f64> for &Matrix4d {
+  type Output = Matrix4d;
+
+  fn mul(self, rhs: f64) -> Self::Output {
+    self.scale(rhs)
+  }
+}
+
+// -- f64 * Matrix4d
+impl Mul<&Matrix4d> for f64 {
+  type Output = Matrix4d;
+
+  fn mul(self, rhs: &Matrix4d) -> Self::Output {
+    rhs * self
+  }
+}
+
+// -- Matrix4d - Matrix4d
+impl Sub<&Matrix4d> for &Matrix4d {
+  type Output = Matrix4d;
+
+  fn sub(self, rhs: &Matrix4d) -> Self::Output {
+    self.sub(rhs)
+  }
+}
+
+// -- Matrix4d * Vector4d
+impl Mul<&Vector4d> for &Matrix4d {
+  type Output = Vector4d;
+  fn mul(self, rhs: &Vector4d) -> Self::Output {
+    self.dot_vec(rhs)
+  }
+}
+
+// -- Matrix4d * Matrix4d
+impl Mul<&Matrix4d> for &Matrix4d {
+  type Output = Matrix4d;
+  fn mul(self, rhs: &Matrix4d) -> Self::Output {
+    self.dot(rhs)
+  }
+}
+
+// --- Neg
+impl Neg for Matrix4d {
+  type Output = Matrix4d;
+
+  #[allow(non_snake_case)]
+  fn neg(self) -> Self {
+    let mut M = [0.0; 16];
+
+    M[0] = -self.data[0];
+    M[1] = -self.data[1];
+    M[2] = -self.data[2];
+    M[3] = -self.data[3];
+    M[4] = -self.data[4];
+    M[5] = -self.data[5];
+    M[6] = -self.data[6];
+    M[7] = -self.data[7];
+    M[8] = -self.data[8];
+    M[9] = -self.data[9];
+    M[10] = -self.data[10];
+    M[11] = -self.data[11];
+    M[12] = -self.data[12];
+    M[13] = -self.data[13];
+    M[14] = -self.data[14];
+    M[15] = -self.data[15];
+
+    Self { data: M }
+  }
+}
+
+#[cfg(test)]
+mod matrix4_tests {
+  // Note this useful idiom: importing names from outer (for mod tests) scope.
+  use super::*;
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix4_new() {
+    // Create and use a matrix
+    #[rustfmt::skip]
+    let A = Matrix4d::new([
+      1.0, 2.0, 3.0, 4.0,
+      5.0, 6.0, 7.0, 8.0,
+      9.0, 10.0, 11.0, 12.0,
+      13.0, 14.0, 15.0, 16.0,
+    ]);
+    let b = Vector4d::new([1.0, 2.0, 3.0, 4.0]);
+
+    #[rustfmt::skip]
+    let expected_add = Matrix4d::new([
+      2.0, 4.0, 6.0, 8.0,
+      10.0, 12.0, 14.0, 16.0,
+      18.0, 20.0, 22.0, 24.0,
+      26.0, 28.0, 30.0, 32.0,
+    ]);
+
+    #[rustfmt::skip]
+    let expected_sub = Matrix4d::new([
+      0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0,
+    ]);
+
+    #[rustfmt::skip]
+    let expected_scale = Matrix4d::new([
+      2.0, 4.0, 6.0, 8.0,
+      10.0, 12.0, 14.0, 16.0,
+      18.0, 20.0, 22.0, 24.0,
+      26.0, 28.0, 30.0, 32.0,
+    ]);
+
+    #[rustfmt::skip]
+    let expected_dot_vec = Vector4d::new([30.0, 70.0, 110.0, 150.0]);
+
+    #[rustfmt::skip]
+    let expected_dot = Matrix4d::new([
+      90.0, 100.0, 110.0, 120.0,
+      202.0, 228.0, 254.0, 280.0,
+      314.0, 356.0, 398.0, 440.0,
+      426.0, 484.0, 542.0, 600.0,
+    ]);
+
+    assert!((&A + &A).is_close(&expected_add, 1e-10));
+    assert!((&A - &A).is_close(&expected_sub, 1e-10));
+    assert!((2.0 * &A).is_close(&expected_scale, 1e-10));
+    assert!((&A * 2.0).is_close(&expected_scale, 1e-10));
+    assert!((&A * &b).is_close(&expected_dot_vec, 1e-10));
+    assert!((&A * &A).is_close(&expected_dot, 1e-10));
   }
 }
 
