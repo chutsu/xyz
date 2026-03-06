@@ -1,7 +1,9 @@
-use crate::matrix::Matrix3d;
-use crate::matrix::Matrix4d;
-use crate::vector::Vector3d;
-use crate::vector::Vector4d;
+// use std::ops::Mul;
+
+use crate::linalg::Matrix3d;
+use crate::linalg::Matrix4d;
+use crate::linalg::Vector3d;
+use crate::linalg::Vector4d;
 
 ///////////////////////////////////////////////////////////////////////////////
 // ROTATION MATRIX                                                           //
@@ -464,3 +466,55 @@ pub struct Transform {
   child: String,
   data: Matrix4d,
 }
+
+impl Transform {
+  fn default() -> Self {
+    Transform {
+      parent: String::from("NOT_SET"),
+      child: String::from("NOT_SET"),
+      data: Matrix4d::eye(),
+    }
+  }
+
+  pub fn new(parent: String, child: String, data: Matrix4d) -> Self {
+    Self {
+      parent,
+      child,
+      data,
+    }
+  }
+
+  pub fn x(&self) -> f64 {
+    *self.data.at(0, 3)
+  }
+
+  pub fn y(&self) -> f64 {
+    *self.data.at(1, 3)
+  }
+
+  pub fn z(&self) -> f64 {
+    *self.data.at(2, 3)
+  }
+
+  // pub fn pos(&self) -> Vector3d {
+  // }
+
+  // pub fn rot(&self) -> Matrix3d {
+  // }
+  //
+  // pub fn quat(&self) -> Quaternion{
+  // }
+
+  // pub fn transform(&self, rhs: &Vector3d) {
+  //
+  // }
+}
+
+// -- Transform * Transform
+// impl Mul<&Transform> for &Transform {
+//   type Output = Transform;
+//   fn mul(self, rhs: &Transform) -> Self::Output {
+//     assert!(self.child == rhs.parent);
+//     Transform::new(self.parent, rhs.child, &self.data * &rhs.data)
+//   }
+// }

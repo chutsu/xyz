@@ -5,8 +5,591 @@ use std::ops::Mul;
 use std::ops::Neg;
 use std::ops::Sub;
 
-use crate::vector::Vector3d;
-use crate::vector::Vector4d;
+///////////////////////////////////////////////////////////////////////////////
+// Vector2                                                                   //
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, Copy)]
+pub struct Vector2d {
+  pub data: [f64; 2],
+}
+
+// Implementing Default trait for Vector3d
+impl Default for Vector2d {
+  fn default() -> Self {
+    Vector2d { data: [0.0; 2] }
+  }
+}
+
+impl Vector2d {
+  pub fn new(data: [f64; 2]) -> Self {
+    Vector2d { data }
+  }
+
+  pub fn x(&self) -> f64 {
+    self.data[0]
+  }
+
+  pub fn y(&self) -> f64 {
+    self.data[1]
+  }
+
+  pub fn at(&self, i: usize) -> &f64 {
+    assert!(i < 2, "Index out of bounds");
+    &self.data[i]
+  }
+
+  pub fn set(&mut self, i: usize, value: f64) {
+    assert!(i < 2, "Index out of bounds");
+    self.data[i] = value;
+  }
+
+  pub fn add(&self, rhs: &Vector2d) -> Vector2d {
+    let mut result = Vector2d::default();
+    result.data[0] = self.data[0] + rhs.data[0];
+    result.data[1] = self.data[1] + rhs.data[1];
+    result
+  }
+
+  pub fn sub(&self, rhs: &Vector2d) -> Vector2d {
+    let mut result = Vector2d::default();
+    result.data[0] = self.data[0] - rhs.data[0];
+    result.data[1] = self.data[1] - rhs.data[1];
+    result
+  }
+
+  fn scale(&self, rhs: f64) -> Vector2d {
+    let mut res = [0.0; 2];
+    res[0] = rhs * self.data[0];
+    res[1] = rhs * self.data[1];
+    Vector2d::new(res)
+  }
+
+  fn dot(&self, rhs: &Vector2d) -> f64 {
+    let mut res = 0.0;
+    res += rhs.data[0] * self.data[0];
+    res += rhs.data[1] * self.data[1];
+    res
+  }
+
+  fn norm(&self) -> f64 {
+    self.dot(self).sqrt()
+  }
+
+  fn normalize(&self) -> Vector2d {
+    *self * (1.0 / self.norm())
+  }
+
+  pub fn is_close(&self, rhs: &Self, epsilon: f64) -> bool {
+    self.data.iter().zip(rhs.data.iter()).all(|(&a, &b)| {
+      let diff = if a > b { a - b } else { b - a };
+      diff < epsilon
+    })
+  }
+}
+
+// --- Vector2d + Vector2d
+impl Add<&Vector2d> for &Vector2d {
+  type Output = Vector2d;
+  fn add(self, rhs: &Vector2d) -> Self::Output {
+    self.add(rhs)
+  }
+}
+
+// --- Vector2d - Vector2d
+impl Sub<&Vector2d> for &Vector2d {
+  type Output = Vector2d;
+  fn sub(self, rhs: &Vector2d) -> Self::Output {
+    self.sub(rhs)
+  }
+}
+
+// --- Vector2d * f64
+impl Mul<f64> for Vector2d {
+  type Output = Vector2d;
+  fn mul(self, rhs: f64) -> Vector2d {
+    self.scale(rhs)
+  }
+}
+
+// --- f64 * Vector2d
+impl Mul<Vector2d> for f64 {
+  type Output = Vector2d;
+  fn mul(self, rhs: Vector2d) -> Vector2d {
+    rhs * self
+  }
+}
+
+// --- Vector2d * Vector2d
+impl Mul<&Vector2d> for &Vector2d {
+  type Output = f64;
+
+  fn mul(self, rhs: &Vector2d) -> f64 {
+    self.dot(rhs)
+  }
+}
+
+// --- Neg ---
+impl Neg for Vector2d {
+  type Output = Vector2d;
+  fn neg(self) -> Vector2d {
+    let data = [-self.x(), -self.y()];
+    Vector2d::new(data)
+  }
+}
+
+// Formatter
+impl std::fmt::Display for Vector2d {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "({:.2}, {:.2})", self.x(), self.y())
+  }
+}
+
+#[cfg(test)]
+mod vector2d_tests {
+  // Note this useful idiom: importing names from outer (for mod tests) scope.
+  use super::*;
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_vector2d() {
+    let a = Vector2d::new([1.0, 2.0]);
+    let b = Vector2d::new([3.0, 4.0]);
+    let expected_add = Vector2d::new([4.0, 6.0]);
+    let expected_sub = Vector2d::new([-2.0, -2.0]);
+    let expected_dot_scalar = Vector2d::new([2.0, 4.0]);
+    let expected_neg = Vector2d::new([-1.0, -2.0]);
+    let expected_normalize = Vector2d::new([0.4472136, 0.89442719]);
+
+    assert!(a.x() == 1.0);
+    assert!(a.y() == 2.0);
+
+    assert!(b.x() == 3.0);
+    assert!(b.y() == 4.0);
+
+    assert!(*a.at(0) == 1.0);
+    assert!(*a.at(1) == 2.0);
+
+    assert!(a.add(&b).is_close(&expected_add, 1e-10));
+    assert!(a.sub(&b).is_close(&expected_sub, 1e-10));
+    assert!(a.dot(&b) == 11.0);
+    assert!((a * 2.0).is_close(&expected_dot_scalar, 1e-10));
+    assert!((2.0 * a).is_close(&expected_dot_scalar, 1e-10));
+    assert!((&a * &b) == 11.0);
+    assert!((-a).is_close(&expected_neg, 1e-10));
+    assert!(a.norm() == 2.23606797749979);
+    assert!(a.normalize().is_close(&expected_normalize, 1e-2));
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Vector3                                                                   //
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, Copy)]
+pub struct Vector3d {
+  pub data: [f64; 3],
+}
+
+// Implementing Default trait for Vector3d
+impl Default for Vector3d {
+  fn default() -> Self {
+    Vector3d { data: [0.0; 3] }
+  }
+}
+
+impl Vector3d {
+  pub fn new(data: [f64; 3]) -> Self {
+    Vector3d { data }
+  }
+
+  pub fn x(&self) -> f64 {
+    self.data[0]
+  }
+
+  pub fn y(&self) -> f64 {
+    self.data[1]
+  }
+
+  pub fn z(&self) -> f64 {
+    self.data[2]
+  }
+
+  pub fn at(&self, i: usize) -> &f64 {
+    assert!(i < 3, "Index out of bounds");
+    &self.data[i]
+  }
+
+  pub fn set(&mut self, i: usize, value: f64) {
+    assert!(i < 3, "Index out of bounds");
+    self.data[i] = value;
+  }
+
+  pub fn add(&self, rhs: &Vector3d) -> Vector3d {
+    let mut result = Vector3d::default();
+    result.data[0] = self.data[0] + rhs.data[0];
+    result.data[1] = self.data[1] + rhs.data[1];
+    result.data[2] = self.data[2] + rhs.data[2];
+    result
+  }
+
+  pub fn sub(&self, rhs: &Vector3d) -> Vector3d {
+    let mut result = Vector3d::default();
+    result.data[0] = self.data[0] - rhs.data[0];
+    result.data[1] = self.data[1] - rhs.data[1];
+    result.data[2] = self.data[2] - rhs.data[2];
+    result
+  }
+
+  fn scale(&self, rhs: f64) -> Vector3d {
+    let mut res = [0.0; 3];
+    res[0] = rhs * self.data[0];
+    res[1] = rhs * self.data[1];
+    res[2] = rhs * self.data[2];
+    Vector3d::new(res)
+  }
+
+  fn dot(&self, rhs: &Vector3d) -> f64 {
+    let mut res = 0.0;
+    res += rhs.data[0] * self.data[0];
+    res += rhs.data[1] * self.data[1];
+    res += rhs.data[2] * self.data[2];
+    res
+  }
+
+  fn cross(&self, rhs: &Vector3d) -> Vector3d {
+    let data = [
+      self.y() * rhs.z() - self.z() * rhs.y(),
+      self.z() * rhs.x() - self.x() * rhs.z(),
+      self.x() * rhs.y() - self.y() * rhs.x(),
+    ];
+    Vector3d { data }
+  }
+
+  fn norm(&self) -> f64 {
+    self.dot(self).sqrt()
+  }
+
+  fn normalize(&self) -> Vector3d {
+    *self * (1.0 / self.norm())
+  }
+
+  pub fn is_close(&self, rhs: &Self, epsilon: f64) -> bool {
+    self.data.iter().zip(rhs.data.iter()).all(|(&a, &b)| {
+      let diff = if a > b { a - b } else { b - a };
+      diff < epsilon
+    })
+  }
+}
+
+// --- Vector3d + Vector3d
+impl Add<&Vector3d> for &Vector3d {
+  type Output = Vector3d;
+  fn add(self, rhs: &Vector3d) -> Self::Output {
+    self.add(rhs)
+  }
+}
+
+// --- Vector3d - Vector3d
+impl Sub<&Vector3d> for &Vector3d {
+  type Output = Vector3d;
+  fn sub(self, rhs: &Vector3d) -> Self::Output {
+    self.sub(rhs)
+  }
+}
+
+// --- Vector3d * f64
+impl Mul<f64> for Vector3d {
+  type Output = Vector3d;
+  fn mul(self, rhs: f64) -> Vector3d {
+    self.scale(rhs)
+  }
+}
+
+// --- f64 * Vector3d
+impl Mul<Vector3d> for f64 {
+  type Output = Vector3d;
+  fn mul(self, rhs: Vector3d) -> Vector3d {
+    rhs * self
+  }
+}
+
+// --- Vector3d * Vector3d
+impl Mul<&Vector3d> for &Vector3d {
+  type Output = f64;
+
+  fn mul(self, rhs: &Vector3d) -> f64 {
+    self.dot(rhs)
+  }
+}
+
+// --- Neg ---
+impl Neg for Vector3d {
+  type Output = Vector3d;
+  fn neg(self) -> Vector3d {
+    let data = [-self.x(), -self.y(), -self.z()];
+    Vector3d::new(data)
+  }
+}
+
+// Formatter
+impl std::fmt::Display for Vector3d {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "({:.2}, {:.2}, {:.2})", self.x(), self.y(), self.z())
+  }
+}
+
+#[cfg(test)]
+mod vector3d_tests {
+  // Note this useful idiom: importing names from outer (for mod tests) scope.
+  use super::*;
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_vector3d() {
+    let a = Vector3d::new([1.0, 2.0, 3.0]);
+    let b = Vector3d::new([4.0, 5.0, 6.0]);
+    let expected_add = Vector3d::new([5.0, 7.0, 9.0]);
+    let expected_sub = Vector3d::new([-3.0, -3.0, -3.0]);
+    let expected_dot_scalar = Vector3d::new([2.0, 4.0, 6.0]);
+    let expected_cross = Vector3d::new([-3.0, 6.0, -3.0]);
+    let expected_neg = Vector3d::new([-1.0, -2.0, -3.0]);
+    let expected_normalize = Vector3d::new([0.27, 0.53, 0.80]);
+
+    assert!(a.x() == 1.0);
+    assert!(a.y() == 2.0);
+    assert!(a.z() == 3.0);
+
+    assert!(b.x() == 4.0);
+    assert!(b.y() == 5.0);
+    assert!(b.z() == 6.0);
+
+    assert!(*a.at(0) == 1.0);
+    assert!(*a.at(1) == 2.0);
+    assert!(*a.at(2) == 3.0);
+
+    assert!(a.add(&b).is_close(&expected_add, 1e-10));
+    assert!(a.sub(&b).is_close(&expected_sub, 1e-10));
+    assert!(a.dot(&b) == 32.0);
+    assert!((a * 2.0).is_close(&expected_dot_scalar, 1e-10));
+    assert!((2.0 * a).is_close(&expected_dot_scalar, 1e-10));
+    assert!((&a * &b) == 32.0);
+    assert!((-a).is_close(&expected_neg, 1e-10));
+    assert!(a.cross(&b).is_close(&expected_cross, 1e-10));
+    assert!(a.norm() == 3.7416573867739413);
+    assert!(a.normalize().is_close(&expected_normalize, 1e-2));
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Vector4                                                                   //
+///////////////////////////////////////////////////////////////////////////////
+
+#[derive(Debug, Clone, Copy)]
+pub struct Vector4d {
+  pub data: [f64; 4],
+}
+
+// Implementing Default trait for Vector4d
+impl Default for Vector4d {
+  fn default() -> Self {
+    Vector4d { data: [0.0; 4] }
+  }
+}
+
+impl Vector4d {
+  pub fn new(data: [f64; 4]) -> Self {
+    Vector4d { data }
+  }
+
+  pub fn x(&self) -> f64 {
+    self.data[0]
+  }
+
+  pub fn y(&self) -> f64 {
+    self.data[1]
+  }
+
+  pub fn z(&self) -> f64 {
+    self.data[2]
+  }
+
+  pub fn w(&self) -> f64 {
+    self.data[3]
+  }
+
+  pub fn at(&self, i: usize) -> &f64 {
+    assert!(i < 4, "Index out of bounds");
+    &self.data[i]
+  }
+
+  pub fn set(&mut self, i: usize, value: f64) {
+    assert!(i < 4, "Index out of bounds");
+    self.data[i] = value;
+  }
+
+  pub fn add(&self, rhs: &Vector4d) -> Vector4d {
+    let mut result = Vector4d::default();
+    result.data[0] = self.data[0] + rhs.data[0];
+    result.data[1] = self.data[1] + rhs.data[1];
+    result.data[2] = self.data[2] + rhs.data[2];
+    result.data[3] = self.data[3] + rhs.data[3];
+    result
+  }
+
+  pub fn sub(&self, rhs: &Vector4d) -> Vector4d {
+    let mut result = Vector4d::default();
+    result.data[0] = self.data[0] - rhs.data[0];
+    result.data[1] = self.data[1] - rhs.data[1];
+    result.data[2] = self.data[2] - rhs.data[2];
+    result.data[3] = self.data[3] - rhs.data[3];
+    result
+  }
+
+  fn scale(&self, rhs: f64) -> Vector4d {
+    let mut res = [0.0; 4];
+    res[0] = rhs * self.data[0];
+    res[1] = rhs * self.data[1];
+    res[2] = rhs * self.data[2];
+    res[3] = rhs * self.data[3];
+    Vector4d::new(res)
+  }
+
+  fn dot(&self, rhs: &Vector4d) -> f64 {
+    let mut res = 0.0;
+    res += rhs.data[0] * self.data[0];
+    res += rhs.data[1] * self.data[1];
+    res += rhs.data[2] * self.data[2];
+    res += rhs.data[3] * self.data[3];
+    res
+  }
+
+  fn norm(&self) -> f64 {
+    self.dot(self).sqrt()
+  }
+
+  fn normalize(&self) -> Vector4d {
+    *self * (1.0 / self.norm())
+  }
+
+  pub fn is_close(&self, rhs: &Self, epsilon: f64) -> bool {
+    self.data.iter().zip(rhs.data.iter()).all(|(&a, &b)| {
+      let diff = if a > b { a - b } else { b - a };
+      diff < epsilon
+    })
+  }
+}
+
+// --- Vector4d + Vector4d
+impl Add<&Vector4d> for &Vector4d {
+  type Output = Vector4d;
+
+  fn add(self, rhs: &Vector4d) -> Self::Output {
+    self.add(rhs)
+  }
+}
+
+// --- Vector4d - Vector4d
+impl Sub<&Vector4d> for &Vector4d {
+  type Output = Vector4d;
+
+  fn sub(self, rhs: &Vector4d) -> Self::Output {
+    self.sub(rhs)
+  }
+}
+
+// --- Vector4d * f64
+impl Mul<f64> for Vector4d {
+  type Output = Vector4d;
+
+  fn mul(self, rhs: f64) -> Vector4d {
+    self.scale(rhs)
+  }
+}
+
+// --- f64 * Vector4d
+impl Mul<Vector4d> for f64 {
+  type Output = Vector4d;
+
+  fn mul(self, rhs: Vector4d) -> Vector4d {
+    rhs * self
+  }
+}
+
+// --- Vector4d * Vector4d
+impl Mul<&Vector4d> for &Vector4d {
+  type Output = f64;
+
+  fn mul(self, rhs: &Vector4d) -> f64 {
+    self.dot(rhs)
+  }
+}
+
+// --- Neg
+impl Neg for Vector4d {
+  type Output = Vector4d;
+  fn neg(self) -> Vector4d {
+    let data = [-self.x(), -self.y(), -self.z(), -self.w()];
+    Vector4d::new(data)
+  }
+}
+
+// Formatter
+impl std::fmt::Display for Vector4d {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(
+      f,
+      "({:.2}, {:.2}, {:.2} {:.2})",
+      self.x(),
+      self.y(),
+      self.z(),
+      self.w()
+    )
+  }
+}
+
+#[cfg(test)]
+mod vector4d_tests {
+  // Note this useful idiom: importing names from outer (for mod tests) scope.
+  use super::*;
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_vector4d() {
+    let a = Vector4d::new([1.0, 2.0, 3.0, 4.0]);
+    let b = Vector4d::new([5.0, 6.0, 7.0, 8.0]);
+    let expected_add = Vector4d::new([6.0, 8.0, 10.0, 12.0]);
+    let expected_sub = Vector4d::new([-4.0, -4.0, -4.0, -4.0]);
+    let expected_dot_scalar = Vector4d::new([2.0, 4.0, 6.0, 8.0]);
+    let expected_neg = Vector4d::new([-1.0, -2.0, -3.0, -4.0]);
+    // let expected_normalize = Vector4d::new([0.27, 0.53, 0.80]);
+
+    assert!(a.x() == 1.0);
+    assert!(a.y() == 2.0);
+    assert!(a.z() == 3.0);
+    assert!(a.w() == 4.0);
+
+    assert!(b.x() == 5.0);
+    assert!(b.y() == 6.0);
+    assert!(b.z() == 7.0);
+    assert!(b.w() == 8.0);
+
+    assert!(*a.at(0) == 1.0);
+    assert!(*a.at(1) == 2.0);
+    assert!(*a.at(2) == 3.0);
+    assert!(*a.at(3) == 4.0);
+
+    assert!(a.add(&b).is_close(&expected_add, 1e-10));
+    assert!(a.sub(&b).is_close(&expected_sub, 1e-10));
+    assert!(a.dot(&b) == 70.0);
+    assert!((a * 2.0).is_close(&expected_dot_scalar, 1e-10));
+    assert!((2.0 * a).is_close(&expected_dot_scalar, 1e-10));
+    assert!((&a * &b) == 70.0);
+    assert!((-a).is_close(&expected_neg, 1e-10));
+    // assert!(a.norm() == 3.7416573867739413);
+    // assert!(a.normalize().is_close(&expected_normalize, 1e-2));
+  }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Matrix3                                                                   //
@@ -300,7 +883,7 @@ impl Matrix4d {
     self.data[row * 4 + col] = value;
   }
 
-  fn eye() -> Self {
+  pub fn eye() -> Self {
     let mut data = [0.0; 16];
     data[0] = 1.0;
     data[5] = 1.0;
@@ -842,6 +1425,129 @@ where
   }
 }
 
+#[cfg(test)]
+mod matrix_tests {
+  // Note this useful idiom: importing names from outer (for mod tests) scope.
+  use super::*;
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_eye() {
+    let A: Matrix<f64> = Matrix::eye(2, 2);
+    let expected = Matrix::new(2, 2, vec![1.0, 0.0, 0.0, 1.0]);
+    assert!(A.is_close(&expected, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_zeros() {
+    let A: Matrix<f64> = Matrix::zeros(2, 2);
+    let expected = Matrix::new(2, 2, vec![0.0, 0.0, 0.0, 0.0]);
+    assert!(A.is_close(&expected, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_ones() {
+    let A: Matrix<f64> = Matrix::ones(2, 2);
+    let expected = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
+    assert!(A.is_close(&expected, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_add() {
+    let A = Matrix::new(2, 2, vec![1.0, 2.0, 3.0, 4.0]);
+    let B = Matrix::new(2, 2, vec![5.0, 6.0, 7.0, 8.0]);
+    let expected = Matrix::new(2, 2, vec![6.0, 8.0, 10.0, 12.0]);
+    let sum = &A + &B;
+    assert!(sum.is_close(&expected, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_block() {
+    #[rustfmt::skip]
+    let A = Matrix::new(4, 4, vec![
+      1.0, 1.0, 2.0, 2.0,
+      1.0, 1.0, 2.0, 2.0,
+      3.0, 3.0, 4.0, 4.0,
+      3.0, 3.0, 4.0, 4.0,
+    ]);
+
+    let expected1 = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
+    let expected2 = Matrix::new(2, 2, vec![2.0, 2.0, 2.0, 2.0]);
+    let expected3 = Matrix::new(2, 2, vec![3.0, 3.0, 3.0, 3.0]);
+    let expected4 = Matrix::new(2, 2, vec![4.0, 4.0, 4.0, 4.0]);
+
+    assert!(A.block(0, 0, 2, 2).is_close(&expected1, 1e-10));
+    assert!(A.block(0, 2, 2, 2).is_close(&expected2, 1e-10));
+    assert!(A.block(2, 0, 2, 2).is_close(&expected3, 1e-10));
+    assert!(A.block(2, 2, 2, 2).is_close(&expected4, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_set_block() {
+    let mut result: Matrix<f64> = Matrix::zeros(4, 4);
+    let A = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
+    let B = Matrix::new(2, 2, vec![2.0, 2.0, 2.0, 2.0]);
+    let C = Matrix::new(2, 2, vec![3.0, 3.0, 3.0, 3.0]);
+    let D = Matrix::new(2, 2, vec![4.0, 4.0, 4.0, 4.0]);
+
+    result.set_block(0, 0, &A);
+    result.set_block(0, 2, &B);
+    result.set_block(2, 0, &C);
+    result.set_block(2, 2, &D);
+
+    #[rustfmt::skip]
+    let expected = Matrix::new(4, 4, vec![
+      1.0, 1.0, 2.0, 2.0,
+      1.0, 1.0, 2.0, 2.0,
+      3.0, 3.0, 4.0, 4.0,
+      3.0, 3.0, 4.0, 4.0,
+    ]);
+
+    assert!(result.is_close(&expected, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_convenience() {
+    #[rustfmt::skip]
+    let A = Matrix::new(4, 4, vec![
+      1.0, 1.0, 2.0, 2.0,
+      1.0, 1.0, 2.0, 2.0,
+      3.0, 3.0, 4.0, 4.0,
+      3.0, 3.0, 4.0, 4.0,
+    ]);
+
+    let expected_tl = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
+    let expected_tr = Matrix::new(2, 2, vec![2.0, 2.0, 2.0, 2.0]);
+    let expected_bl = Matrix::new(2, 2, vec![3.0, 3.0, 3.0, 3.0]);
+    let expected_br = Matrix::new(2, 2, vec![4.0, 4.0, 4.0, 4.0]);
+    assert!(A.top_left_corner(2, 2).is_close(&expected_tl, 1e-10));
+    assert!(A.top_right_corner(2, 2).is_close(&expected_tr, 1e-10));
+    assert!(A.bottom_left_corner(2, 2).is_close(&expected_bl, 1e-10));
+    assert!(A.bottom_right_corner(2, 2).is_close(&expected_br, 1e-10));
+
+    let expected_row = Matrix::new(1, 4, vec![1.0, 1.0, 2.0, 2.0]);
+    let expected_col = Matrix::new(4, 1, vec![2.0, 2.0, 4.0, 4.0]);
+    assert!(A.row(0).is_close(&expected_row, 1e-10));
+    assert!(A.col(3).is_close(&expected_col, 1e-10));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_matrix_mul() {
+    let A = Matrix::new(2, 2, vec![1.0, 2.0, 3.0, 4.0]);
+    let B = Matrix::new(2, 2, vec![5.0, 6.0, 7.0, 8.0]);
+    let expected = Matrix::new(2, 2, vec![19.0, 22.0, 43.0, 50.0]);
+    let product = &A * &B;
+    assert!(product.is_close(&expected, 1e-10));
+  }
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // BlockView<T>                                                              //
 ///////////////////////////////////////////////////////////////////////////////
@@ -988,132 +1694,5 @@ impl<T> Matrix<T> {
       matrix: self,
       upper: false,
     }
-  }
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// UNITTESTS                                                                 //
-///////////////////////////////////////////////////////////////////////////////
-
-#[cfg(test)]
-mod tests {
-  // Note this useful idiom: importing names from outer (for mod tests) scope.
-  use super::*;
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_eye() {
-    let A: Matrix<f64> = Matrix::eye(2, 2);
-    let expected = Matrix::new(2, 2, vec![1.0, 0.0, 0.0, 1.0]);
-    assert!(A.is_close(&expected, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_zeros() {
-    let A: Matrix<f64> = Matrix::zeros(2, 2);
-    let expected = Matrix::new(2, 2, vec![0.0, 0.0, 0.0, 0.0]);
-    assert!(A.is_close(&expected, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_ones() {
-    let A: Matrix<f64> = Matrix::ones(2, 2);
-    let expected = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
-    assert!(A.is_close(&expected, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_add() {
-    let A = Matrix::new(2, 2, vec![1.0, 2.0, 3.0, 4.0]);
-    let B = Matrix::new(2, 2, vec![5.0, 6.0, 7.0, 8.0]);
-    let expected = Matrix::new(2, 2, vec![6.0, 8.0, 10.0, 12.0]);
-    let sum = &A + &B;
-    assert!(sum.is_close(&expected, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_block() {
-    #[rustfmt::skip]
-    let A = Matrix::new(4, 4, vec![
-      1.0, 1.0, 2.0, 2.0,
-      1.0, 1.0, 2.0, 2.0,
-      3.0, 3.0, 4.0, 4.0,
-      3.0, 3.0, 4.0, 4.0,
-    ]);
-
-    let expected1 = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
-    let expected2 = Matrix::new(2, 2, vec![2.0, 2.0, 2.0, 2.0]);
-    let expected3 = Matrix::new(2, 2, vec![3.0, 3.0, 3.0, 3.0]);
-    let expected4 = Matrix::new(2, 2, vec![4.0, 4.0, 4.0, 4.0]);
-
-    assert!(A.block(0, 0, 2, 2).is_close(&expected1, 1e-10));
-    assert!(A.block(0, 2, 2, 2).is_close(&expected2, 1e-10));
-    assert!(A.block(2, 0, 2, 2).is_close(&expected3, 1e-10));
-    assert!(A.block(2, 2, 2, 2).is_close(&expected4, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_set_block() {
-    let mut result: Matrix<f64> = Matrix::zeros(4, 4);
-    let A = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
-    let B = Matrix::new(2, 2, vec![2.0, 2.0, 2.0, 2.0]);
-    let C = Matrix::new(2, 2, vec![3.0, 3.0, 3.0, 3.0]);
-    let D = Matrix::new(2, 2, vec![4.0, 4.0, 4.0, 4.0]);
-
-    result.set_block(0, 0, &A);
-    result.set_block(0, 2, &B);
-    result.set_block(2, 0, &C);
-    result.set_block(2, 2, &D);
-
-    #[rustfmt::skip]
-    let expected = Matrix::new(4, 4, vec![
-      1.0, 1.0, 2.0, 2.0,
-      1.0, 1.0, 2.0, 2.0,
-      3.0, 3.0, 4.0, 4.0,
-      3.0, 3.0, 4.0, 4.0,
-    ]);
-
-    assert!(result.is_close(&expected, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_convenience() {
-    #[rustfmt::skip]
-    let A = Matrix::new(4, 4, vec![
-      1.0, 1.0, 2.0, 2.0,
-      1.0, 1.0, 2.0, 2.0,
-      3.0, 3.0, 4.0, 4.0,
-      3.0, 3.0, 4.0, 4.0,
-    ]);
-
-    let expected_tl = Matrix::new(2, 2, vec![1.0, 1.0, 1.0, 1.0]);
-    let expected_tr = Matrix::new(2, 2, vec![2.0, 2.0, 2.0, 2.0]);
-    let expected_bl = Matrix::new(2, 2, vec![3.0, 3.0, 3.0, 3.0]);
-    let expected_br = Matrix::new(2, 2, vec![4.0, 4.0, 4.0, 4.0]);
-    assert!(A.top_left_corner(2, 2).is_close(&expected_tl, 1e-10));
-    assert!(A.top_right_corner(2, 2).is_close(&expected_tr, 1e-10));
-    assert!(A.bottom_left_corner(2, 2).is_close(&expected_bl, 1e-10));
-    assert!(A.bottom_right_corner(2, 2).is_close(&expected_br, 1e-10));
-
-    let expected_row = Matrix::new(1, 4, vec![1.0, 1.0, 2.0, 2.0]);
-    let expected_col = Matrix::new(4, 1, vec![2.0, 2.0, 4.0, 4.0]);
-    assert!(A.row(0).is_close(&expected_row, 1e-10));
-    assert!(A.col(3).is_close(&expected_col, 1e-10));
-  }
-
-  #[test]
-  #[allow(non_snake_case)]
-  fn test_matrix_mul() {
-    let A = Matrix::new(2, 2, vec![1.0, 2.0, 3.0, 4.0]);
-    let B = Matrix::new(2, 2, vec![5.0, 6.0, 7.0, 8.0]);
-    let expected = Matrix::new(2, 2, vec![19.0, 22.0, 43.0, 50.0]);
-    let product = &A * &B;
-    assert!(product.is_close(&expected, 1e-10));
   }
 }
