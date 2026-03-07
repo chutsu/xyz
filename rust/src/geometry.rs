@@ -1,4 +1,4 @@
-// use std::ops::Mul;
+use std::ops::Mul;
 
 use crate::linalg::Matrix3d;
 use crate::linalg::Matrix4d;
@@ -75,16 +75,14 @@ fn rot_diff(rot1: &Matrix3d, rot2: &Matrix3d, tol: f64) -> f64 {
   }
 }
 
-// Convert euler angles to rotation matrix
+/// Convert yaw, pitch, roll in radians to a 3x3 rotation matrix.
+///
+/// Source:
+/// Kuipers, Jack B. Quaternions and Rotation Sequences: A Primer with
+/// Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
+/// Princeton University Press, 1999. Print.
+/// [Page 85-86, "The Aerospace Sequence"]
 pub fn euler321(yaw: f64, pitch: f64, roll: f64) -> Matrix3d {
-  // Convert yaw, pitch, roll in radians to a 3x3 rotation matrix.
-  //
-  // Source:
-  // Kuipers, Jack B. Quaternions and Rotation Sequences: A Primer with
-  // Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
-  // Princeton University Press, 1999. Print.
-  // [Page 85-86, "The Aerospace Sequence"]
-
   let psi = yaw;
   let theta = pitch;
   let phi = roll;
@@ -254,9 +252,18 @@ pub struct Quaternion {
   pub data: [f64; 4],
 }
 
+// Implementing Default trait for Vector3d
+impl Default for Quaternion {
+  fn default() -> Self {
+    Quaternion {
+      data: [0.0, 0.0, 0.0, 1.0],
+    }
+  }
+}
+
 impl Quaternion {
-  pub fn new(data: [f64; 4]) -> Self {
-    Self { data }
+  pub fn new(w: f64, x: f64, y: f64, z: f64) -> Self {
+    Self { data: [x, y, z, w] }
   }
 
   pub fn x(&self) -> f64 {
@@ -345,19 +352,22 @@ impl Quaternion {
     Quaternion { data: q.data }
   }
 
+  pub fn from_array(data: [f64; 4]) -> Self {
+    Quaternion::new(data[3], data[0], data[1], data[2])
+  }
+
   pub fn to_vec(&self) -> Vector4d {
     Vector4d { data: self.data }
   }
 
+  /// Convert yaw, pitch, roll in radians to a quaternion.
+  ///
+  /// Source:
+  /// Kuipers, Jack B. Quaternions and Rotation Sequences: A Primer with
+  /// Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
+  /// Princeton University Press, 1999. Print.
+  /// [Page 166-167, "Euler Angles to Quaternion"]
   pub fn from_euler(yaw: f64, pitch: f64, roll: f64) -> Self {
-    // Convert yaw, pitch, roll in radians to a quaternion.
-    //
-    // Source:
-    // Kuipers, Jack B. Quaternions and Rotation Sequences: A Primer with
-    // Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
-    // Princeton University Press, 1999. Print.
-    // [Page 166-167, "Euler Angles to Quaternion"]
-    //
     let psi = yaw;
     let theta = pitch;
     let phi = roll;
@@ -405,7 +415,7 @@ impl Quaternion {
       let qy = (m02 - m20) / s;
       let qz = (m10 - m01) / s;
 
-      let q = Quaternion::new([qx, qy, qz, qw]);
+      let q = Quaternion::new(qw, qx, qy, qz);
       q.normalize()
     } else if m00 > m11 && m00 > m22 {
       let s = (1.0 + m00 - m11 - m22).sqrt() * 2.0;
@@ -414,7 +424,7 @@ impl Quaternion {
       let qy = (m01 + m10) / s;
       let qz = (m02 + m20) / s;
 
-      let q = Quaternion::new([qx, qy, qz, qw]);
+      let q = Quaternion::new(qw, qx, qy, qz);
       q.normalize()
     } else if m11 > m22 {
       let s = (1.0 + m11 - m00 - m22).sqrt() * 2.0;
@@ -423,7 +433,7 @@ impl Quaternion {
       let qy = 0.25 * s;
       let qz = (m12 + m21) / s;
 
-      let q = Quaternion::new([qx, qy, qz, qw]);
+      let q = Quaternion::new(qw, qx, qy, qz);
       q.normalize()
     } else {
       let s = (1.0 + m22 - m00 - m11).sqrt() * 2.0;
@@ -432,7 +442,7 @@ impl Quaternion {
       let qy = (m12 + m21) / s;
       let qz = 0.25 * s;
 
-      let q = Quaternion::new([qx, qy, qz, qw]);
+      let q = Quaternion::new(qw, qx, qy, qz);
       q.normalize()
     }
   }
@@ -452,15 +462,14 @@ impl Quaternion {
     }
   }
 
+  /// Convert quaternion to euler angles (yaw, pitch, roll).
+  ///
+  /// Source:
+  /// Kuipers, Jack B. Quaternions and Rotation Sequences: A Primer with
+  /// Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
+  /// Princeton University Press, 1999. Print.
+  /// [Page 168, "Quaternion to Euler Angles"]
   pub fn to_euler(&self) -> Vector3d {
-    // Convert quaternion to euler angles (yaw, pitch, roll).
-    //
-    // Source:
-    // Kuipers, Jack B. Quaternions and Rotation Sequences: A Primer with
-    // Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
-    // Princeton University Press, 1999. Print.
-    // [Page 168, "Quaternion to Euler Angles"]
-
     let qw = self.w();
     let qx = self.x();
     let qy = self.y();
@@ -485,14 +494,13 @@ impl Quaternion {
     }
   }
 
+  /// Convert quaternion to 3x3 rotation matrix.
+  ///
+  /// Source:
+  /// Blanco, Jose-Luis. "A tutorial on se (3) transformation parameterizations
+  /// and on-manifold optimization." University of Malaga, Tech. Rep 3 (2010): 6.
+  /// [Page 18, Equation (2.20)]
   pub fn to_rot(&self) -> Matrix3d {
-    // Convert quaternion to 3x3 rotation matrix.
-    //
-    // Source:
-    // Blanco, Jose-Luis. "A tutorial on se (3) transformation parameterizations
-    // and on-manifold optimization." University of Malaga, Tech. Rep 3 (2010): 6.
-    // [Page 18, Equation (2.20)]
-
     let qw = self.w();
     let qx = self.x();
     let qy = self.y();
@@ -532,7 +540,8 @@ impl Quaternion {
 pub struct Transform {
   parent: String,
   child: String,
-  data: Matrix4d,
+  pos: Vector3d,
+  quat: Quaternion,
 }
 
 impl Transform {
@@ -540,38 +549,105 @@ impl Transform {
     Transform {
       parent: String::from("NOT_SET"),
       child: String::from("NOT_SET"),
-      data: Matrix4d::eye(),
+      pos: Vector3d::default(),
+      quat: Quaternion::default(),
     }
   }
 
-  pub fn new(parent: String, child: String, data: Matrix4d) -> Self {
+  pub fn new(
+    parent: String,
+    child: String,
+    pos: Vector3d,
+    quat: Quaternion,
+  ) -> Self {
     Self {
       parent,
       child,
-      data,
+      pos,
+      quat,
     }
   }
 
   pub fn x(&self) -> f64 {
-    *self.data.at(0, 3)
+    self.pos.x()
   }
 
   pub fn y(&self) -> f64 {
-    *self.data.at(1, 3)
+    self.pos.y()
   }
 
   pub fn z(&self) -> f64 {
-    *self.data.at(2, 3)
+    self.pos.z()
   }
 
-  // pub fn pos(&self) -> Vector3d {
-  // }
+  pub fn rot(&self) -> Matrix3d {
+    self.quat.to_rot()
+  }
 
-  // pub fn rot(&self) -> Matrix3d {
-  // }
-  //
-  // pub fn quat(&self) -> Quaternion{
-  // }
+  pub fn from_mat(parent: String, child: String, tf: &Matrix4d) -> Self {
+    // Translation
+    let px = *tf.at(0, 3);
+    let py = *tf.at(1, 3);
+    let pz = *tf.at(2, 3);
+    let pos = Vector3d::new([px, py, pz]);
+
+    // Rotation
+    let m00 = *tf.at(0, 0);
+    let m01 = *tf.at(0, 1);
+    let m02 = *tf.at(0, 2);
+
+    let m10 = *tf.at(1, 0);
+    let m11 = *tf.at(1, 1);
+    let m12 = *tf.at(1, 2);
+
+    let m20 = *tf.at(2, 0);
+    let m21 = *tf.at(2, 1);
+    let m22 = *tf.at(2, 2);
+
+    #[rustfmt::skip]
+    let rot = Matrix3d::new([
+      m00, m01, m02,
+      m10, m11, m12,
+      m20, m21, m22,
+    ]);
+    let quat = Quaternion::from_rot(&rot);
+
+    // Transform
+    Self {
+      parent: parent.clone(),
+      child: child.clone(),
+      pos,
+      quat,
+    }
+  }
+
+  pub fn to_mat(&self) -> Matrix4d {
+    let rot = self.quat.to_rot();
+    let pos = self.pos;
+
+    Matrix4d::new([
+      // Row 1
+      *rot.at(0, 0),
+      *rot.at(0, 1),
+      *rot.at(0, 2),
+      pos.x(),
+      // Row 2
+      *rot.at(1, 0),
+      *rot.at(1, 1),
+      *rot.at(1, 2),
+      pos.y(),
+      // Row 3
+      *rot.at(2, 0),
+      *rot.at(2, 1),
+      *rot.at(2, 2),
+      pos.z(),
+      // Row 4
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+    ])
+  }
 
   // pub fn transform(&self, rhs: &Vector3d) {
   //
@@ -579,10 +655,15 @@ impl Transform {
 }
 
 // -- Transform * Transform
-// impl Mul<&Transform> for &Transform {
-//   type Output = Transform;
-//   fn mul(self, rhs: &Transform) -> Self::Output {
-//     assert!(self.child == rhs.parent);
-//     Transform::new(self.parent, rhs.child, &self.data * &rhs.data)
-//   }
-// }
+impl Mul<&Transform> for &Transform {
+  type Output = Transform;
+  fn mul(self, rhs: &Transform) -> Self::Output {
+    assert!(self.child == rhs.parent);
+
+    let a = self.to_mat();
+    let b = rhs.to_mat();
+    let c = &a * &b;
+
+    Transform::from_mat(self.parent.clone(), rhs.child.clone(), &c)
+  }
+}
