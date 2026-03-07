@@ -915,7 +915,7 @@ impl Matrix4d {
   }
 
   #[allow(non_snake_case)]
-  fn transpose(&self) -> Self {
+  pub fn transpose(&self) -> Self {
     let A = self.data;
 
     #[rustfmt::skip]
@@ -929,7 +929,7 @@ impl Matrix4d {
     Self { data: B }
   }
 
-  fn add(&self, rhs: &Matrix4d) -> Self {
+  pub fn add(&self, rhs: &Matrix4d) -> Self {
     let mut result = Matrix4d::default();
     for i in 0..16 {
       result.data[i] = self.data[i] + rhs.data[i];
@@ -937,7 +937,7 @@ impl Matrix4d {
     result
   }
 
-  fn sub(&self, rhs: &Matrix4d) -> Self {
+  pub fn sub(&self, rhs: &Matrix4d) -> Self {
     let mut result = Matrix4d::default();
     for i in 0..16 {
       result.data[i] = self.data[i] - rhs.data[i];
@@ -945,7 +945,7 @@ impl Matrix4d {
     result
   }
 
-  fn scale(&self, rhs: f64) -> Self {
+  pub fn scale(&self, rhs: f64) -> Self {
     let mut result = Matrix4d::default();
     for i in 0..16 {
       result.data[i] = rhs * self.data[i];
