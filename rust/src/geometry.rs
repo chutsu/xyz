@@ -9,8 +9,8 @@ use crate::linalg::Vector4d;
 // ROTATION MATRIX                                                           //
 ///////////////////////////////////////////////////////////////////////////////
 
-// Form rotation matrix around x axis
-fn rotx(theta: f64) -> Matrix3d {
+/// Form rotation matrix around x axis
+pub fn rotx(theta: f64) -> Matrix3d {
   let ctheta = theta.cos();
   let stheta = theta.sin();
 
@@ -24,8 +24,8 @@ fn rotx(theta: f64) -> Matrix3d {
   Matrix3d { data }
 }
 
-// Form rotation matrix around y axis
-fn roty(theta: f64) -> Matrix3d {
+/// Form rotation matrix around y axis
+pub fn roty(theta: f64) -> Matrix3d {
   let ctheta = theta.cos();
   let stheta = theta.sin();
 
@@ -39,8 +39,8 @@ fn roty(theta: f64) -> Matrix3d {
   Matrix3d { data }
 }
 
-// Form rotation matrix around z axis
-fn rotz(theta: f64) -> Matrix3d {
+/// Form rotation matrix around z axis
+pub fn rotz(theta: f64) -> Matrix3d {
   let ctheta = theta.cos();
   let stheta = theta.sin();
 
@@ -54,14 +54,14 @@ fn rotz(theta: f64) -> Matrix3d {
   Matrix3d { data }
 }
 
-// Convert rotation matrix to euler angles
-fn rot2euler(rot: &Matrix3d) -> Vector3d {
+/// Convert rotation matrix to euler angles
+pub fn rot2euler(rot: &Matrix3d) -> Vector3d {
   let q = Quaternion::from_rot(rot);
   q.to_euler()
 }
 
-// Calculate difference between rotation matrices
-fn rot_diff(rot1: &Matrix3d, rot2: &Matrix3d, tol: f64) -> f64 {
+/// Calculate difference between rotation matrices
+pub fn rot_diff(rot1: &Matrix3d, rot2: &Matrix3d, tol: f64) -> f64 {
   let drot = &rot1.transpose() * rot2;
   let mut tr = drot.trace();
   if tr < 0.0 {
