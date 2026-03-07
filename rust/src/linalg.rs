@@ -58,25 +58,25 @@ impl Vector2d {
     result
   }
 
-  fn scale(&self, rhs: f64) -> Vector2d {
+  pub fn scale(&self, rhs: f64) -> Vector2d {
     let mut res = [0.0; 2];
     res[0] = rhs * self.data[0];
     res[1] = rhs * self.data[1];
     Vector2d::new(res)
   }
 
-  fn dot(&self, rhs: &Vector2d) -> f64 {
+  pub fn dot(&self, rhs: &Vector2d) -> f64 {
     let mut res = 0.0;
     res += rhs.data[0] * self.data[0];
     res += rhs.data[1] * self.data[1];
     res
   }
 
-  fn norm(&self) -> f64 {
+  pub fn norm(&self) -> f64 {
     self.dot(self).sqrt()
   }
 
-  fn normalize(&self) -> Vector2d {
+  pub fn normalize(&self) -> Vector2d {
     *self * (1.0 / self.norm())
   }
 
@@ -241,7 +241,7 @@ impl Vector3d {
     result
   }
 
-  fn scale(&self, rhs: f64) -> Vector3d {
+  pub fn scale(&self, rhs: f64) -> Vector3d {
     let mut res = [0.0; 3];
     res[0] = rhs * self.data[0];
     res[1] = rhs * self.data[1];
@@ -249,7 +249,7 @@ impl Vector3d {
     Vector3d::new(res)
   }
 
-  fn dot(&self, rhs: &Vector3d) -> f64 {
+  pub fn dot(&self, rhs: &Vector3d) -> f64 {
     let mut res = 0.0;
     res += rhs.data[0] * self.data[0];
     res += rhs.data[1] * self.data[1];
@@ -257,7 +257,7 @@ impl Vector3d {
     res
   }
 
-  fn cross(&self, rhs: &Vector3d) -> Vector3d {
+  pub fn cross(&self, rhs: &Vector3d) -> Vector3d {
     let data = [
       self.y() * rhs.z() - self.z() * rhs.y(),
       self.z() * rhs.x() - self.x() * rhs.z(),
@@ -266,12 +266,23 @@ impl Vector3d {
     Vector3d { data }
   }
 
-  fn norm(&self) -> f64 {
+  pub fn norm(&self) -> f64 {
     self.dot(self).sqrt()
   }
 
-  fn normalize(&self) -> Vector3d {
+  pub fn normalize(&self) -> Vector3d {
     *self * (1.0 / self.norm())
+  }
+
+  pub fn skew(&self) -> Matrix3d {
+    Matrix3d {
+      #[rustfmt::skip]
+      data: [
+        0.0,      -self.z(),  self.y(),
+        self.z(),       0.0, -self.x(),
+       -self.y(),  self.x(),       0.0,
+      ],
+    }
   }
 
   pub fn is_close(&self, rhs: &Self, epsilon: f64) -> bool {
@@ -446,7 +457,7 @@ impl Vector4d {
     result
   }
 
-  fn scale(&self, rhs: f64) -> Vector4d {
+  pub fn scale(&self, rhs: f64) -> Vector4d {
     let mut res = [0.0; 4];
     res[0] = rhs * self.data[0];
     res[1] = rhs * self.data[1];
@@ -455,7 +466,7 @@ impl Vector4d {
     Vector4d::new(res)
   }
 
-  fn dot(&self, rhs: &Vector4d) -> f64 {
+  pub fn dot(&self, rhs: &Vector4d) -> f64 {
     let mut res = 0.0;
     res += rhs.data[0] * self.data[0];
     res += rhs.data[1] * self.data[1];
@@ -464,11 +475,11 @@ impl Vector4d {
     res
   }
 
-  fn norm(&self) -> f64 {
+  pub fn norm(&self) -> f64 {
     self.dot(self).sqrt()
   }
 
-  fn normalize(&self) -> Vector4d {
+  pub fn normalize(&self) -> Vector4d {
     *self * (1.0 / self.norm())
   }
 
