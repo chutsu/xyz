@@ -807,6 +807,17 @@ impl Neg for Matrix3d {
   }
 }
 
+// Formatter
+impl std::fmt::Display for Matrix3d {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    let m = self.data;
+    writeln!(f, "{:5.2}, {:5.2}, {:5.2}", m[0], m[1], m[2])?;
+    writeln!(f, "{:5.2}, {:5.2}, {:5.2}", m[3], m[4], m[5])?;
+    writeln!(f, "{:5.2}, {:5.2}, {:5.2}", m[6], m[7], m[8])?;
+    Ok(())
+  }
+}
+
 #[cfg(test)]
 mod matrix3_tests {
   // Note this useful idiom: importing names from outer (for mod tests) scope.
