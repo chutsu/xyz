@@ -1089,6 +1089,18 @@ impl Neg for Matrix4d {
   }
 }
 
+// Formatter
+impl std::fmt::Display for Matrix4d {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    let m = self.data;
+    writeln!(f, "{:.2}, {:.2}, {:.2}, {:.2}", m[0], m[1], m[2], m[3])?;
+    writeln!(f, "{:.2}, {:.2}, {:.2}, {:.2}", m[4], m[5], m[6], m[7])?;
+    writeln!(f, "{:.2}, {:.2}, {:.2}, {:.2}", m[8], m[9], m[10], m[11])?;
+    writeln!(f, "{:.2}, {:.2}, {:.2}, {:.2}", m[12], m[13], m[14], m[15])?;
+    Ok(())
+  }
+}
+
 #[cfg(test)]
 mod matrix4_tests {
   // Note this useful idiom: importing names from outer (for mod tests) scope.
