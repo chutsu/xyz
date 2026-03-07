@@ -120,62 +120,130 @@ pub fn euler321(yaw: f64, pitch: f64, roll: f64) -> Matrix3d {
 // AXIS ANGLE                                                                //
 ///////////////////////////////////////////////////////////////////////////////
 
-// def aa_vec(axis: Vec3, angle: float) -> Vec3:
-//   """Form Axis-Angle Vector"""
-//   assert axis.shape[0] == 3
-//   return axis * angle
-//
-//
-// def aa_decomp(aa: Vec3):
-//   """Decompose an axis-angle into its components"""
-//   w = aa / np.linalg.norm(aa)
-//   theta = np.linalg.norm(aa)
-//   return w, theta
-//
-//
-// def vecs2aa(u: Vec3, v: Vec3) -> Vec3:
-//   """From 2 vectors form an axis-angle vector"""
-//   angle = math.acos(u.T * v)
-//   ax = normalize(np.cross(u, v))
-//   return ax * angle
+pub struct AxisAngle {
+  pub axis: Vector3d,
+  pub angle: f64,
+}
 
-// // Convert axis-angle to rotation matrix
-// pub fn aa2rot(aa: Vector3d) -> Matrix3d {
-//   // If small rotation
-//   // let theta = sqrt(aa * aa);  // = norm(aa), but faster
-//   // let eps = 1e-8;
-//   // if theta < eps {
-//   //   return hat(aa)
-//   // }
-//
-//   // Convert aa to rotation matrix
-//   // let aa = aa / theta
-//   // x, y, z = aa
-//
-//   //   c = cos(theta)
-//   //   s = sin(theta)
-//   //   C = 1 - c
-//   //
-//   //   xs = x * s
-//   //   ys = y * s
-//   //   zs = z * s
-//   //
-//   //   xC = x * C
-//   //   yC = y * C
-//   //   zC = z * C
-//   //
-//   //   xyC = x * yC
-//   //   yzC = y * zC
-//   //   zxC = z * xC
-//   //
-//   //   row0 = [x * xC + c, xyC - zs, zxC + ys]
-//   //   row1 = [xyC + zs, y * yC + c, yzC - xs]
-//   //   row2 = [zxC - ys, yzC + xs, z * zC + c]
-//
-//   Matrix3d {
-//     data: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-//   }
-// }
+impl AxisAngle {
+  pub fn new(axis: Vector3d, angle: f64) -> Self {
+    Self { axis, angle }
+  }
+
+  pub fn from_vec(&self, aa: Vector3d) -> AxisAngle {
+    let angle = aa.norm();
+    let axis = aa * (1.0 / angle);
+    AxisAngle { axis, angle }
+  }
+
+  pub fn from_vecs(&self, u: Vector3d, v: Vector3d) -> AxisAngle {
+    let angle = (u.dot(&v)).acos();
+    let axis = (u.cross(&v)).normalize();
+    AxisAngle { axis, angle }
+  }
+
+  pub fn to_vec(&self) -> Vector3d {
+    self.axis * self.angle
+  }
+
+  pub fn to_rot(&self) -> Matrix3d {
+    let x = self.axis.x();
+    let y = self.axis.y();
+    let z = self.axis.z();
+
+    let norm = (x * x + y * y + z * z).sqrt();
+    if norm < 1e-12 {
+      return Matrix3d::eye();
+    }
+    let x = x / norm;
+    let y = y / norm;
+    let z = z / norm;
+
+    let c = self.angle.cos();
+    let s = self.angle.sin();
+    let one_c = 1.0 - c;
+
+    Matrix3d {
+      data: [
+        c + x * x * one_c,
+        x * y * one_c - z * s,
+        x * z * one_c + y * s,
+        y * x * one_c + z * s,
+        c + y * y * one_c,
+        y * z * one_c - x * s,
+        z * x * one_c - y * s,
+        z * y * one_c + x * s,
+        c + z * z * one_c,
+      ],
+    }
+  }
+}
+
+#[cfg(test)]
+mod axis_angle_tests {
+  use super::*;
+  const EPS: f64 = 1e-6;
+
+  fn approx_eq(a: f64, b: f64) -> bool {
+    (a - b).abs() < EPS
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_axis_angle_z_90deg() {
+    // Rotate 90 degrees around Z
+    let axis = Vector3d::new([0.0, 0.0, 1.0]);
+    let angle = std::f64::consts::FRAC_PI_2;
+
+    let aa = AxisAngle::new(axis, angle);
+    let R = aa.to_rot();
+
+    // x axis should rotate to y axis
+    let v = Vector3d::new([1.0, 0.0, 0.0]);
+    let result = &R * &v;
+
+    assert!(approx_eq(result.x(), 0.0));
+    assert!(approx_eq(result.y(), 1.0));
+    assert!(approx_eq(result.z(), 0.0));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_axis_angle_identity() {
+    let axis = Vector3d::new([1.0, 0.0, 0.0]);
+    let angle = 0.0;
+
+    let aa = AxisAngle::new(axis, angle);
+    let R = aa.to_rot();
+
+    let v = Vector3d::new([1.0, 2.0, 3.0]);
+    let result = &R * &v;
+    println!("{}", R);
+    println!("{}", result);
+
+    assert!(approx_eq(result.x(), v.x()));
+    assert!(approx_eq(result.y(), v.y()));
+    assert!(approx_eq(result.z(), v.z()));
+  }
+
+  #[test]
+  #[allow(non_snake_case)]
+  fn test_axis_normalization() {
+    // axis does not need to be normalized
+    let axis = Vector3d::new([0.0, 0.0, 10.0]);
+    let angle = std::f64::consts::FRAC_PI_2;
+
+    let aa = AxisAngle::new(axis, angle);
+    let R = aa.to_rot();
+
+    let v = Vector3d::new([1.0, 0.0, 0.0]);
+    let result = &R * &v;
+
+    assert!(approx_eq(result.x(), 0.0));
+    assert!(approx_eq(result.y(), 1.0));
+    assert!(approx_eq(result.z(), 0.0));
+  }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // QUATERNION                                                                //
