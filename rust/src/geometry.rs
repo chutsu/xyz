@@ -252,7 +252,6 @@ pub struct Quaternion {
   pub data: [f64; 4],
 }
 
-// Implementing Default trait for Vector3d
 impl Default for Quaternion {
   fn default() -> Self {
     Quaternion {
@@ -584,6 +583,27 @@ impl Transform {
     self.quat.to_rot()
   }
 
+  #[allow(non_snake_case)]
+  pub fn inv(&self) -> Self {
+    let R = self.rot();
+    let t = self.pos;
+
+    let R_new = &R.transpose();
+    let pos_new = &-R.transpose() * &t;
+    let quat_new = Quaternion::from_rot(R_new);
+
+    Transform {
+      parent: self.child.clone(),
+      child: self.parent.clone(),
+      pos: pos_new,
+      quat: quat_new,
+    }
+  }
+
+  // pub fn transform(&self, rhs: &Vector3d) {
+  //
+  // }
+
   pub fn from_mat(parent: String, child: String, tf: &Matrix4d) -> Self {
     // Translation
     let px = *tf.at(0, 3);
@@ -648,10 +668,6 @@ impl Transform {
       1.0,
     ])
   }
-
-  // pub fn transform(&self, rhs: &Vector3d) {
-  //
-  // }
 }
 
 // -- Transform * Transform
