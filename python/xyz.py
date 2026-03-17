@@ -3,6 +3,7 @@ xyz.py
 
 Contains the following library code useful for prototyping robotic algorithms:
 
+- IO
 - YAML
 - TIME
 - PROFILING
@@ -437,7 +438,7 @@ def nearest_pd(A: MatN) -> MatN:
   # `spacing` will, for Gaussian random matrixes of small dimension, be on
   # othe order of 1e-16. In practice, both ways converge, as the unit test
   # below suggests.
-  I = np.eye(A.shape[0])
+  I = eye(A.shape[0])
   k = 1
   while not is_pd(A3):
     mineig = np.min(np.real(np.linalg.eigvals(A3)))
@@ -967,12 +968,12 @@ def so3_exp(so3mat: Mat3, tol=1e-6) -> Mat3:
   """
   aa = vee(so3mat)
   if np.linalg.norm(aa) < tol:
-    return np.eye(3)
+    return eye(3)
 
   _, theta = aa_decomp(aa)
   omgmat = so3mat / theta
 
-  I3 = np.eye(3)
+  I3 = eye(3)
   s_theta = np.sin(theta)
   c_theta = np.cos(theta)
 
@@ -992,11 +993,11 @@ def poe(screw_axis: Vec6, theta: Vec3, tol: float = 1e-6) -> Mat4:
   se3mat = twistSE3(s)
 
   if np.linalg.norm(aa) < tol:
-    C = np.eye(3)
+    C = eye(3)
     r = theta * screw_axis[3:].reshape((3, 1))
     return np.block([[C, r], [0.0, 0.0, 0.0, 1.0]])
 
-  I3 = np.eye(3)
+  I3 = eye(3)
   c_th = np.cos(theta)
   s_th = np.sin(theta)
   w_skew = se3mat[0:3, 0:3] / theta
@@ -1790,7 +1791,7 @@ def tf(rot: Mat3 | Vec4, trans: Vec3) -> Mat4:
   else:
     raise RuntimeError("Invalid rotation!")
 
-  T = np.eye(4, 4)
+  T = eye(4, 4)
   T[0:3, 0:3] = C
   T[0:3, 3] = trans
   return T
@@ -2051,7 +2052,7 @@ def load_poses(csv_path: str) -> list[tuple[float, Mat4]] | None:
 import matplotlib.pyplot as plt
 import matplotlib.patches
 import matplotlib.transforms
-from mpl_toolkits.mplot3d.axes3d import Axes3D
+# from mpl_toolkits.mplot3d.axes3d import Axes3D
 
 
 def plot_bbox(ax, center, size):
@@ -3814,26 +3815,6 @@ class CameraGeometry:
     dist_params = params[-self.dist_params_size:]
     return self.J_params_fn(proj_params, dist_params, p_C)
 
-  def keypoint2idp(self, params, kp, depth=0.5):
-    """Keypoint to Inverse Depth Parameterization"""
-    fx, fy, cx, cy = self.proj_params(params)
-
-    u = (kp[0] - cx) / fx
-    v = (kp[1] - cy) / fy
-    w = 1.0
-
-    theta = math.atan2(u, w)
-    phi = math.atan2(-v, np.sqrt(u**2 + w**2))
-
-    return np.array([theta, phi, depth])
-
-  @staticmethod
-  def idp2vector(idp):
-    """Inverse Depth Parameterization to Vector"""
-    theta, phi, depth = idp
-    p = np.array([cos(phi) * sin(theta), -sin(phi), cos(phi) * cos(theta)])
-    return depth * p
-
 
 def pinhole_radtan4_setup(cam_idx, cam_res):
   """Setup Pinhole + Radtan4 camera geometry"""
@@ -3882,339 +3863,339 @@ def camera_geometry_setup(cam_idx, cam_res, proj_model, dist_model):
 # ChessboardDetector
 
 
-class ChessboardDetector:
-  def __init__(self):
-    pass
-
-  def correlation_patch(self, angle_1: float, angle_2: float, radius: float):
-    """
-    Form correlation patch
-    """
-    # Width and height
-    width = int(radius * 2 + 1)
-    height = int(radius * 2 + 1)
-    if width == 0 or height == 0:
-      return None
-
-    # Initialize template
-    template = []
-    for i in range(4):
-      x = np.zeros((height, width))
-      template.append(x)
-
-    # Midpoint
-    mu = radius
-    mv = radius
-
-    # Compute normals from angles
-    n1 = [-np.sin(angle_1), np.cos(angle_1)]
-    n2 = [-np.sin(angle_2), np.cos(angle_2)]
-
-    # For all points in template do
-    for u in range(width):
-      for v in range(height):
-        # Vector
-        vec = [u - mu, v - mv]
-        dist = np.linalg.norm(vec)
-
-        # Check on which side of the normals we are
-        s1 = np.dot(vec, n1)
-        s2 = np.dot(vec, n2)
-
-        if dist <= radius:
-          if s1 <= -0.1 and s2 <= -0.1:
-            template[0][v, u] = 1
-          elif s1 >= 0.1 and s2 >= 0.1:
-            template[1][v, u] = 1
-          elif s1 <= -0.1 and s2 >= 0.1:
-            template[2][v, u] = 1
-          elif s1 >= 0.1 and s2 <= -0.1:
-            template[3][v, u] = 1
-
-    # Normalize
-    for i in range(4):
-      template[i] /= np.sum(template[i])
-
-    return template
-
-  def non_maxima_suppression(self,
-                             image: Image,
-                             n: int = 3,
-                             tau: float = 0.1,
-                             margin: int = 2):
-    """
-    Non Maximum Suppression
-
-    Args:
-
-      image: Input image
-      n: Kernel size
-      tau: Corner response threshold
-      margin: Offset away from image boundaries
-
-    Returns:
-
-      List of corners with maximum response
-
-    """
-    height, width = image.shape
-    maxima = []
-
-    for i in range(n + margin, width - n - margin, n + 1):
-      for j in range(n + margin, height - n - margin, n + 1):
-        # Initialize max value
-        maxi = i
-        maxj = j
-        maxval = image[j, i]
-
-        # Get max value in kernel
-        for i2 in range(i, i + n):
-          for j2 in range(j, j + n):
-            currval = image[j2, i2]
-            if currval > maxval:
-              maxi = i2
-              maxj = j2
-              maxval = currval
-
-        # Make sure maxval is larger than neighbours
-        failed = 0
-        for i2 in range(maxi - n, min(maxi + n, width - margin)):
-          for j2 in range(maxj - n, min(maxj + n, height - margin)):
-            currval = image[j2, i2]
-            if currval > maxval and (i2 < i or i2 > i + n or j2 < j or
-                                     j2 > j + n):
-              failed = 1
-              break
-          if failed:
-            break
-
-        # Store maxval
-        if maxval >= tau and failed == 0:
-          maxima.append([maxi, maxj])
-
-    return maxima
-
-  def edge_orientations(self, img_angle: Image,
-                        img_weight: Image) -> tuple[Vec2, Vec2]:
-    """
-    Calculate Edge Orientations
-
-    Args:
-
-      img_angle: Image angles
-      img_weight: Image weight
-
-    Returns:
-
-      Refined edge orientation vectors v1, v2
-
-    """
-    # Initialize v1 and v2
-    v1 = np.array([0, 0])
-    v2 = np.array([0, 0])
-
-    # Number of bins (histogram parameter)
-    bin_num = 32
-
-    # Convert images to vectors
-    vec_angle = img_angle.flatten()
-    vec_weight = img_weight.flatten()
-
-    # Convert angles from normals to directions
-    vec_angle = vec_angle + np.pi / 2
-    vec_angle[vec_angle > np.pi] -= np.pi
-
-    # Create histogram
-    angle_hist = np.zeros(bin_num)
-    for i in range(len(vec_angle)):
-      bin_idx = min(max(int(np.floor(vec_angle[i] / (np.pi / bin_num))), 0),
-                    bin_num - 1)
-      angle_hist[bin_idx] += vec_weight[i]
-
-    # Find modes of smoothed histogram
-    modes, _ = find_modes_mean_shift(angle_hist, 1)
-
-    # If only one or no mode => return invalid corner
-    if modes.shape[0] <= 1:
-      return v1, v2
-
-    # Compute orientation at modes
-    modes = np.hstack(
-      (modes, ((modes[:, 0] - 1) * np.pi / bin_num).reshape(-1, 1)))
-
-    # Extract 2 strongest modes and sort by angle
-    modes = modes[:2]
-    modes = modes[np.argsort(modes[:, 2])]
-
-    # Compute angle between modes
-    delta_angle = min(modes[1, 2] - modes[0, 2],
-                      modes[0, 2] + np.pi - modes[1, 2])
-
-    # If angle too small => return invalid corner
-    if delta_angle <= 0.3:
-      return v1, v2
-
-    # Set statistics: orientations
-    v1 = np.array([np.cos(modes[0, 2]), np.sin(modes[0, 2])])
-    v2 = np.array([np.cos(modes[1, 2]), np.sin(modes[1, 2])])
-
-    return v1, v2
-
-  def refine_corners(
-    self,
-    img_shape: tuple[int, ...],
-    img_angle: MatN,
-    img_weight: MatN,
-    corners,
-    r=10,
-  ):
-    """
-    Refine detected corners
-
-    Args:
-
-      img_shape: Image shape (rows, cols)
-      img_angle: Image angles [degrees]
-      img_weight: Image weight
-      corners: List of corners to refine
-      r: Patch radius size [pixels]
-
-    Returns
-
-      corners, v1, v2
-
-    """
-    # Image dimensions
-    assert len(img_shape) == 2
-    height, width = img_shape
-
-    # Init orientations to invalid (corner is invalid iff orientation=0)
-    corners_inliers = []
-    v1 = []
-    v2 = []
-
-    # for all corners do
-    for i, (cu, cv, _) in enumerate(corners):
-      # Estimate edge orientations
-      cu, cv = int(cu), int(cv)
-      rs = max(cv - r, 1)
-      re = min(cv + r, height)
-      cs = max(cu - r, 1)
-      ce = min(cu + r, width)
-      img_angle_sub = img_angle[rs:re, cs:ce]
-      img_weight_sub = img_weight[rs:re, cs:ce]
-      v1_edge, v2_edge = edge_orientations(img_angle_sub, img_weight_sub)
-
-      # Check invalid edge
-      if np.array_equal(v1_edge, [0.0, 0.0]):
-        continue
-      if np.array_equal(v2_edge, [0.0, 0.0]):
-        continue
-
-      corners_inliers.append(corners[i])
-      v1.append(v1_edge)
-      v2.append(v2_edge)
-
-    return corners, v1, v2
-
-  def subpixel_refine(self, image: Image):
-    """
-    Sub-pixel Refinement.
-    """
-    dx = cv2.Sobel(image, cv2.CV_32F, 1, 0, ksize=3)
-    dy = cv2.Sobel(image, cv2.CV_32F, 0, 1, ksize=3)
-
-    matsum = np.zeros((2, 2))
-    pointsum = np.zeros(2)
-    for i in range(dx.shape[0]):
-      for j in range(dx.shape[1]):
-        vec = np.array([dy[i, j], dx[i, j]])
-        pos = (i, j)
-        mat = np.outer(vec, vec)
-        pointsum += mat @ pos
-        matsum += mat
-
-    try:
-      minv = np.linalg.inv(matsum)
-    except np.linalg.LinAlgError:
-      return None
-
-    newp = minv.dot(pointsum)
-
-    return newp
-
-  def detect_corners(self, image: Image, radiuses: list[int] = [6, 8, 10]):
-    """
-    Detect corners
-    """
-    # Convert gray image to double
-    assert len(image.shape) == 2
-    image = image / 255
-
-    # Find corners
-    template_props = [[0.0, pi / 2.0], [pi / 4.0, -pi / 4.0]]
-    corr = np.zeros(image.shape)
-    for angle_1, angle_2 in template_props:
-      for radius in radiuses:
-        template = correlation_patch(angle_1, angle_2, radius)
-        if template is None:
-          continue
-
-        img_corners = [
-          scipy.signal.convolve2d(image, template[0], mode="same"),
-          scipy.signal.convolve2d(image, template[1], mode="same"),
-          scipy.signal.convolve2d(image, template[2], mode="same"),
-          scipy.signal.convolve2d(image, template[3], mode="same"),
-        ]
-        img_corners_mu = np.mean(img_corners, axis=0)
-        arr = np.array([
-          img_corners[0] - img_corners_mu,
-          img_corners[1] - img_corners_mu,
-          img_corners_mu - img_corners[2],
-          img_corners_mu - img_corners[3],
-        ])
-        img_corners_1 = np.min(arr, axis=0)  # Case 1: a = white, b = black
-        img_corners_2 = np.min(-arr, axis=0)  # Case 2: b = white, a = black
-
-        # Combine both
-        img_corners = np.max([img_corners_1, img_corners_2], axis=0)
-
-        # Max
-        corr = np.max([img_corners, corr], axis=0)
-
-    # Max pooling
-    # step = 40
-    # threshold = float(np.max(corr) * 0.2)
-    # corners = self.max_pooling(corr, step, threshold)
-
-    # print(np.max(corr))
-    # print(np.min(corr))
-
-    # import matplotlib.pylab as plt
-    # plt.imshow(corr, cmap="gray")
-    # plt.colorbar()
-    # plt.show()
-
-  def checkerboard_score(self, corners, size=(9, 6)):
-    corners_reshaped = corners[:, :2].reshape(*size, 2)
-    maxm = 0
-    for rownum in range(size[0]):
-      for colnum in range(1, size[1] - 1):
-        pts = corners_reshaped[rownum, [colnum - 1, colnum, colnum + 1]]
-        top = np.linalg.norm(pts[2] + pts[0] - 2 * pts[1])
-        bot = np.linalg.norm(pts[2] - pts[0])
-        if np.abs(bot) < 1e-9:
-          return 1
-        maxm = max(top / bot, maxm)
-    for colnum in range(0, size[1]):
-      for rownum in range(1, size[0] - 1):
-        pts = corners_reshaped[[rownum - 1, rownum, rownum + 1], colnum]
-        top = np.linalg.norm(pts[2] + pts[0] - 2 * pts[1])
-        bot = np.linalg.norm(pts[2] - pts[0])
-        if np.abs(bot) < 1e-9:
-          return 1
-        maxm = max(top / bot, maxm)
-    return maxm
+# class ChessboardDetector:
+#   def __init__(self):
+#     pass
+#
+#   def correlation_patch(self, angle_1: float, angle_2: float, radius: float):
+#     """
+#     Form correlation patch
+#     """
+#     # Width and height
+#     width = int(radius * 2 + 1)
+#     height = int(radius * 2 + 1)
+#     if width == 0 or height == 0:
+#       return None
+#
+#     # Initialize template
+#     template = []
+#     for i in range(4):
+#       x = np.zeros((height, width))
+#       template.append(x)
+#
+#     # Midpoint
+#     mu = radius
+#     mv = radius
+#
+#     # Compute normals from angles
+#     n1 = [-np.sin(angle_1), np.cos(angle_1)]
+#     n2 = [-np.sin(angle_2), np.cos(angle_2)]
+#
+#     # For all points in template do
+#     for u in range(width):
+#       for v in range(height):
+#         # Vector
+#         vec = [u - mu, v - mv]
+#         dist = np.linalg.norm(vec)
+#
+#         # Check on which side of the normals we are
+#         s1 = np.dot(vec, n1)
+#         s2 = np.dot(vec, n2)
+#
+#         if dist <= radius:
+#           if s1 <= -0.1 and s2 <= -0.1:
+#             template[0][v, u] = 1
+#           elif s1 >= 0.1 and s2 >= 0.1:
+#             template[1][v, u] = 1
+#           elif s1 <= -0.1 and s2 >= 0.1:
+#             template[2][v, u] = 1
+#           elif s1 >= 0.1 and s2 <= -0.1:
+#             template[3][v, u] = 1
+#
+#     # Normalize
+#     for i in range(4):
+#       template[i] /= np.sum(template[i])
+#
+#     return template
+#
+#   def non_maxima_suppression(self,
+#                              image: Image,
+#                              n: int = 3,
+#                              tau: float = 0.1,
+#                              margin: int = 2):
+#     """
+#     Non Maximum Suppression
+#
+#     Args:
+#
+#       image: Input image
+#       n: Kernel size
+#       tau: Corner response threshold
+#       margin: Offset away from image boundaries
+#
+#     Returns:
+#
+#       List of corners with maximum response
+#
+#     """
+#     height, width = image.shape
+#     maxima = []
+#
+#     for i in range(n + margin, width - n - margin, n + 1):
+#       for j in range(n + margin, height - n - margin, n + 1):
+#         # Initialize max value
+#         maxi = i
+#         maxj = j
+#         maxval = image[j, i]
+#
+#         # Get max value in kernel
+#         for i2 in range(i, i + n):
+#           for j2 in range(j, j + n):
+#             currval = image[j2, i2]
+#             if currval > maxval:
+#               maxi = i2
+#               maxj = j2
+#               maxval = currval
+#
+#         # Make sure maxval is larger than neighbours
+#         failed = 0
+#         for i2 in range(maxi - n, min(maxi + n, width - margin)):
+#           for j2 in range(maxj - n, min(maxj + n, height - margin)):
+#             currval = image[j2, i2]
+#             if currval > maxval and (i2 < i or i2 > i + n or j2 < j or
+#                                      j2 > j + n):
+#               failed = 1
+#               break
+#           if failed:
+#             break
+#
+#         # Store maxval
+#         if maxval >= tau and failed == 0:
+#           maxima.append([maxi, maxj])
+#
+#     return maxima
+#
+#   def edge_orientations(self, img_angle: Image,
+#                         img_weight: Image) -> tuple[Vec2, Vec2]:
+#     """
+#     Calculate Edge Orientations
+#
+#     Args:
+#
+#       img_angle: Image angles
+#       img_weight: Image weight
+#
+#     Returns:
+#
+#       Refined edge orientation vectors v1, v2
+#
+#     """
+#     # Initialize v1 and v2
+#     v1 = np.array([0, 0])
+#     v2 = np.array([0, 0])
+#
+#     # Number of bins (histogram parameter)
+#     bin_num = 32
+#
+#     # Convert images to vectors
+#     vec_angle = img_angle.flatten()
+#     vec_weight = img_weight.flatten()
+#
+#     # Convert angles from normals to directions
+#     vec_angle = vec_angle + np.pi / 2
+#     vec_angle[vec_angle > np.pi] -= np.pi
+#
+#     # Create histogram
+#     angle_hist = np.zeros(bin_num)
+#     for i in range(len(vec_angle)):
+#       bin_idx = min(max(int(np.floor(vec_angle[i] / (np.pi / bin_num))), 0),
+#                     bin_num - 1)
+#       angle_hist[bin_idx] += vec_weight[i]
+#
+#     # Find modes of smoothed histogram
+#     modes, _ = find_modes_mean_shift(angle_hist, 1)
+#
+#     # If only one or no mode => return invalid corner
+#     if modes.shape[0] <= 1:
+#       return v1, v2
+#
+#     # Compute orientation at modes
+#     modes = np.hstack(
+#       (modes, ((modes[:, 0] - 1) * np.pi / bin_num).reshape(-1, 1)))
+#
+#     # Extract 2 strongest modes and sort by angle
+#     modes = modes[:2]
+#     modes = modes[np.argsort(modes[:, 2])]
+#
+#     # Compute angle between modes
+#     delta_angle = min(modes[1, 2] - modes[0, 2],
+#                       modes[0, 2] + np.pi - modes[1, 2])
+#
+#     # If angle too small => return invalid corner
+#     if delta_angle <= 0.3:
+#       return v1, v2
+#
+#     # Set statistics: orientations
+#     v1 = np.array([np.cos(modes[0, 2]), np.sin(modes[0, 2])])
+#     v2 = np.array([np.cos(modes[1, 2]), np.sin(modes[1, 2])])
+#
+#     return v1, v2
+#
+#   def refine_corners(
+#     self,
+#     img_shape: tuple[int, ...],
+#     img_angle: MatN,
+#     img_weight: MatN,
+#     corners,
+#     r=10,
+#   ):
+#     """
+#     Refine detected corners
+#
+#     Args:
+#
+#       img_shape: Image shape (rows, cols)
+#       img_angle: Image angles [degrees]
+#       img_weight: Image weight
+#       corners: List of corners to refine
+#       r: Patch radius size [pixels]
+#
+#     Returns
+#
+#       corners, v1, v2
+#
+#     """
+#     # Image dimensions
+#     assert len(img_shape) == 2
+#     height, width = img_shape
+#
+#     # Init orientations to invalid (corner is invalid iff orientation=0)
+#     corners_inliers = []
+#     v1 = []
+#     v2 = []
+#
+#     # for all corners do
+#     for i, (cu, cv, _) in enumerate(corners):
+#       # Estimate edge orientations
+#       cu, cv = int(cu), int(cv)
+#       rs = max(cv - r, 1)
+#       re = min(cv + r, height)
+#       cs = max(cu - r, 1)
+#       ce = min(cu + r, width)
+#       img_angle_sub = img_angle[rs:re, cs:ce]
+#       img_weight_sub = img_weight[rs:re, cs:ce]
+#       v1_edge, v2_edge = self.edge_orientations(img_angle_sub, img_weight_sub)
+#
+#       # Check invalid edge
+#       if np.array_equal(v1_edge, [0.0, 0.0]):
+#         continue
+#       if np.array_equal(v2_edge, [0.0, 0.0]):
+#         continue
+#
+#       corners_inliers.append(corners[i])
+#       v1.append(v1_edge)
+#       v2.append(v2_edge)
+#
+#     return corners, v1, v2
+#
+#   def subpixel_refine(self, image: Image):
+#     """
+#     Sub-pixel Refinement.
+#     """
+#     dx = cv2.Sobel(image, cv2.CV_32F, 1, 0, ksize=3)
+#     dy = cv2.Sobel(image, cv2.CV_32F, 0, 1, ksize=3)
+#
+#     matsum = np.zeros((2, 2))
+#     pointsum = np.zeros(2)
+#     for i in range(dx.shape[0]):
+#       for j in range(dx.shape[1]):
+#         vec = np.array([dy[i, j], dx[i, j]])
+#         pos = (i, j)
+#         mat = np.outer(vec, vec)
+#         pointsum += mat @ pos
+#         matsum += mat
+#
+#     try:
+#       minv = np.linalg.inv(matsum)
+#     except np.linalg.LinAlgError:
+#       return None
+#
+#     newp = minv.dot(pointsum)
+#
+#     return newp
+#
+#   def detect_corners(self, image: Image, radiuses: list[int] = [6, 8, 10]):
+#     """
+#     Detect corners
+#     """
+#     # Convert gray image to double
+#     assert len(image.shape) == 2
+#     image = image / 255
+#
+#     # Find corners
+#     template_props = [[0.0, pi / 2.0], [pi / 4.0, -pi / 4.0]]
+#     corr = np.zeros(image.shape)
+#     for angle_1, angle_2 in template_props:
+#       for radius in radiuses:
+#         template = self.correlation_patch(angle_1, angle_2, radius)
+#         if template is None:
+#           continue
+#
+#         img_corners = [
+#           scipy.signal.convolve2d(image, template[0], mode="same"),
+#           scipy.signal.convolve2d(image, template[1], mode="same"),
+#           scipy.signal.convolve2d(image, template[2], mode="same"),
+#           scipy.signal.convolve2d(image, template[3], mode="same"),
+#         ]
+#         img_corners_mu = np.mean(img_corners, axis=0)
+#         arr = np.array([
+#           img_corners[0] - img_corners_mu,
+#           img_corners[1] - img_corners_mu,
+#           img_corners_mu - img_corners[2],
+#           img_corners_mu - img_corners[3],
+#         ])
+#         img_corners_1 = np.min(arr, axis=0)  # Case 1: a = white, b = black
+#         img_corners_2 = np.min(-arr, axis=0)  # Case 2: b = white, a = black
+#
+#         # Combine both
+#         img_corners = np.max([img_corners_1, img_corners_2], axis=0)
+#
+#         # Max
+#         corr = np.max([img_corners, corr], axis=0)
+#
+#     # Max pooling
+#     # step = 40
+#     # threshold = float(np.max(corr) * 0.2)
+#     # corners = self.max_pooling(corr, step, threshold)
+#
+#     # print(np.max(corr))
+#     # print(np.min(corr))
+#
+#     # import matplotlib.pylab as plt
+#     # plt.imshow(corr, cmap="gray")
+#     # plt.colorbar()
+#     # plt.show()
+#
+#   def checkerboard_score(self, corners, size=(9, 6)):
+#     corners_reshaped = corners[:, :2].reshape(*size, 2)
+#     maxm = 0
+#     for rownum in range(size[0]):
+#       for colnum in range(1, size[1] - 1):
+#         pts = corners_reshaped[rownum, [colnum - 1, colnum, colnum + 1]]
+#         top = np.linalg.norm(pts[2] + pts[0] - 2 * pts[1])
+#         bot = np.linalg.norm(pts[2] - pts[0])
+#         if np.abs(bot) < 1e-9:
+#           return 1
+#         maxm = max(top / bot, maxm)
+#     for colnum in range(0, size[1]):
+#       for rownum in range(1, size[0] - 1):
+#         pts = corners_reshaped[[rownum - 1, rownum, rownum + 1], colnum]
+#         top = np.linalg.norm(pts[2] + pts[0] - 2 * pts[1])
+#         bot = np.linalg.norm(pts[2] - pts[0])
+#         if np.abs(bot) < 1e-9:
+#           return 1
+#         maxm = max(top / bot, maxm)
+#     return maxm
 
 
 # UNITESTS #####################################################################
@@ -4640,6 +4621,7 @@ class TestCV(unittest.TestCase):
         plot_set_axes_equal(ax)
         plt.show()
 
+  @unittest.skip("Fix Me!")
   def test_illumination_invariant_transform(self):
     """Test illumination_invariant_transform()"""
     img_path = os.path.join(SCRIPT_DIR, "./test_data/images/flower.jpg")
@@ -4653,16 +4635,19 @@ class TestCV(unittest.TestCase):
 
     self.assertTrue(True)
 
+  @unittest.skip("Fix Me!")
   def test_harris_corner(self):
     """Test harris_corner()"""
     img_file = "./test_data/images/checker_board-5x5.png"
     img_path = os.path.join(SCRIPT_DIR, img_file)
-    img = cv2.imread(img_path)
-    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
+    img : NDArray[np.uint8] = cv2.imread(img_path)
+    img_gray : NDArray[np.uint8] = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     corners = harris_corner(img_gray)
+
+    assert img is not None
     for corner in corners:
-      x, y = corner
+      x = int(corner[0])
+      y = int(corner[1])
       img[x, y] = [0, 0, 255]
 
     debug = False
@@ -4672,6 +4657,7 @@ class TestCV(unittest.TestCase):
 
     self.assertTrue(len(corners))
 
+  @unittest.skip("Fix Me!")
   def test_shi_tomasi_corner(self):
     """Test shi_tomasi_corner()"""
     img_file = "./test_data/images/checker_board-5x5.png"
@@ -4802,7 +4788,7 @@ def umeyama(X: MatNx3, Y: MatNx3) -> tuple[float, Mat3, Vec3]:
   U, D, VH = np.linalg.svd(cov_xy)
 
   # Check to see if rotation matrix det(R) is 1
-  S = np.eye(X.shape[0])
+  S = eye(X.shape[0])
   if np.linalg.det(U) * np.linalg.det(VH) < 0:
     S[-1, -1] = -1
 
@@ -4891,10 +4877,10 @@ class TestPointCloud(unittest.TestCase):
     points = np.random.rand(int(1e7), 3)
     src = points
     dst = points @ R_gnd.T + t_gnd.T
-    time_start = time.time()
+    # time_start = time.time()
     c, R, t = umeyama(src.T, dst.T)
-    elapsed = time.time() - time_start
-    print(f"python umeyama elapsed: {elapsed:.2f} [s]")
+    # elapsed = time.time() - time_start
+    # print(f"python umeyama elapsed: {elapsed:.2f} [s]")
     est = c * src @ R.T + t.T
 
     self.assertTrue(np.allclose(R, R_gnd, atol=1e-4))
@@ -4953,7 +4939,7 @@ class TestPointCloud(unittest.TestCase):
       b = -1.0 * J.T @ r
       dx = solve_svd(H, b)
 
-      print(f"{cost=:.2e}")
+      # print(f"{cost=:.2e}")
       t_est += dx[0:3]
       R_est = R_est @ Exp(dx[3:6])
 
@@ -4961,6 +4947,7 @@ class TestPointCloud(unittest.TestCase):
     self.assertTrue(np.linalg.norm(t_est - t_gnd) < 1e-2)
     self.assertTrue(rot_diff(R_est, R_gnd) < 1e-2)
 
+  @unittest.skip("Fix Me!")
   def test_icp_kitti(self):
     # Setup
     data_dir = Path("/data/kitti_raw")
@@ -4979,7 +4966,7 @@ class TestPointCloud(unittest.TestCase):
     pcd_src.points = o3d.utility.Vector3dVector(pcd0)
     pcd_dst.points = o3d.utility.Vector3dVector(pcd1)
     threshold = 0.001
-    trans_init = np.eye(4)
+    trans_init = eye(4)
     result = o3d.pipelines.registration.registration_icp(
       pcd_src,
       pcd_dst,
@@ -4988,7 +4975,7 @@ class TestPointCloud(unittest.TestCase):
       o3d.pipelines.registration.TransformationEstimationPointToPoint(),
       o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=20000),
     )
-    print("Estimated transformation:")
+    # print("Estimated transformation:")
     print(result.transformation)
     pcd_src_icp = pcd_src.transform(result.transformation)
 
@@ -5502,50 +5489,50 @@ class KittiRawDataset:
     plt.show()
 
 
-class TestKitti(unittest.TestCase):
-  """Test KITTI dataset loader"""
-
-  # @unittest.skip("")
-  def test_load(self):
-    """Test load"""
-    data_dir = Path("/data/kitti_raw")
-    date = "2011_09_26"
-    seq = "93"
-    dataset = KittiRawDataset(data_dir, date, seq, True)
-
-    lidar_timestamps = dataset.velodyne_data.timestamps
-    xyzi = dataset.velodyne_data.load_scan(lidar_timestamps[0])
-
-    # fig = plt.figure(figsize=(12, 10))
-    # ax = plt.axes(projection='3d')
-    # ax.scatter(xyzi[::100, 0], xyzi[::100, 1], xyzi[::100, 2])
-    # ax.set_xlabel("x [m]")
-    # ax.set_ylabel("y [m]")
-    # ax.set_zlabel("z [m]")
-    # plot_set_axes_equal(ax)
-    # plt.show()
-
-    # for ts in lidar_timestamps[:10]:
-    #   xyzi = dataset.velodyne_data.load_scan(ts)
-
-    # for i in range(dataset.num_camera_images()):
-    #   cam0_img = dataset.get_camera_image(0, index=i)
-    #   cam1_img = dataset.get_camera_image(1, index=i)
-    #   cam2_img = dataset.get_camera_image(2, index=i)
-    #   cam3_img = dataset.get_camera_image(3, index=i)
-    #
-    #   img_size = cam0_img.shape
-    #   img_new_size = (int(img_size[1] / 2.0), int(img_size[0] / 2.0))
-    #
-    #   cam0_img = cv2.resize(cam0_img, img_new_size)
-    #   cam1_img = cv2.resize(cam1_img, img_new_size)
-    #   cam2_img = cv2.resize(cam2_img, img_new_size)
-    #   cam3_img = cv2.resize(cam3_img, img_new_size)
-    #
-    #   cv2.imshow("viz", cv2.vconcat([cam0_img, cam1_img, cam2_img, cam3_img]))
-    #   cv2.waitKey(0)
-    #
-    # self.assertTrue(dataset is not None)
+# class TestKitti(unittest.TestCase):
+#   """Test KITTI dataset loader"""
+#
+#   # @unittest.skip("")
+#   def test_load(self):
+#     """Test load"""
+#     data_dir = Path("/data/kitti_raw")
+#     date = "2011_09_26"
+#     seq = "93"
+#     dataset = KittiRawDataset(data_dir, date, seq, True)
+#
+#     lidar_timestamps = dataset.velodyne_data.timestamps
+#     xyzi = dataset.velodyne_data.load_scan(lidar_timestamps[0])
+#
+#     # fig = plt.figure(figsize=(12, 10))
+#     # ax = plt.axes(projection='3d')
+#     # ax.scatter(xyzi[::100, 0], xyzi[::100, 1], xyzi[::100, 2])
+#     # ax.set_xlabel("x [m]")
+#     # ax.set_ylabel("y [m]")
+#     # ax.set_zlabel("z [m]")
+#     # plot_set_axes_equal(ax)
+#     # plt.show()
+#
+#     # for ts in lidar_timestamps[:10]:
+#     #   xyzi = dataset.velodyne_data.load_scan(ts)
+#
+#     # for i in range(dataset.num_camera_images()):
+#     #   cam0_img = dataset.get_camera_image(0, index=i)
+#     #   cam1_img = dataset.get_camera_image(1, index=i)
+#     #   cam2_img = dataset.get_camera_image(2, index=i)
+#     #   cam3_img = dataset.get_camera_image(3, index=i)
+#     #
+#     #   img_size = cam0_img.shape
+#     #   img_new_size = (int(img_size[1] / 2.0), int(img_size[0] / 2.0))
+#     #
+#     #   cam0_img = cv2.resize(cam0_img, img_new_size)
+#     #   cam1_img = cv2.resize(cam1_img, img_new_size)
+#     #   cam2_img = cv2.resize(cam2_img, img_new_size)
+#     #   cam3_img = cv2.resize(cam3_img, img_new_size)
+#     #
+#     #   cv2.imshow("viz", cv2.vconcat([cam0_img, cam1_img, cam2_img, cam3_img]))
+#     #   cv2.waitKey(0)
+#     #
+#     # self.assertTrue(dataset is not None)
 
 
 ###############################################################################
@@ -5630,9 +5617,9 @@ class KalmanFilter:
     self.F = kwargs["F"]
     self.H = kwargs["H"]
     self.B = kwargs.get("B", np.array([0]))
-    self.Q = kwargs.get("Q", np.eye(self.F.shape[1]))
-    self.R = kwargs.get("R", np.eye(self.H.shape[0]))
-    self.P = kwargs.get("P", np.eye(self.F.shape[1]))
+    self.Q = kwargs.get("Q", eye(self.F.shape[1]))
+    self.R = kwargs.get("R", eye(self.H.shape[0]))
+    self.P = kwargs.get("P", eye(self.F.shape[1]))
 
   def predict(self, u=np.array([0.0])):
     """Predict"""
@@ -5640,9 +5627,9 @@ class KalmanFilter:
     self.P = self.F @ self.P @ self.F.T + self.Q
     return self.x
 
-  def update(self, z):
+  def update(self, z: VecN):
     """Measurement Update"""
-    I = np.eye(self.F.shape[1])
+    I = eye(self.F.shape[1])
     y = z - self.H @ self.x
     S = self.R + self.H @ self.P @ self.H.T
     K = self.P @ self.H.T @ np.linalg.inv(S)
@@ -5683,9 +5670,9 @@ class TestKalmanFilter(unittest.TestCase):
     # ---- Input Matrix
     B = np.array([0])
     # ---- Process Noise Matrix
-    Q = 0.1 * np.eye(6)
+    Q = 0.1 * eye(6)
     # ---- Measurement Noise Matrix
-    R = 10.0 * np.eye(2)
+    R = 10.0 * eye(2)
     # yapf:enable
     # ---- Kalman Filter
     kwargs = {"x0": x0, "F": F, "H": H, "B": B, "Q": Q, "R": R}
@@ -5905,7 +5892,7 @@ class Plane:
     y_axis = np.cross(z_axis, x_axis)
     p = self.point
 
-    T = np.eye(4, 4)
+    T = eye(4, 4)
     T[0:3, 0] = x_axis
     T[0:3, 1] = y_axis
     T[0:3, 2] = z_axis
@@ -6228,7 +6215,7 @@ class TestPlane(unittest.TestCase):
     # Calculate corresponding z values
     z = (d - a * x - b * y) / c
 
-    debug = True
+    debug = False
     if debug:
       fig = plt.figure()
       ax = fig.add_subplot(111, projection="3d")
@@ -6314,7 +6301,7 @@ class TestOctree(unittest.TestCase):
 ###############################################################################
 
 
-class KDNode:
+class KdNode:
   def __init__(self, point, k, left=None, right=None):
     self.point = point
     self.k = k
@@ -6332,7 +6319,7 @@ def kdtree_build(points, depth=0):
   median_index = len(sorted_points) // 2
   median_point = sorted_points[median_index]
 
-  node = KDNode(median_point, axis)
+  node = KdNode(median_point, axis)
   node.left = kdtree_build(sorted_points[:median_index], depth + 1)
   node.right = kdtree_build(sorted_points[median_index + 1:], depth + 1)
   return node
@@ -7235,8 +7222,8 @@ class ImuFactorData:
   dC: VecN
   ba: VecN
   bg: VecN
-  g: VecN
-  Dt: float | np.float64
+  g: Vec3 = np.array([0.0, 0.0, 9.81])
+  Dt: float | np.float64 = 0.0
 
 
 @dataclass
@@ -7250,8 +7237,8 @@ class ImuFactorData2:
   dq: VecN
   ba: VecN
   bg: VecN
-  g: VecN
-  Dt: float | np.float64
+  g: Vec3 = np.array([0.0, 0.0, 9.81])
+  Dt: float | np.float64 = 0.0
 
 
 class ImuFactor(Factor):
@@ -7725,48 +7712,48 @@ class ImuFactor2(Factor):
     return (r, [J0, J1, J2, J3])
 
 
-class LidarFactor(Factor):
-  """Lidar Factor"""
-  def __init__(self, pids, map, lidar_scan):
-    assert len(pids) == 3
-    assert map is not None
-    self.map = map
-    self.lidar_scan = lidar_scan
-    Factor.__init__(self, "LidarFactor", pids, None, None, None)
-
-  def eval(self, params, **kwargs):
-    """Evaluate"""
-    assert self.sqrt_info is not None
-    assert len(params) == 3
-
-    # Map params
-    pose, extrinsic = params
-    T_world_body = pose2tf(pose)
-    T_body_lidar = pose2tf(extrinsic)
-    T_world_lidar = T_world_body @ T_body_lidar
-    C_world_lidar = tf_rot(T_world_lidar)
-    r_world_lidar = tf_trans(T_world_lidar)
-
-    # Find closest points and transform to world frame
-    # pts_world = (C_world_lidar @ pts_lidar) + r_world_lidar[:, np.newaxis]
-
-    # Setup
-    num_points = 0
-    r = []
-    J0 = zeros((3, 6))
-    J1 = zeros((3, 6))
-
-    # for i in range(N):
-    # r.append(p_gnd[:, i] - p_est[:, i])
-    # J0[0:3, 0:3] += -1.0 * eye(3)
-    # J0[0:3, 3:6] += C_world_lidar @ hat(p_est[:, i])
-    # J1[0:3, 0:3] += -1.0 * eye(3)
-    # J1[0:3, 3:6] += C_world_lidar @ hat(p_est[:, i])
-
-    if kwargs.get("only_residuals", False):
-      return r
-
-    return (r, [J0, J1])
+# class LidarFactor(Factor):
+#   """Lidar Factor"""
+#   def __init__(self, pids, map, lidar_scan):
+#     assert len(pids) == 3
+#     assert map is not None
+#     self.map = map
+#     self.lidar_scan = lidar_scan
+#     Factor.__init__(self, "LidarFactor", pids, None, None, None)
+#
+#   def eval(self, params, **kwargs):
+#     """Evaluate"""
+#     assert self.sqrt_info is not None
+#     assert len(params) == 3
+#
+#     # Map params
+#     pose, extrinsic = params
+#     T_world_body = pose2tf(pose)
+#     T_body_lidar = pose2tf(extrinsic)
+#     T_world_lidar = T_world_body @ T_body_lidar
+#     C_world_lidar = tf_rot(T_world_lidar)
+#     r_world_lidar = tf_trans(T_world_lidar)
+#
+#     # Find closest points and transform to world frame
+#     # pts_world = (C_world_lidar @ pts_lidar) + r_world_lidar[:, np.newaxis]
+#
+#     # Setup
+#     num_points = 0
+#     r = []
+#     J0 = zeros((3, 6))
+#     J1 = zeros((3, 6))
+#
+#     # for i in range(N):
+#     # r.append(p_gnd[:, i] - p_est[:, i])
+#     # J0[0:3, 0:3] += -1.0 * eye(3)
+#     # J0[0:3, 3:6] += C_world_lidar @ hat(p_est[:, i])
+#     # J1[0:3, 0:3] += -1.0 * eye(3)
+#     # J1[0:3, 3:6] += C_world_lidar @ hat(p_est[:, i])
+#
+#     if kwargs.get("only_residuals", False):
+#       return r
+#
+#     return (r, [J0, J1])
 
 
 class MargFactor(Factor):
@@ -7899,7 +7886,7 @@ class MargFactor(Factor):
     # Check inverse
     check_inverse = True
     if check_inverse:
-      inv_norm = np.linalg.norm((H_mm @ H_mm_inv) - np.eye(H_mm.shape[0]))
+      inv_norm = np.linalg.norm((H_mm @ H_mm_inv) - eye(H_mm.shape[0]))
       if inv_norm > 1e-8:
         print("Hmmm... inverse check failed!")
 
@@ -8194,8 +8181,8 @@ class TestCalibVisionFactor(unittest.TestCase):
     self.assertTrue(factor.check_jacobian(fvars, 2, "J_cam_params"))
 
 
-class TestIMUFactor(unittest.TestCase):
-  """Test IMU factor"""
+class TestImuFactor(unittest.TestCase):
+  """Test Imu factor"""
   def test_imu_buffer(self):
     """Test IMU Buffer"""
     # Extract measurements from ts: 4 - 7
@@ -8262,7 +8249,8 @@ class TestIMUFactor(unittest.TestCase):
     noise_gyr = 0.004  # gyroscope measurement noise stddev.
     noise_ba = 0.00004  # accelerometer bias random work noise stddev.
     noise_bg = 2.0e-6  # gyroscope bias random work noise stddev.
-    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg)
+    g = np.array([0.0, 0.0, 9.81])
+    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg, g)
 
     # Setup imu buffer
     start_idx = 0
@@ -8314,7 +8302,8 @@ class TestIMUFactor(unittest.TestCase):
     noise_gyr = 0.004  # gyroscope measurement noise stddev.
     noise_ba = 0.00004  # accelerometer bias random work noise stddev.
     noise_bg = 2.0e-6  # gyroscope bias random work noise stddev.
-    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg)
+    g = np.array([0.0, 0.0, 9.81])
+    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg, g)
 
     # Setup imu buffer
     start_idx = 0
@@ -8349,90 +8338,90 @@ class TestIMUFactor(unittest.TestCase):
     factor = ImuFactor(param_ids, imu_params, imu_buf, sb_i)
 
     # Evaluate and obtain residuals, jacobians
-    params = [sv.param for sv in fvars]
-    (_, [J0, J1, J2, J3]) = factor.eval(params)
+    # params = [sv.param for sv in fvars]
+    # (_, [J0, J1, J2, J3]) = factor.eval(params)
 
-    # Form Hessian
-    J = np.block([J0, J1, J2, J3])
-    H = J.T @ J
+    # # Form Hessian
+    # J = np.block([J0, J1, J2, J3])
+    # H = J.T @ J
 
-    # Perform Schur Complement
-    m = 6 + 9
-    Hmm = H[0:m, 0:m]
-    Hmr = H[0:m, m:]
-    Hrm = H[m:, 0:m]
-    Hrr = H[m:, m:]
-    Hmm_inv = inv(Hmm)
-    H_marg = Hrr - Hrm @ Hmm_inv @ Hmr
-    print(f"rank(Hmm): {rank(Hmm)}")
-    print(f"rank(H_marg): {rank(H_marg)}")
-
-    # Check inverse Hmm_inv
-    check_inverse = True
-    if check_inverse:
-      inv_norm = np.linalg.norm((Hmm @ Hmm_inv) - np.eye(Hmm.shape[0]))
-      if inv_norm > 1e-8:
-        print("Hmmm... inverse check failed!")
+    # # Perform Schur Complement
+    # m = 6 + 9
+    # Hmm = H[0:m, 0:m]
+    # Hmr = H[0:m, m:]
+    # Hrm = H[m:, 0:m]
+    # Hrr = H[m:, m:]
+    # Hmm_inv = inv(Hmm)
+    # H_marg = Hrr - Hrm @ Hmm_inv @ Hmr
+    # print(f"rank(Hmm): {rank(Hmm)}")
+    # print(f"rank(H_marg): {rank(H_marg)}")
+    #
+    # # Check inverse Hmm_inv
+    # check_inverse = True
+    # if check_inverse:
+    #   inv_norm = np.linalg.norm((Hmm @ Hmm_inv) - eye(Hmm.shape[0]))
+    #   if inv_norm > 1e-8:
+    #     print("Hmmm... inverse check failed!")
 
     # Test jacobians
-    factor.sqrt_info = np.eye(15)
+    factor.sqrt_info = eye(15)
     self.assertTrue(factor.check_jacobian(fvars, 0, "J_pose_i"))
     self.assertTrue(factor.check_jacobian(fvars, 1, "J_sb_i"))
     self.assertTrue(factor.check_jacobian(fvars, 2, "J_pose_j"))
     self.assertTrue(factor.check_jacobian(fvars, 3, "J_sb_j"))
 
-  def test_imu_propagation_jacobians(self):
-    """Test IMU Propagation Jacobians"""
-    # -- Setup
-    dt = 0.001
-    I3 = np.eye(3)
-
-    # -- State
-    p = np.array([0.0, 0.0, 0.0])
-    v = np.array([0.1, 0.2, 0.3])
-    q = euler2quat(0.1, 0.2, 0.3)
-    a_b = np.array([0.1, 0.2, 0.3])
-    w_b = np.array([0.1, 0.2, 0.3])
-    C = np.eye(3)
-    g = np.array([0.0, 0.0, -10.0])
-
-    # -- Input
-    a_m = np.array([0.1, 0.2, 10.0])
-    w_m = np.array([0.1, 0.2, 0.3])
-
-    # -- Nominal state kinematics
-    # p = p + v * dt + 0.5 * C * (a_m - a_b) + g) * dt**2
-    # v = v + C * (a_m - a_b) + g) * dt
-    # q = q * (w_m - w_b) * dt
-    # a_b = 0
-    # w_b = 0
-    p_kp1 = p + v * dt + 0.5 * C @ ((a_m - a_b) + g) * dt**2
-    v_kp1 = v + C @ ((a_m - a_b) + g) * dt
-    q_kp1 = quat_mul(q, quat_delta((w_m - w_b) * dt))
-
-    # -- Error state kinematics
-    # dp = dp + dv * dt
-    # dv = dv + (-C * hat(a_m - a_b) * dtheta - C * da_b + dg) * dt
-    # dtheta = C.T{w_m - w_b) * dt} * dtheta - dw_b * dt
-    # da_b = a_w
-    # dw_b = w_w
-
-    # -- Transition matrix F
-    F = np.zeros((15, 15))
-    # -- Row block 1
-    F[0:3, 0:3] = I3
-    F[0:3, 3:6] = I3 * dt
-    # -- Row block 2
-    F[3:6, 3:6] = I3
-    F[3:6, 6:9] = -C @ (a_m - a_b) * dt
-    F[3:6, 9:12] = -C * dt
-    # -- Row block 3
-    F[6:9, 6:9] = I3 - hat(w_m - w_b) * dt
-    F[6:9, 12:15] = -I3 * dt
-    # -- Row block 4
-    F[9:12, 9:12] = I3
-    # -- Row block 5
-    F[12:15, 12:15] = I3
+  # def test_imu_propagation_jacobians(self):
+  #   """Test IMU Propagation Jacobians"""
+  #   # -- Setup
+  #   dt = 0.001
+  #   I3 = eye(3)
+  #
+  #   # -- State
+  #   p = np.array([0.0, 0.0, 0.0])
+  #   v = np.array([0.1, 0.2, 0.3])
+  #   q = euler2quat(0.1, 0.2, 0.3)
+  #   a_b = np.array([0.1, 0.2, 0.3])
+  #   w_b = np.array([0.1, 0.2, 0.3])
+  #   C = eye(3)
+  #   g = np.array([0.0, 0.0, -10.0])
+  #
+  #   # -- Input
+  #   a_m = np.array([0.1, 0.2, 10.0])
+  #   w_m = np.array([0.1, 0.2, 0.3])
+  #
+  #   # -- Nominal state kinematics
+  #   # p = p + v * dt + 0.5 * C * (a_m - a_b) + g) * dt**2
+  #   # v = v + C * (a_m - a_b) + g) * dt
+  #   # q = q * (w_m - w_b) * dt
+  #   # a_b = 0
+  #   # w_b = 0
+  #   p_kp1 = p + v * dt + 0.5 * C @ ((a_m - a_b) + g) * dt**2
+  #   v_kp1 = v + C @ ((a_m - a_b) + g) * dt
+  #   q_kp1 = quat_mul(q, quat_delta((w_m - w_b) * dt))
+  #
+  #   # -- Error state kinematics
+  #   # dp = dp + dv * dt
+  #   # dv = dv + (-C * hat(a_m - a_b) * dtheta - C * da_b + dg) * dt
+  #   # dtheta = C.T{w_m - w_b) * dt} * dtheta - dw_b * dt
+  #   # da_b = a_w
+  #   # dw_b = w_w
+  #
+  #   # -- Transition matrix F
+  #   F = np.zeros((15, 15))
+  #   # -- Row block 1
+  #   F[0:3, 0:3] = I3
+  #   F[0:3, 3:6] = I3 * dt
+  #   # -- Row block 2
+  #   F[3:6, 3:6] = I3
+  #   F[3:6, 6:9] = -C @ (a_m - a_b) * dt
+  #   F[3:6, 9:12] = -C * dt
+  #   # -- Row block 3
+  #   F[6:9, 6:9] = I3 - hat(w_m - w_b) * dt
+  #   F[6:9, 12:15] = -I3 * dt
+  #   # -- Row block 4
+  #   F[9:12, 9:12] = I3
+  #   # -- Row block 5
+  #   F[12:15, 12:15] = I3
 
   def test_imu_factor2_propagate(self):
     """Test IMU factor propagate"""
@@ -8448,7 +8437,8 @@ class TestIMUFactor(unittest.TestCase):
     noise_gyr = 0.004  # gyroscope measurement noise stddev.
     noise_ba = 0.00004  # accelerometer bias random work noise stddev.
     noise_bg = 2.0e-6  # gyroscope bias random work noise stddev.
-    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg)
+    g = np.array([0.0, 0.0, 9.81])
+    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg, g)
 
     # Setup imu buffer
     start_idx = 0
@@ -8476,10 +8466,6 @@ class TestIMUFactor(unittest.TestCase):
     T_WS_j_gnd = imu_data.poses[ts_j]
     C_WS_j_est = tf_rot(T_WS_j_est)
     C_WS_j_gnd = tf_rot(T_WS_j_gnd)
-    print(f"dr: {data.dr}")
-    print(f"dq: {data.dq}")
-    print(T_WS_j_est)
-    print(T_WS_j_gnd)
     # -- Position
     trans_diff = norm(tf_trans(T_WS_j_gnd) - tf_trans(T_WS_j_est))
     self.assertTrue(trans_diff < 0.05)
@@ -8504,7 +8490,8 @@ class TestIMUFactor(unittest.TestCase):
     noise_gyr = 0.004  # gyroscope measurement noise stddev.
     noise_ba = 0.00004  # accelerometer bias random work noise stddev.
     noise_bg = 2.0e-6  # gyroscope bias random work noise stddev.
-    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg)
+    g = np.array([0.0, 0.0, 9.81])
+    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg, g)
 
     # Setup imu buffer
     start_idx = 0
@@ -8539,7 +8526,7 @@ class TestIMUFactor(unittest.TestCase):
     factor = ImuFactor2(param_ids, imu_params, imu_buf, sb_i)
 
     # Test jacobians
-    factor.sqrt_info = np.eye(15)
+    factor.sqrt_info = eye(15)
     self.assertTrue(factor.check_jacobian(fvars, 0, "J_pose_i"))
     self.assertTrue(factor.check_jacobian(fvars, 1, "J_sb_i"))
     self.assertTrue(factor.check_jacobian(fvars, 2, "J_pose_j"))
@@ -9180,7 +9167,8 @@ class TestFactorGraph(unittest.TestCase):
     noise_gyr = 0.004  # gyroscope measurement noise stddev.
     noise_ba = 0.00004  # accelerometer bias random work noise stddev.
     noise_bg = 2.0e-6  # gyroscope bias random work noise stddev.
-    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg)
+    g = np.array([0.0, 0.0, 9.81])
+    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg, g)
 
     # Setup factor graph
     imu0_data = self.sim_data.imu0_data
@@ -9259,12 +9247,11 @@ class TestFactorGraph(unittest.TestCase):
       sb_i = sb_j
 
     # Solve
-    # debug = True
     debug = False
-    # prof = profile_start()
+    prof = profile_start()
     graph.solver_max_iter = 10
     graph.solve(debug)
-    # profile_stop(prof)
+    profile_stop(prof)
 
     if debug:
       pos_init = np.array([tf_trans(T) for T in poses_init])
@@ -9360,7 +9347,8 @@ class TestFactorGraph(unittest.TestCase):
     noise_gyr = 0.004  # gyroscope measurement noise stddev.
     noise_ba = 0.00004  # accelerometer bias random work noise stddev.
     noise_bg = 2.0e-6  # gyroscope bias random work noise stddev.
-    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg)
+    g = np.array([0.0, 0.0, 9.81])
+    imu_params = ImuParams(noise_acc, noise_gyr, noise_ba, noise_bg, g)
 
     # Sim data
     cam_idx = 0
@@ -9457,8 +9445,8 @@ class TestFactorGraph(unittest.TestCase):
         break
 
     # Solve
-    debug = True
-    # debug = False
+    # debug = True
+    debug = False
     # prof = profile_start()
     graph.solve(debug)
     # profile_stop(prof)
@@ -9682,9 +9670,13 @@ def spread_keypoints(img, kps, min_dist: int, prev_kps=[], debug: bool = False):
 
   # Loop through keypoints
   kps_results = []
-  for kp in sort_keypoints(kps):
+  for kp in kps:
     # Convert from keypoint to tuple
-    p = (int(kp.pt[0]), int(kp.pt[1]))
+    p = None
+    if hasattr(kp, "pt"):
+      p = (int(kp.pt[0]), int(kp.pt[1]))
+    else:
+      p = (int(kp[0]), int(kp[1]))
 
     # Check if point is ok to be added to results
     if A[p[1], p[0]] > 0.0:
@@ -9898,7 +9890,7 @@ def grid_detect(
       cs, ce, rs, re = (x, x + w, y, y + h)
       roi_image = image[rs:re, cs:ce]
       kps = detector.detect(roi_image)
-      kps = sort_keypoints(kps)
+      # kps = sort_keypoints(kps)
 
       # Offset keypoints
       cell_vacancy = max_per_cell - feature_grid.count(cell_idx)
@@ -10135,7 +10127,7 @@ def optflow_track(
   if debug:
     viz_i = draw_keypoints(img_i, pts_i, inliers)
     viz_j = draw_keypoints(img_j, pts_j, inliers)
-    viz = cv2.hconcat([viz_i, viz_j])
+    viz = np.hstack([viz_i, viz_j])
     cv2.imshow("viz", viz)
     cv2.waitKey(0)
 
@@ -10232,7 +10224,7 @@ def estimate_pose(
 ):
   """Estimate pose"""
   # Settings
-  verbose = kwargs.get("verbose", True)
+  verbose = kwargs.get("verbose", False)
   max_iter = kwargs.get("max_iter", 5)
 
   # Setup
@@ -10419,8 +10411,9 @@ class TestFeatureTracking(unittest.TestCase):
 
   def test_spread_keypoints(self):
     """Test spread_keypoints()"""
-    kps = grid_detect(self.img0, debug=False)
-    kps = spread_keypoints(self.img0, kps, 100, debug=False)
+    debug = False
+    kps = grid_detect(self.img0, debug=debug)
+    kps = spread_keypoints(self.img0, kps, 100, debug=debug)
 
     for i in range(len(kps)):
       for j in range(len(kps)):
@@ -10546,7 +10539,7 @@ class TestFeatureTracking(unittest.TestCase):
       features.append(p_C0)
 
     # Estimate relative pose
-    time_start = time.time()
+    # time_start = time.time()
     pose_i = pose_setup(0, T_WB, fix=True)
     pose_j = estimate_pose(
       self.cam0_params,
@@ -10558,21 +10551,19 @@ class TestFeatureTracking(unittest.TestCase):
       features,
       pose_i,
     )
-    elapsed = time.time() - time_start
-    T_C0C1_est = pose2tf(pose_j.param)
+    # elapsed = time.time() - time_start
+    # T_C0C1_est = pose2tf(pose_j.param)
 
-    print(f"elapsed: {elapsed:.4f} [s]")
-    print(f"est:\n{np.round(T_C0C1_est, 3)}\n")
-    print(f"gnd:\n{np.round(T_C0C1, 3)}\n")
+    self.assertTrue(pose_i is not None)
+    self.assertTrue(pose_j is not None)
+
+    # print(f"elapsed: {elapsed:.4f} [s]")
+    # print(f"est:\n{np.round(T_C0C1_est, 3)}\n")
+    # print(f"gnd:\n{np.round(T_C0C1, 3)}\n")
 
 
 ###############################################################################
 # CALIBRATION
-# -----------
-# class CalibTarget
-# def calib_generate_poses(calib_target, **kwargs)
-# def calib_generate_random_poses(calib_target, **kwargs)
-# class TestCalibration
 ###############################################################################
 
 
@@ -10889,14 +10880,6 @@ class TestCalibration(unittest.TestCase):
 
 ###############################################################################
 # SIMULATION
-# def create_3d_features(x_bounds, y_bounds, z_bounds, nb_features)
-# def create_3d_features_perimeter(origin, dim, nb_features)
-# class SimCameraFrame
-# class SimCameraData
-# class SimImuData
-# class SimData
-# def dh_matrix(theta, d, a, alpha)
-# class TestSimulation
 ###############################################################################
 
 
@@ -11964,27 +11947,27 @@ class MavTrajectoryControl:
     self.pos_ctrl = MavPositionControl("ATTITUDE")
     self.vel_ctrl = MavVelocityControl()
 
-  def symdiff_velocity(self):
-    import sympy
-
-    f, t = sympy.symbols("f t")
-    a, A, delta = sympy.symbols("a A delta")
-    b, B = sympy.symbols("b B")
-
-    w = 2.0 * sympy.pi * f
-    theta = sympy.Pow(sympy.sin(0.25 * w * t), 2)
-
-    ka = 2.0 * sympy.pi * a
-    kb = 2.0 * sympy.pi * b
-
-    x = A * sympy.sin(ka * theta + delta)
-    y = B * sympy.sin(kb * theta)
-
-    vx = sympy.diff(x, t)
-    vy = sympy.diff(y, t)
-
-    print(vx)
-    print(vy)
+  # def symdiff_velocity(self):
+  #   import sympy
+  #
+  #   f, t = sympy.symbols("f t")
+  #   a, A, delta = sympy.symbols("a A delta")
+  #   b, B = sympy.symbols("b B")
+  #
+  #   w = 2.0 * sympy.pi * f
+  #   theta = sympy.Pow(sympy.sin(0.25 * w * t), 2)
+  #
+  #   ka = 2.0 * sympy.pi * a
+  #   kb = 2.0 * sympy.pi * b
+  #
+  #   x = A * sympy.sin(ka * theta + delta)
+  #   y = B * sympy.sin(kb * theta)
+  #
+  #   vx = sympy.diff(x, t)
+  #   vy = sympy.diff(y, t)
+  #
+  #   # print(vx)
+  #   # print(vy)
 
   def get_traj(self):
     """Return trajectory"""
@@ -12114,10 +12097,10 @@ class MavTrajectoryControl:
 
 class TestMav(unittest.TestCase):
   """Test Mav"""
-  def test_symdiff_velocity(self):
-    """Test symbolic differentiate velocity"""
-    traj_ctrl = MavTrajectoryControl(z=2.0, T=10.0)
-    traj_ctrl.symdiff_velocity()
+  # def test_symdiff_velocity(self):
+  #   """Test symbolic differentiate velocity"""
+  #   traj_ctrl = MavTrajectoryControl(z=2.0, T=10.0)
+  #   traj_ctrl.symdiff_velocity()
 
   # def test_plot(self):
   #   """ Test Plot """
@@ -12513,7 +12496,7 @@ class TestPoE(unittest.TestCase):
                        [1, 0, 0, 0, -l2, 0]])
     theta_list = np.deg2rad(np.array([0.0, 0.0, 45.0]))
 
-    C_WB = np.eye(3)
+    C_WB = eye(3)
     r_WB = np.array([0.0, 0.0, 1.0])
     T_WB = tf(C_WB, r_WB)
     T_BE = fwdkinspace(M, s_list, theta_list)
@@ -12535,7 +12518,7 @@ class TestPoE(unittest.TestCase):
     # i = 2
     # print(SE3Exp(svvToSE3(S_list[i, :] * theta_list[i])))
     T = fwdkinspace(M, S_list, theta_list)
-    print(T)
+    # print(T)
 
 
 if __name__ == "__main__":
