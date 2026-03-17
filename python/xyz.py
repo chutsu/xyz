@@ -121,9 +121,9 @@ def load_yaml(yaml_path: str):
 
   # Convert dict to named tuple
   data = json.dumps(yaml_data)  # Python dict to json
-  data = json.loads(
-    data, object_hook=lambda d: namedtuple("X", d.keys())(*d.values())
-  )
+  data = json.loads(data,
+                    object_hook=lambda d: namedtuple("X", d.keys())
+                    (*d.values()))
 
   return data
 
@@ -555,7 +555,6 @@ def check_jacobian(
 
 class TestLinearAlgebra(unittest.TestCase):
   """Test Linear Algebra"""
-
   def test_normalize(self):
     """Test normalize()"""
     x = np.array([1.0, 2.0, 3.0])
@@ -664,7 +663,7 @@ def circle_loss(c: Vec2, x: float, y: float) -> float:
   """
   xc, yc = c
   # Euclidean dist from center (xc, yc)
-  Ri = np.sqrt((x - xc) ** 2 + (y - yc) ** 2)
+  Ri = np.sqrt((x - xc)**2 + (y - yc)**2)
   return Ri - Ri.mean()
 
 
@@ -683,9 +682,9 @@ def find_circle(x: float, y: float) -> tuple[Vec2, float, float]:
   )
 
   xc, yc = center
-  radii = np.sqrt((x - xc) ** 2 + (y - yc) ** 2)
+  radii = np.sqrt((x - xc)**2 + (y - yc)**2)
   radius = radii.mean()
-  residual = np.sum((radii - radius) ** 2)
+  residual = np.sum((radii - radius)**2)
 
   return (center, radius, residual)
 
@@ -1004,16 +1003,14 @@ def poe(screw_axis: Vec6, theta: Vec3, tol: float = 1e-6) -> Mat4:
   w_skew_sq = w_skew @ w_skew
 
   A = so3_exp(se3mat[0:3, 0:3])
-  B = (
-    I3 * theta + (1.0 - c_th) * w_skew + (theta - s_th) * w_skew_sq
-  ) @ screw_axis[3:]
+  B = (I3 * theta + (1.0 - c_th) * w_skew +
+       (theta - s_th) * w_skew_sq) @ screw_axis[3:]
 
   return np.block([[A, B.reshape((3, 1))], [0.0, 0.0, 0.0, 1.0]])
 
 
 class TestLie(unittest.TestCase):
   """Test Lie algebra functions"""
-
   def test_Exp_Log(self):
     """Test Exp() and Log()"""
     pass
@@ -1458,7 +1455,6 @@ def rot_diff(C0: Mat3, C1: Mat3, tol: float = 1e-5):
 
 class TestTransform(unittest.TestCase):
   """Test transform functions"""
-
   def test_homogeneous(self):
     """Test homogeneous()"""
     p = np.array([1.0, 2.0, 3.0])
@@ -1714,7 +1710,6 @@ def quat_slerp(q_i: Vec4, q_j: Vec4, t: float):
 
 class TestQuaternion(unittest.TestCase):
   """Test Quaternion functions"""
-
   def test_quat_norm(self):
     """Test quat_norm()"""
     q = np.array([1.0, 0.0, 0.0, 0.0])
@@ -2189,12 +2184,8 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
   scale_y = np.sqrt(cov[1, 1]) * n_std
   mean_y = np.mean(y)
 
-  transf = (
-    matplotlib.transforms.Affine2D()
-    .rotate_deg(45)
-    .scale(scale_x, scale_y)
-    .translate(mean_x, mean_y)
-  )
+  transf = matplotlib.transforms.Affine2D().rotate_deg(45).scale(
+    scale_x, scale_y).translate(mean_x, mean_y)
 
   ellipse.set_transform(transf + ax.transData)
   return ax.add_patch(ellipse)
@@ -2259,9 +2250,13 @@ def plot_tf(ax, T, **kwargs):
     x = origin[0] + nameoffset[0]
     y = origin[1] + nameoffset[1]
     z = origin[2] + nameoffset[2]
-    text = ax.text(
-      x, y, z, name, fontsize=fontsize, fontweight=fontweight, color=fontcolor
-    )
+    text = ax.text(x,
+                   y,
+                   z,
+                   name,
+                   fontsize=fontsize,
+                   fontweight=fontweight,
+                   color=fontcolor)
     return (xaxis, yaxis, zaxis, text)
 
   return (xaxis, yaxis, zaxis)
@@ -2510,9 +2505,9 @@ def illumination_invariant_transform(image, alpha=0.9):
 
 
 def lookat(
-  cam_pos: Vec3,
-  target_pos: Vec3,
-  up_axis: Vec3 = np.array([0.0, -1.0, 0.0]),
+    cam_pos: Vec3,
+    target_pos: Vec3,
+    up_axis: Vec3 = np.array([0.0, -1.0, 0.0]),
 ) -> Mat4:
   """Form look at matrix"""
   assert len(cam_pos) == 3
@@ -2886,8 +2881,8 @@ def _solvepnp_linearize(object_points, image_points, fx, fy, cx, cy, pose):
     C_FC, r_FC = tf_decompose(T_FC_est)
     # -- Jacobian w.r.t 3D point p_C
     Jp = zeros((2, 3))
-    Jp[0, :] = [1 / p_C[2], 0, -p_C[0] / p_C[2] ** 2]
-    Jp[1, :] = [0, 1 / p_C[2], -p_C[1] / p_C[2] ** 2]
+    Jp[0, :] = [1 / p_C[2], 0, -p_C[0] / p_C[2]**2]
+    Jp[1, :] = [0, 1 / p_C[2], -p_C[1] / p_C[2]**2]
     # -- Jacobian w.r.t 2D point x
     Jk = zeros((2, 2))
     Jk[0, 0] = fx
@@ -3186,8 +3181,8 @@ def shi_tomasi_corner(image_gray: Image, **kwargs) -> list[tuple[int, int]]:
         continue
 
       # Calculate sum of squares
-      Sxx = Ixx[i - offset : i + offset + 1, j - offset : j + offset + 1].sum()
-      Syy = Iyy[i - offset : i + offset + 1, j - offset : j + offset + 1].sum()
+      Sxx = Ixx[i - offset:i + offset + 1, j - offset:j + offset + 1].sum()
+      Syy = Iyy[i - offset:i + offset + 1, j - offset:j + offset + 1].sum()
       r = min(Sxx, Syy)
 
       # Threshold for corner
@@ -3596,8 +3591,8 @@ def pinhole_radtan4_project_jacobian(
 
   # Jacobian
   J_proj = zeros((2, 3))
-  J_proj[0, :] = [1 / p_C[2], 0, -p_C[0] / p_C[2] ** 2]
-  J_proj[1, :] = [0, 1 / p_C[2], -p_C[1] / p_C[2] ** 2]
+  J_proj[0, :] = [1 / p_C[2], 0, -p_C[0] / p_C[2]**2]
+  J_proj[1, :] = [0, 1 / p_C[2], -p_C[1] / p_C[2]**2]
   J_dist_point = radtan4_point_jacobian(dist_params, x)
   J_proj_point = pinhole_point_jacobian(proj_params)
 
@@ -3707,8 +3702,8 @@ def pinhole_equi4_project_jacobian(
 
   # Jacobian
   J_proj = zeros((2, 3))
-  J_proj[0, :] = [1 / p_C[2], 0, -p_C[0] / p_C[2] ** 2]
-  J_proj[1, :] = [0, 1 / p_C[2], -p_C[1] / p_C[2] ** 2]
+  J_proj[0, :] = [1 / p_C[2], 0, -p_C[0] / p_C[2]**2]
+  J_proj[1, :] = [0, 1 / p_C[2], -p_C[1] / p_C[2]**2]
   J_dist_point = equi4_point_jacobian(dist_params, x)
   J_proj_point = pinhole_point_jacobian(proj_params)
   return J_proj_point @ J_dist_point @ J_proj
@@ -3770,17 +3765,17 @@ class CameraGeometry:
 
   def proj_params(self, params):
     """Extract projection parameters"""
-    return params[: self.proj_params_size]
+    return params[:self.proj_params_size]
 
   def dist_params(self, params):
     """Extract distortion parameters"""
-    return params[-self.dist_params_size :]
+    return params[-self.dist_params_size:]
 
   def project(self, params, p_C):
     """Project point `p_C` with camera parameters `params`"""
     # Project
-    proj_params = params[: self.proj_params_size]
-    dist_params = params[-self.dist_params_size :]
+    proj_params = params[:self.proj_params_size]
+    dist_params = params[-self.dist_params_size:]
     z = self.project_fn(proj_params, dist_params, p_C)
 
     # Make sure point is infront of camera
@@ -3797,26 +3792,26 @@ class CameraGeometry:
 
   def backproject(self, params, z):
     """Back-project image point `z` with camera parameters `params`"""
-    proj_params = params[: self.proj_params_size]
-    dist_params = params[-self.dist_params_size :]
+    proj_params = params[:self.proj_params_size]
+    dist_params = params[-self.dist_params_size:]
     return self.backproject_fn(proj_params, dist_params, z)
 
   def undistort(self, params, z):
     """Undistort image point `z` with camera parameters `params`"""
-    proj_params = params[: self.proj_params_size]
-    dist_params = params[-self.dist_params_size :]
+    proj_params = params[:self.proj_params_size]
+    dist_params = params[-self.dist_params_size:]
     return self.undistort_fn(proj_params, dist_params, z)
 
   def J_proj(self, params, p_C):
     """Form Jacobian w.r.t. p_C"""
-    proj_params = params[: self.proj_params_size]
-    dist_params = params[-self.dist_params_size :]
+    proj_params = params[:self.proj_params_size]
+    dist_params = params[-self.dist_params_size:]
     return self.J_proj_fn(proj_params, dist_params, p_C)
 
   def J_params(self, params, p_C):
     """Form Jacobian w.r.t. camera parameters"""
-    proj_params = params[: self.proj_params_size]
-    dist_params = params[-self.dist_params_size :]
+    proj_params = params[:self.proj_params_size]
+    dist_params = params[-self.dist_params_size:]
     return self.J_params_fn(proj_params, dist_params, p_C)
 
   def keypoint2idp(self, params, kp, depth=0.5):
@@ -3942,9 +3937,11 @@ class ChessboardDetector:
 
     return template
 
-  def non_maxima_suppression(
-    self, image: Image, n: int = 3, tau: float = 0.1, margin: int = 2
-  ):
+  def non_maxima_suppression(self,
+                             image: Image,
+                             n: int = 3,
+                             tau: float = 0.1,
+                             margin: int = 2):
     """
     Non Maximum Suppression
 
@@ -3984,9 +3981,8 @@ class ChessboardDetector:
         for i2 in range(maxi - n, min(maxi + n, width - margin)):
           for j2 in range(maxj - n, min(maxj + n, height - margin)):
             currval = image[j2, i2]
-            if currval > maxval and (
-              i2 < i or i2 > i + n or j2 < j or j2 > j + n
-            ):
+            if currval > maxval and (i2 < i or i2 > i + n or j2 < j or
+                                     j2 > j + n):
               failed = 1
               break
           if failed:
@@ -3998,9 +3994,8 @@ class ChessboardDetector:
 
     return maxima
 
-  def edge_orientations(
-    self, img_angle: Image, img_weight: Image
-  ) -> tuple[Vec2, Vec2]:
+  def edge_orientations(self, img_angle: Image,
+                        img_weight: Image) -> tuple[Vec2, Vec2]:
     """
     Calculate Edge Orientations
 
@@ -4032,9 +4027,8 @@ class ChessboardDetector:
     # Create histogram
     angle_hist = np.zeros(bin_num)
     for i in range(len(vec_angle)):
-      bin_idx = min(
-        max(int(np.floor(vec_angle[i] / (np.pi / bin_num))), 0), bin_num - 1
-      )
+      bin_idx = min(max(int(np.floor(vec_angle[i] / (np.pi / bin_num))), 0),
+                    bin_num - 1)
       angle_hist[bin_idx] += vec_weight[i]
 
     # Find modes of smoothed histogram
@@ -4046,17 +4040,15 @@ class ChessboardDetector:
 
     # Compute orientation at modes
     modes = np.hstack(
-      (modes, ((modes[:, 0] - 1) * np.pi / bin_num).reshape(-1, 1))
-    )
+      (modes, ((modes[:, 0] - 1) * np.pi / bin_num).reshape(-1, 1)))
 
     # Extract 2 strongest modes and sort by angle
     modes = modes[:2]
     modes = modes[np.argsort(modes[:, 2])]
 
     # Compute angle between modes
-    delta_angle = min(
-      modes[1, 2] - modes[0, 2], modes[0, 2] + np.pi - modes[1, 2]
-    )
+    delta_angle = min(modes[1, 2] - modes[0, 2],
+                      modes[0, 2] + np.pi - modes[1, 2])
 
     # If angle too small => return invalid corner
     if delta_angle <= 0.3:
@@ -4175,14 +4167,12 @@ class ChessboardDetector:
           scipy.signal.convolve2d(image, template[3], mode="same"),
         ]
         img_corners_mu = np.mean(img_corners, axis=0)
-        arr = np.array(
-          [
-            img_corners[0] - img_corners_mu,
-            img_corners[1] - img_corners_mu,
-            img_corners_mu - img_corners[2],
-            img_corners_mu - img_corners[3],
-          ]
-        )
+        arr = np.array([
+          img_corners[0] - img_corners_mu,
+          img_corners[1] - img_corners_mu,
+          img_corners_mu - img_corners[2],
+          img_corners_mu - img_corners[3],
+        ])
         img_corners_1 = np.min(arr, axis=0)  # Case 1: a = white, b = black
         img_corners_2 = np.min(-arr, axis=0)  # Case 2: b = white, a = black
 
@@ -4232,7 +4222,6 @@ class ChessboardDetector:
 
 class TestCV(unittest.TestCase):
   """Test computer vision functions"""
-
   def setUp(self):
     # Camera
     img_w = 640
@@ -4871,9 +4860,12 @@ def icp(
     # Plot
     if est_ax:
       est_ax.remove()
-    est_ax = ax.scatter(
-      X[:, 0], X[:, 1], X[:, 2], color="k", label="est", alpha=0.2
-    )
+    est_ax = ax.scatter(X[:, 0],
+                        X[:, 1],
+                        X[:, 2],
+                        color="k",
+                        label="est",
+                        alpha=0.2)
     plot_set_axes_equal(ax)
     plt.draw()
     plt.pause(0.5)
@@ -4891,7 +4883,6 @@ def icp(
 
 class TestPointCloud(unittest.TestCase):
   """Test point cloud functions"""
-
   def test_umeyama(self):
     debug = False
     R_gnd = euler321(*np.random.rand(3))
@@ -4916,9 +4907,12 @@ class TestPointCloud(unittest.TestCase):
       ax = plt.axes(projection="3d")
       ax.scatter(src[:, 0], src[:, 1], src[:, 2], "r", label="src", alpha=0.2)
       ax.scatter(dst[:, 0], dst[:, 1], dst[:, 2], "g", label="dest", alpha=0.2)
-      ax.scatter(
-        est[:, 0], est[:, 1], est[:, 2], "k", label="aligned", alpha=0.2
-      )
+      ax.scatter(est[:, 0],
+                 est[:, 1],
+                 est[:, 2],
+                 "k",
+                 label="aligned",
+                 alpha=0.2)
       ax.legend(loc=0)
       plot_set_axes_equal(ax)
       plt.show()
@@ -5088,7 +5082,6 @@ class ImuEvent:
 @dataclass
 class Timeline:
   """Timeline"""
-
   def __init__(self):
     self.data = {}
 
@@ -5124,7 +5117,6 @@ class Timeline:
 
 class EurocSensor:
   """Euroc Sensor"""
-
   def __init__(self, yaml_path):
     # Load yaml file
     config = load_yaml(yaml_path)
@@ -5155,7 +5147,6 @@ class EurocSensor:
 
 class EurocImuData:
   """Euroc Imu data"""
-
   def __init__(self, data_dir):
     import pandas
 
@@ -5189,7 +5180,6 @@ class EurocImuData:
 
 class EurocCameraData:
   """Euroc Camera data"""
-
   def __init__(self, data_dir, cam_idx):
     self.cam_idx = cam_idx
     self.cam_dir = Path(data_dir, "mav0", "cam" + str(cam_idx))
@@ -5212,7 +5202,6 @@ class EurocCameraData:
 
 class EurocGroundTruth:
   """Euroc ground truth"""
-
   def __init__(self, data_dir):
     import pandas
 
@@ -5254,7 +5243,6 @@ class EurocGroundTruth:
 
 class EurocDataset:
   """Euroc Dataset"""
-
   def __init__(self, data_path):
     # Data path
     self.data_path = data_path
@@ -5324,7 +5312,6 @@ class EurocDataset:
 
 class TestEuroc(unittest.TestCase):
   """Test Euroc dataset loader"""
-
   def test_load(self):
     """Test load"""
     dataset = EurocDataset(EUROC_DATA_PATH)
@@ -5336,7 +5323,6 @@ class TestEuroc(unittest.TestCase):
 
 class KittiCameraData:
   """Kitti Camera Data"""
-
   def __init__(self, cam_idx, seq_dir: Path):
     self.cam_idx = cam_idx
     self.seq_dir = seq_dir
@@ -5347,7 +5333,6 @@ class KittiCameraData:
 
 class KittiVelodyneData:
   """Kitti Velodyne Data"""
-
   def __init__(self, seq_dir: Path):
     self.seq_dir = seq_dir
     self.velodyne_path = Path(self.seq_dir, "velodyne_points")
@@ -5388,7 +5373,6 @@ class KittiVelodyneData:
 
 class KittiRawDataset:
   """KittiRawDataset"""
-
   def __init__(self, data_dir: Path, date: str, seq: str, is_sync: bool):
     # Paths
     self.data_dir = data_dir
@@ -5641,7 +5625,6 @@ def compl_filter(gyro, accel, dt, roll, pitch):
 
 class KalmanFilter:
   """Kalman Filter"""
-
   def __init__(self, **kwargs):
     self.x = kwargs["x0"]
     self.F = kwargs["F"]
@@ -5670,7 +5653,6 @@ class KalmanFilter:
 
 class TestKalmanFilter(unittest.TestCase):
   """Test Kalman Filter"""
-
   def test_constant_acceleration_example(self):
     # Simulation parameters
     dt = 0.01
@@ -5879,7 +5861,6 @@ def morton_decode(code):
 
 class Plane:
   """Plane"""
-
   def __init__(
     self,
     normal: Vec3,
@@ -5933,11 +5914,11 @@ class Plane:
     return T
 
   def plot(
-    self,
-    ax,
-    color="r",
-    xrange=np.linspace(-1.0, 1.0, 10),
-    yrange=np.linspace(-1.0, 1.0, 10),
+      self,
+      ax,
+      color="r",
+      xrange=np.linspace(-1.0, 1.0, 10),
+      yrange=np.linspace(-1.0, 1.0, 10),
   ):
     """Plot the plane"""
     xx, yy = np.meshgrid(xrange, yrange)
@@ -5956,7 +5937,6 @@ class Plane:
 
 class Frustum:
   """Frustum"""
-
   def __init__(
     self,
     hfov: float,
@@ -6058,14 +6038,9 @@ class Frustum:
       inside = []
       outside = []
       for p in points:
-        if (
-          self.near.distance(p) >= 0
-          and self.far.distance(p) >= 0
-          and self.left.distance(p) >= 0
-          and self.right.distance(p) >= 0
-          and self.top.distance(p) >= 0
-          and self.bottom.distance(p) >= 0
-        ):
+        if (self.near.distance(p) >= 0 and self.far.distance(p) >= 0 and
+            self.left.distance(p) >= 0 and self.right.distance(p) >= 0 and
+            self.top.distance(p) >= 0 and self.bottom.distance(p) >= 0):
           inside.append(p)
         else:
           outside.append(p)
@@ -6124,7 +6099,6 @@ class Frustum:
 
 class Ray:
   """3D Ray"""
-
   def __init__(self, origin: Vec3, dir: Vec3):
     self.origin = origin
     self.dir = dir
@@ -6138,7 +6112,6 @@ class Ray:
 
 class OctreeNode:
   """Octree Node"""
-
   def __init__(self, center: Vec3, size: float, depth: int, max_depth: int):
     self.center = center
     self.size = size
@@ -6163,9 +6136,9 @@ class OctreeNode:
 
     half_size = self.size / 2.0
     quarter_size = self.size / 4.0
-    offset_x = (-1) ** ((index >> 0) & 1) * quarter_size
-    offset_y = (-1) ** ((index >> 1) & 1) * quarter_size
-    offset_z = (-1) ** ((index >> 2) & 1) * quarter_size
+    offset_x = (-1)**((index >> 0) & 1) * quarter_size
+    offset_y = (-1)**((index >> 1) & 1) * quarter_size
+    offset_z = (-1)**((index >> 2) & 1) * quarter_size
 
     child = self.children[index]
     if child is None:
@@ -6217,7 +6190,6 @@ class OctreeNode:
 
 class Octree:
   """Octree"""
-
   def __init__(self, points, max_depth=3):
     self.center = np.array([0.0, 0.0, 0.0])
     self.size = 2.0
@@ -6241,7 +6213,6 @@ class Octree:
 
 class TestPlane(unittest.TestCase):
   """Test Plane"""
-
   def test_plane(self):
     # Define the coefficients of the plane
     # ax + by + cz = d
@@ -6276,7 +6247,6 @@ class TestPlane(unittest.TestCase):
 
 class TestFrustum(unittest.TestCase):
   """Test Frustum"""
-
   def test_frustum(self):
     # C_WC = euler321(-pi / 2.0, 0.0, -pi / 2.0)
     C_WC = euler321(0.0, 0.0, 0.0)
@@ -6312,7 +6282,6 @@ class TestFrustum(unittest.TestCase):
 
 class TestOctree(unittest.TestCase):
   """Test Octree"""
-
   def test_octree(self):
     points = [np.random.rand(3) for _ in range(100)]
     center = [0.0, 0.0, 0.0]
@@ -6365,7 +6334,7 @@ def kdtree_build(points, depth=0):
 
   node = KDNode(median_point, axis)
   node.left = kdtree_build(sorted_points[:median_index], depth + 1)
-  node.right = kdtree_build(sorted_points[median_index + 1 :], depth + 1)
+  node.right = kdtree_build(sorted_points[median_index + 1:], depth + 1)
   return node
 
 
@@ -6405,18 +6374,15 @@ def kdtree_nn(root, target):
 
 class TestKDTree(unittest.TestCase):
   """Test KDTree"""
-
   def test_kdtree(self):
-    points = np.array(
-      [
-        [1.0, 2.0],
-        [3.0, 5.0],
-        [4.0, 2.0],
-        [7.0, 8.0],
-        [8.0, 1.0],
-        [9.0, 6.0],
-      ]
-    )
+    points = np.array([
+      [1.0, 2.0],
+      [3.0, 5.0],
+      [4.0, 2.0],
+      [7.0, 8.0],
+      [8.0, 1.0],
+      [9.0, 6.0],
+    ])
 
     target_point = [5.0, 3.0]
     kdtree = kdtree_build(points)
@@ -6472,7 +6438,6 @@ class StateVariable:
 
 class FeatureMeasurements:
   """Feature measurements"""
-
   def __init__(self):
     self._init = False
     self._data = {}
@@ -6683,7 +6648,6 @@ def idp_point(param):
 
 class Factor:
   """Factor"""
-
   def __init__(self, ftype, pids, z, covar, r_size):
     self.factor_id = None
     self.factor_type = ftype
@@ -6767,7 +6731,6 @@ class Factor:
 
 class MeasurementFactor(Factor):
   """Measurement Factor"""
-
   def __init__(self, pids, z, covar):
     assert len(pids) == 1
     r_size = 1 if type(z) in [np.float64, float] else len(z)
@@ -6802,7 +6765,6 @@ class MeasurementFactor(Factor):
 
 class PoseFactor(Factor):
   """Pose Factor"""
-
   def __init__(self, pids, z, covar):
     assert len(pids) == 1
     assert z.shape == (4, 4)
@@ -6846,7 +6808,6 @@ class PoseFactor(Factor):
 
 class MultiCameraBuffer:
   """Multi-camera buffer"""
-
   def __init__(self, nb_cams=0):
     self.nb_cams = nb_cams
     self._ts = []
@@ -6891,7 +6852,6 @@ class MultiCameraBuffer:
 
 class BAFactor(Factor):
   """BA Factor"""
-
   def __init__(self, cam_geom, pids, z, covar=eye(2)):
     assert len(pids) == 3
     assert len(z) == 2
@@ -6976,7 +6936,6 @@ class BAFactor(Factor):
 
 class VisionFactor(Factor):
   """Vision Factor"""
-
   def __init__(self, cam_geom, pids, z, covar=eye(2)):
     assert len(pids) == 4
     assert len(z) == 2
@@ -7069,7 +7028,6 @@ class VisionFactor(Factor):
 
 class CalibVisionFactor(Factor):
   """Calibration Vision Factor"""
-
   def __init__(self, cam_geom, pids, calib_target, covar=eye(2)):
     assert len(pids) == 3
     assert len(calib_target) == 4
@@ -7156,7 +7114,6 @@ class CalibVisionFactor(Factor):
 
 class ImuBuffer:
   """IMU buffer"""
-
   def __init__(self, ts=None, acc=None, gyr=None):
     self.ts = ts if ts is not None else []
     self.acc = acc if acc is not None else []
@@ -7299,7 +7256,6 @@ class ImuFactorData2:
 
 class ImuFactor(Factor):
   """Imu Factor"""
-
   def __init__(self, pids, imu_params, imu_buf, sb_i):
     assert len(pids) == 4
     self.imu_params = imu_params
@@ -7497,7 +7453,6 @@ class ImuFactor(Factor):
 
 class ImuFactor2(Factor):
   """Imu Factor2"""
-
   def __init__(self, pids, imu_params, imu_buf, sb_i):
     assert len(pids) == 4
     self.imu_params = imu_params
@@ -7772,7 +7727,6 @@ class ImuFactor2(Factor):
 
 class LidarFactor(Factor):
   """Lidar Factor"""
-
   def __init__(self, pids, map, lidar_scan):
     assert len(pids) == 3
     assert map is not None
@@ -7817,7 +7771,6 @@ class LidarFactor(Factor):
 
 class MargFactor(Factor):
   """Marginalization Factor"""
-
   def __init__(self):
     Factor.__init__(self, "MargFactor", [], None, None, None)
 
@@ -8045,7 +7998,7 @@ class MargFactor(Factor):
     for param in params:
       J_idx = self.param_idxs[param.param_id]
       J_size = param.min_dims
-      J_param = self.J0[J_idx : J_idx + r_size, J_idx : J_idx + J_size]
+      J_param = self.J0[J_idx:J_idx + r_size, J_idx:J_idx + J_size]
       jacs.append(J_param)
 
     return (r, jacs)
@@ -8053,7 +8006,6 @@ class MargFactor(Factor):
 
 class TestPoseFactor(unittest.TestCase):
   """Test Pose factor"""
-
   def test_pose_factor(self):
     """Test pose factor"""
     # Setup camera pose T_WC
@@ -8078,7 +8030,6 @@ class TestPoseFactor(unittest.TestCase):
 
 class TestBAFactor(unittest.TestCase):
   """Test BA factor"""
-
   def test_ba_factor(self):
     """Test ba factor"""
     # Setup camera pose T_WC
@@ -8131,7 +8082,6 @@ class TestBAFactor(unittest.TestCase):
 
 class TestVisionFactor(unittest.TestCase):
   """Test Vision factor"""
-
   def test_vision_factor(self):
     """Test vision factor"""
     # Setup camera pose T_WB
@@ -8187,7 +8137,6 @@ class TestVisionFactor(unittest.TestCase):
 
 class TestCalibVisionFactor(unittest.TestCase):
   """Test CalibVision factor"""
-
   def test_calib_vision_factor(self):
     """Test CalibVisionFactor"""
     # Calibration target pose T_WF
@@ -8247,7 +8196,6 @@ class TestCalibVisionFactor(unittest.TestCase):
 
 class TestIMUFactor(unittest.TestCase):
   """Test IMU factor"""
-
   def test_imu_buffer(self):
     """Test IMU Buffer"""
     # Extract measurements from ts: 4 - 7
@@ -8605,7 +8553,6 @@ class TestIMUFactor(unittest.TestCase):
 
 class TestMargFactor(unittest.TestCase):
   """Test Marg factor"""
-
   def test_marg_factor(self):
     """Test MargFactor"""
     # Setup cam0 parameters and geometry
@@ -8779,7 +8726,6 @@ class TestMargFactor(unittest.TestCase):
 
 class FactorGraph:
   """FactorGraph"""
-
   def __init__(self):
     self._next_param_id = 0
     self._next_factor_id = 0
@@ -9094,7 +9040,6 @@ class FactorGraph:
 
 class TestFactorGraph(unittest.TestCase):
   """Test Factor Graph"""
-
   def setUp(self):
     circle_r = 5.0
     circle_v = 1.0
@@ -9303,9 +9248,8 @@ class TestFactorGraph(unittest.TestCase):
       param_ids = [pose_i_id, sb_i_id, pose_j_id, sb_j_id]
       imu_buf = imu0_data.form_imu_buffer(ts_idx - window_size, ts_idx)
       # factor = ImuFactor(param_ids, imu_params, imu_buf, sb_i) # Euler method
-      factor = ImuFactor2(
-        param_ids, imu_params, imu_buf, sb_i
-      )  # Midpoint method
+      factor = ImuFactor2(param_ids, imu_params, imu_buf,
+                          sb_i)  # Midpoint method
       graph.add_factor(factor)
 
       # -- Update
@@ -9507,8 +9451,7 @@ class TestFactorGraph(unittest.TestCase):
             if ts_k <= imu_data.ts[-1]:
               imu_buf = imu_data.extract(ts_km1, ts_k)
               graph.add_factor(
-                ImuFactor2(param_ids, imu_params, imu_buf, sbs[-2])
-              )
+                ImuFactor2(param_ids, imu_params, imu_buf, sbs[-2]))
 
       if len(poses) > 20:
         break
@@ -9584,11 +9527,11 @@ def draw_matches(img_i: Image, img_j: Image, kps_i, kps_j) -> Image:
 
 
 def draw_keypoints(
-  img,
-  kps,
-  inliers=None,
-  radius: int = 1,
-  color: tuple[int, int, int] = (0, 255, 0),
+    img,
+    kps,
+    inliers=None,
+    radius: int = 1,
+    color: tuple[int, int, int] = (0, 255, 0),
 ):
   """
   Draw points `kps` on image `img`. The `inliers` boolean list is optional
@@ -9884,7 +9827,6 @@ class FeatureGrid:
     cell_id = int(grid_x + (grid_y * grid_cols))
 
   """
-
   def __init__(self, grid_rows, grid_cols, image_shape, keypoints):
     assert len(image_shape) == 2
     self.grid_rows = grid_rows
@@ -10339,7 +10281,6 @@ class FeatureTrack:
   """
   Feature Track
   """
-
   def __init__(self, feature_id, cam_params, cam_exts, **kwargs):
     self.feature_id = feature_id
     self.cam_params = cam_params
@@ -10436,7 +10377,6 @@ class FeatureTrack:
 
 class TestFeatureTracking(unittest.TestCase):
   """Test feature tracking functions"""
-
   @classmethod
   def setUpClass(cls):
     super(TestFeatureTracking, cls).setUpClass()
@@ -10638,7 +10578,6 @@ class TestFeatureTracking(unittest.TestCase):
 
 class CalibTarget:
   """CalibTarget"""
-
   def __init__(self, **kwargs):
     self.tag_rows = kwargs.get("tag_rows", 6)
     self.tag_cols = kwargs.get("tag_cols", 6)
@@ -10825,9 +10764,11 @@ class CalibTarget:
       points.append(r_WFi)
     points = np.array(points)
 
-    ax.scatter(
-      points[:, 0], points[:, 1], points[:, 2], color=pt_colors, alpha=0.2
-    )
+    ax.scatter(points[:, 0],
+               points[:, 1],
+               points[:, 2],
+               color=pt_colors,
+               alpha=0.2)
     plot_tf(ax, T_WF, size=self.tag_size, colors=tf_colors)
 
 
@@ -10889,7 +10830,6 @@ def calib_generate_random_poses(calib_center, **kwargs):
 
 class TestCalibration(unittest.TestCase):
   """Test calibration functions"""
-
   def test_calib_generate_poses(self):
     """Test calib_generate_poses()"""
     # Calibration target
@@ -11012,7 +10952,6 @@ def create_3d_features_perimeter(origin, dim, nb_features):
 
 class SimCameraFrame:
   """Sim camera frame"""
-
   def __init__(self, ts, cam_idx, camera, T_WCi, features):
     assert T_WCi.shape == (4, 4)
     assert features.shape[0] > 0
@@ -11054,7 +10993,6 @@ class SimCameraFrame:
 
 class SimCameraData:
   """Sim camera data"""
-
   def __init__(self, cam_idx, camera, features):
     self.cam_idx = cam_idx
     self.camera = camera
@@ -11066,7 +11004,6 @@ class SimCameraData:
 
 class SimImuData:
   """Sim imu data"""
-
   def __init__(self, imu_idx):
     self.imu_idx = imu_idx
     self.timestamps = []
@@ -11089,7 +11026,6 @@ class SimImuData:
 
 class SimData:
   """Sim data"""
-
   def __init__(self, circle_r, circle_v, **kwargs):
     # Settings
     self.circle_r = circle_r
@@ -11358,7 +11294,6 @@ def dh_matrix(theta, d, a, alpha):
 
 class TestSimulation(unittest.TestCase):
   """Test simulation functions"""
-
   def test_create_3d_features(self):
     """Test create 3D features"""
     debug = False
@@ -11577,7 +11512,6 @@ class TestSimulation(unittest.TestCase):
 
 class PID:
   """PID controller"""
-
   def __init__(self, k_p, k_i, k_d):
     self.k_p = k_p
     self.k_i = k_i
@@ -11617,7 +11551,6 @@ class PID:
 
 class CarrotController:
   """Carrot Controller"""
-
   def __init__(self):
     self.waypoints = []
     self.wp_start = None
@@ -12064,7 +11997,7 @@ class MavTrajectoryControl:
   def get_position(self, t):
     """Get position"""
     w = 2.0 * np.pi * self.f
-    theta = np.sin(0.25 * w * t) ** 2
+    theta = np.sin(0.25 * w * t)**2
 
     ka = 2.0 * np.pi * self.a
     kb = 2.0 * np.pi * self.b
@@ -12100,8 +12033,8 @@ class MavTrajectoryControl:
     ky = 2.0 * np.pi**2 * self.B * self.b * self.f
     ksincos = np.sin(kpift) * np.cos(kpift)
 
-    vx = kx * ksincos * np.cos(ka * np.sin(kpift) ** 2 + self.delta)
-    vy = ky * ksincos * np.cos(kb * np.sin(kpift) ** 2)
+    vx = kx * ksincos * np.cos(ka * np.sin(kpift)**2 + self.delta)
+    vy = ky * ksincos * np.cos(kb * np.sin(kpift)**2)
     vz = 0.0
 
     return np.array([vx, vy, vz])
@@ -12181,7 +12114,6 @@ class MavTrajectoryControl:
 
 class TestMav(unittest.TestCase):
   """Test Mav"""
-
   def test_symdiff_velocity(self):
     """Test symbolic differentiate velocity"""
     traj_ctrl = MavTrajectoryControl(z=2.0, T=10.0)
@@ -12334,8 +12266,7 @@ class TestMav(unittest.TestCase):
           plt.close(fig)
 
       cid = fig.canvas.mpl_connect(
-        "key_press_event", lambda event: on_key(event, self.keep_plotting)
-      )
+        "key_press_event", lambda event: on_key(event, self.keep_plotting))
 
     # Simulate
     time_data = []
@@ -12574,14 +12505,12 @@ class TestMav(unittest.TestCase):
 
 class TestPoE(unittest.TestCase):
   """Test PoE"""
-
   def test_scene(self):
     l1 = 0.1
     l2 = 0.2
     M = np.array([[0, 0, 1, l1], [0, 1, 0, 0], [-1, 0, 0, -l2], [0, 0, 0, 1]])
-    s_list = np.array(
-      [[0, 0, 1, 0, 0, 0], [0, -1, 0, 0, 0, -l1], [1, 0, 0, 0, -l2, 0]]
-    )
+    s_list = np.array([[0, 0, 1, 0, 0, 0], [0, -1, 0, 0, 0, -l1],
+                       [1, 0, 0, 0, -l2, 0]])
     theta_list = np.deg2rad(np.array([0.0, 0.0, 45.0]))
 
     C_WB = np.eye(3)
@@ -12599,9 +12528,8 @@ class TestPoE(unittest.TestCase):
 
   def test_fwdkinspace(self):
     M = np.array([[-1, 0, 0, 0], [0, 1, 0, 6], [0, 0, -1, 2], [0, 0, 0, 1]])
-    S_list = np.array(
-      [[0, 0, 1, 4, 0, 0], [0, 0, 0, 0, 1, 0], [0, 0, -1, -6, 0, -0.1]]
-    )
+    S_list = np.array([[0, 0, 1, 4, 0, 0], [0, 0, 0, 0, 1, 0],
+                       [0, 0, -1, -6, 0, -0.1]])
     theta_list = np.array([np.pi / 2.0, 3, np.pi])
 
     # i = 2
