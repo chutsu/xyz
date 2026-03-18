@@ -1,9 +1,16 @@
 use std::ops::Mul;
 
-use crate::linalg::Matrix3d;
-use crate::linalg::Matrix4d;
-use crate::linalg::Vector3d;
-use crate::linalg::Vector4d;
+use nalgebra::Dyn;
+use nalgebra::OMatrix;
+use nalgebra::SMatrix;
+use nalgebra::SVector;
+
+type Vector2d = SVector<f64, 2>;
+type Vector3d = SVector<f64, 3>;
+type Vector4d = SVector<f64, 4>;
+type Matrix3d = SMatrix<f64, 3, 3>;
+type Matrix4d = SMatrix<f64, 4, 4>;
+type MatrixXd = OMatrix<f64, Dyn, Dyn>;
 
 ///////////////////////////////////////////////////////////////////////////////
 // ROTATION MATRIX                                                           //
@@ -15,13 +22,13 @@ pub fn rotx(theta: f64) -> Matrix3d {
   let stheta = theta.sin();
 
   #[rustfmt::skip]
-  let data = [
+  let data = vec![
     1.0,    0.0,     0.0,
     0.0, ctheta, -stheta,
     0.0, stheta,  ctheta,
   ];
 
-  Matrix3d { data }
+  Matrix3d::from_vec(data)
 }
 
 /// Form rotation matrix around y axis
@@ -30,13 +37,13 @@ pub fn roty(theta: f64) -> Matrix3d {
   let stheta = theta.sin();
 
   #[rustfmt::skip]
-  let data = [
+  let data = vec![
      ctheta, 0.0, stheta,
         0.0, 1.0,    0.0,
     -stheta, 0.0, ctheta,
   ];
 
-  Matrix3d { data }
+  Matrix3d::from_vec(data)
 }
 
 /// Form rotation matrix around z axis
@@ -45,13 +52,13 @@ pub fn rotz(theta: f64) -> Matrix3d {
   let stheta = theta.sin();
 
   #[rustfmt::skip]
-  let data = [
+  let data = vec![
     ctheta, -stheta, 0.0,
     stheta,  ctheta, 0.0,
        0.0,     0.0, 1.0,
   ];
 
-  Matrix3d { data }
+  Matrix3d::from_vec(data)
 }
 
 /// Convert rotation matrix to euler angles
@@ -106,12 +113,7 @@ pub fn euler321(yaw: f64, pitch: f64, roll: f64) -> Matrix3d {
   let r23 = spsi * stheta * cphi - cpsi * sphi;
   let r33 = ctheta * cphi;
 
-  Matrix3d {
-    #[rustfmt::skip]
-      data: [r11, r12, r13,
-             r21, r22, r23,
-             r31, r32, r33],
-  }
+  Matrix3d::from_vec(vec![r11, r12, r13, r21, r22, r23, r31, r32, r33])
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -145,13 +147,13 @@ impl AxisAngle {
   }
 
   pub fn to_rot(&self) -> Matrix3d {
-    let x = self.axis.x();
-    let y = self.axis.y();
-    let z = self.axis.z();
+    let x = self.axis.x;
+    let y = self.axis.y;
+    let z = self.axis.z;
 
     let norm = (x * x + y * y + z * z).sqrt();
     if norm < 1e-12 {
-      return Matrix3d::eye();
+      return Matrix3d::identity();
     }
     let x = x / norm;
     let y = y / norm;
@@ -161,19 +163,19 @@ impl AxisAngle {
     let s = self.angle.sin();
     let one_c = 1.0 - c;
 
-    Matrix3d {
-      data: [
-        c + x * x * one_c,
-        x * y * one_c - z * s,
-        x * z * one_c + y * s,
-        y * x * one_c + z * s,
-        c + y * y * one_c,
-        y * z * one_c - x * s,
-        z * x * one_c - y * s,
-        z * y * one_c + x * s,
-        c + z * z * one_c,
-      ],
-    }
+    let r00 = c + x * x * one_c;
+    let r01 = x * y * one_c - z * s;
+    let r02 = x * z * one_c + y * s;
+
+    let r10 = y * x * one_c + z * s;
+    let r11 = c + y * y * one_c;
+    let r12 = y * z * one_c - x * s;
+
+    let r20 = z * x * one_c - y * s;
+    let r21 = z * y * one_c + x * s;
+    let r22 = c + z * z * one_c;
+
+    Matrix3d::from([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
   }
 }
 
@@ -190,56 +192,54 @@ mod axis_angle_tests {
   #[allow(non_snake_case)]
   fn test_axis_angle_z_90deg() {
     // Rotate 90 degrees around Z
-    let axis = Vector3d::new([0.0, 0.0, 1.0]);
+    let axis = Vector3d::new(0.0, 0.0, 1.0);
     let angle = std::f64::consts::FRAC_PI_2;
 
     let aa = AxisAngle::new(axis, angle);
     let R = aa.to_rot();
 
     // x axis should rotate to y axis
-    let v = Vector3d::new([1.0, 0.0, 0.0]);
+    let v = Vector3d::new(1.0, 0.0, 0.0);
     let result = &R * &v;
 
-    assert!(approx_eq(result.x(), 0.0));
-    assert!(approx_eq(result.y(), 1.0));
-    assert!(approx_eq(result.z(), 0.0));
+    assert!(approx_eq(result.x, 0.0));
+    assert!(approx_eq(result.y, 1.0));
+    assert!(approx_eq(result.z, 0.0));
   }
 
   #[test]
   #[allow(non_snake_case)]
   fn test_axis_angle_identity() {
-    let axis = Vector3d::new([1.0, 0.0, 0.0]);
+    let axis = Vector3d::new(1.0, 0.0, 0.0);
     let angle = 0.0;
 
     let aa = AxisAngle::new(axis, angle);
     let R = aa.to_rot();
 
-    let v = Vector3d::new([1.0, 2.0, 3.0]);
+    let v = Vector3d::new(1.0, 2.0, 3.0);
     let result = &R * &v;
-    println!("{}", R);
-    println!("{}", result);
 
-    assert!(approx_eq(result.x(), v.x()));
-    assert!(approx_eq(result.y(), v.y()));
-    assert!(approx_eq(result.z(), v.z()));
+    assert!(approx_eq(result.x, v.x));
+    assert!(approx_eq(result.y, v.y));
+    assert!(approx_eq(result.z, v.z));
   }
 
   #[test]
   #[allow(non_snake_case)]
   fn test_axis_normalization() {
     // axis does not need to be normalized
-    let axis = Vector3d::new([0.0, 0.0, 10.0]);
+    let axis = Vector3d::new(0.0, 0.0, 10.0);
     let angle = std::f64::consts::FRAC_PI_2;
 
     let aa = AxisAngle::new(axis, angle);
     let R = aa.to_rot();
 
-    let v = Vector3d::new([1.0, 0.0, 0.0]);
+    let v = Vector3d::new(1.0, 0.0, 0.0);
     let result = &R * &v;
 
-    assert!(approx_eq(result.x(), 0.0));
-    assert!(approx_eq(result.y(), 1.0));
-    assert!(approx_eq(result.z(), 0.0));
+    assert!(approx_eq(result.x, 0.0));
+    assert!(approx_eq(result.y, 1.0));
+    assert!(approx_eq(result.z, 0.0));
   }
 }
 
@@ -322,13 +322,15 @@ impl Quaternion {
     let qy = self.y();
     let qz = self.z();
 
-    Matrix4d {
-      #[rustfmt::skip]
-      data: [qw, -qx, -qy, -qz,
-             qx, qw, -qz, qy,
-             qy, qz, qw, -qx,
-             qz, -qy, qx, qw],
-    }
+    #[rustfmt::skip]
+    let data = [
+      [qw, -qx, -qy, -qz],
+      [qx, qw, -qz, qy],
+      [qy, qz, qw, -qx],
+      [qz, -qy, qx, qw]
+    ];
+
+    Matrix4d::from(data)
   }
 
   pub fn right_product(&self) -> Matrix4d {
@@ -337,18 +339,20 @@ impl Quaternion {
     let qy = self.y();
     let qz = self.z();
 
-    Matrix4d {
-      #[rustfmt::skip]
-      data: [qw, -qx, -qy, -qz,
-             qx, qw, qz, -qy,
-             qy, -qz, qw, qx,
-             qz, qy, -qx, qw],
-    }
+    #[rustfmt::skip]
+    let data = [
+      [qw, -qx, -qy, -qz],
+      [qx, qw, qz, -qy],
+      [qy, -qz, qw, qx],
+      [qz, qy, -qx, qw]
+    ];
+
+    Matrix4d::from(data)
   }
 
   fn mul(&self, rhs: &Quaternion) -> Quaternion {
     let q = &self.left_product() * &rhs.to_vec();
-    Quaternion { data: q.data }
+    Quaternion { data: q.into() }
   }
 
   pub fn from_array(data: [f64; 4]) -> Self {
@@ -356,7 +360,7 @@ impl Quaternion {
   }
 
   pub fn to_vec(&self) -> Vector4d {
-    Vector4d { data: self.data }
+    Vector4d::from(self.data)
   }
 
   /// Convert yaw, pitch, roll in radians to a quaternion.
@@ -394,17 +398,17 @@ impl Quaternion {
   }
 
   pub fn from_rot(rot: &Matrix3d) -> Self {
-    let m00 = rot.at(0, 0);
-    let m01 = rot.at(0, 1);
-    let m02 = rot.at(0, 2);
+    let m00: f64 = rot[(0, 0)];
+    let m01: f64 = rot[(0, 1)];
+    let m02: f64 = rot[(0, 2)];
 
-    let m10 = rot.at(1, 0);
-    let m11 = rot.at(1, 1);
-    let m12 = rot.at(1, 2);
+    let m10: f64 = rot[(1, 0)];
+    let m11: f64 = rot[(1, 1)];
+    let m12: f64 = rot[(1, 2)];
 
-    let m20 = rot.at(2, 0);
-    let m21 = rot.at(2, 1);
-    let m22 = rot.at(2, 2);
+    let m20: f64 = rot[(2, 0)];
+    let m21: f64 = rot[(2, 1)];
+    let m22: f64 = rot[(2, 2)];
 
     let tr = m00 + m11 + m22;
     if tr > 0.0 {
@@ -447,9 +451,9 @@ impl Quaternion {
   }
 
   pub fn from_axis_angle(axis: &Vector3d, angle: f64) -> Self {
-    let ax = axis.x();
-    let ay = axis.y();
-    let az = axis.z();
+    let ax = axis.x;
+    let ay = axis.y;
+    let az = axis.z;
     let k = (angle / 2.0).sin();
     let qw = (angle / 2.0).cos();
     let qx = ax * k;
@@ -488,9 +492,7 @@ impl Quaternion {
     let theta = (-m13).asin();
     let phi = (m33).atan2(m23);
 
-    Vector3d {
-      data: [psi, theta, phi],
-    }
+    Vector3d::new(psi, theta, phi)
   }
 
   /// Convert quaternion to 3x3 rotation matrix.
@@ -523,12 +525,7 @@ impl Quaternion {
     let r32 = 2.0 * (qy * qz + qw * qx);
     let r33 = qw2 - qx2 - qy2 + qz2;
 
-    Matrix3d {
-      #[rustfmt::skip]
-      data: [r11, r12, r13,
-             r21, r22, r23,
-             r31, r32, r33],
-    }
+    Matrix3d::from([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
   }
 }
 
@@ -568,35 +565,37 @@ impl Transform {
   }
 
   pub fn x(&self) -> f64 {
-    self.pos.x()
+    self.pos.x
   }
 
   pub fn y(&self) -> f64 {
-    self.pos.y()
+    self.pos.y
   }
 
   pub fn z(&self) -> f64 {
-    self.pos.z()
+    self.pos.z
   }
 
   pub fn rot(&self) -> Matrix3d {
     self.quat.to_rot()
   }
 
-  #[allow(non_snake_case)]
   pub fn inv(&self) -> Self {
-    let R = self.rot();
-    let t = self.pos;
+    #[allow(non_snake_case)]
+    {
+      let R = self.rot();
+      let t = self.pos;
 
-    let R_new = &R.transpose();
-    let pos_new = &-R.transpose() * &t;
-    let quat_new = Quaternion::from_rot(R_new);
+      let R_new = &R.transpose();
+      let pos_new = &-R.transpose() * &t;
+      let quat_new = Quaternion::from_rot(R_new);
 
-    Transform {
-      parent: self.child.clone(),
-      child: self.parent.clone(),
-      pos: pos_new,
-      quat: quat_new,
+      Transform {
+        parent: self.child.clone(),
+        child: self.parent.clone(),
+        pos: pos_new,
+        quat: quat_new,
+      }
     }
   }
 
@@ -606,29 +605,29 @@ impl Transform {
 
   pub fn from_mat(parent: String, child: String, tf: &Matrix4d) -> Self {
     // Translation
-    let px = *tf.at(0, 3);
-    let py = *tf.at(1, 3);
-    let pz = *tf.at(2, 3);
-    let pos = Vector3d::new([px, py, pz]);
+    let px = tf[(0, 3)];
+    let py = tf[(1, 3)];
+    let pz = tf[(2, 3)];
+    let pos = Vector3d::new(px, py, pz);
 
     // Rotation
-    let m00 = *tf.at(0, 0);
-    let m01 = *tf.at(0, 1);
-    let m02 = *tf.at(0, 2);
+    let m00 = tf[(0, 0)];
+    let m01 = tf[(0, 1)];
+    let m02 = tf[(0, 2)];
 
-    let m10 = *tf.at(1, 0);
-    let m11 = *tf.at(1, 1);
-    let m12 = *tf.at(1, 2);
+    let m10 = tf[(1, 0)];
+    let m11 = tf[(1, 1)];
+    let m12 = tf[(1, 2)];
 
-    let m20 = *tf.at(2, 0);
-    let m21 = *tf.at(2, 1);
-    let m22 = *tf.at(2, 2);
+    let m20 = tf[(2, 0)];
+    let m21 = tf[(2, 1)];
+    let m22 = tf[(2, 2)];
 
     #[rustfmt::skip]
-    let rot = Matrix3d::new([
-      m00, m01, m02,
-      m10, m11, m12,
-      m20, m21, m22,
+    let rot = Matrix3d::from([
+      [m00, m01, m02],
+      [m10, m11, m12],
+      [m20, m21, m22],
     ]);
     let quat = Quaternion::from_rot(&rot);
 
@@ -645,28 +644,10 @@ impl Transform {
     let rot = self.quat.to_rot();
     let pos = self.pos;
 
-    Matrix4d::new([
-      // Row 1
-      *rot.at(0, 0),
-      *rot.at(0, 1),
-      *rot.at(0, 2),
-      pos.x(),
-      // Row 2
-      *rot.at(1, 0),
-      *rot.at(1, 1),
-      *rot.at(1, 2),
-      pos.y(),
-      // Row 3
-      *rot.at(2, 0),
-      *rot.at(2, 1),
-      *rot.at(2, 2),
-      pos.z(),
-      // Row 4
-      0.0,
-      0.0,
-      0.0,
-      1.0,
-    ])
+    let mut tf = Matrix4d::identity();
+    tf.fixed_view_mut::<3, 3>(0, 0).copy_from(&rot);
+    tf.fixed_view_mut::<3, 1>(0, 3).copy_from(&pos);
+    tf
   }
 }
 
