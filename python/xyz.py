@@ -33,7 +33,7 @@ import os
 import sys
 import glob
 import math
-import time
+# import time
 import copy
 import random
 import pickle
@@ -47,6 +47,7 @@ from dataclasses import dataclass
 from collections import namedtuple
 
 import typing
+from typing import cast
 from typing import TypeVar
 from typing import Annotated
 from typing import Literal
@@ -1995,54 +1996,54 @@ def pose_diff(pose0: Mat4, pose1: Mat4) -> tuple[Vec3, float]:
   return (dr, dtheta)
 
 
-def load_extrinsics(csv_path: str) -> Mat4 | None:
-  """Load Extrinsics"""
-  import pandas
-
-  csv_data = pandas.read_csv(csv_path)
-  if csv_data is None:
-    return None
-
-  rx = csv_data["rx"]
-  ry = csv_data["ry"]
-  rz = csv_data["rz"]
-  r = np.array([rx, ry, rz])
-
-  qw = csv_data["qw"]
-  qx = csv_data["qx"]
-  qy = csv_data["qy"]
-  qz = csv_data["qz"]
-  q = np.array([qw, qx, qy, qz])
-
-  return tf(q, r)
-
-
-def load_poses(csv_path: str) -> list[tuple[float, Mat4]] | None:
-  """Load poses"""
-  import pandas
-
-  csv_data = pandas.read_csv(csv_path)
-  if csv_data is None:
-    return None
-
-  pose_data = []
-  for row_idx in range(csv_data.shape[0]):
-    pose_ts = csv_data["#ts"][row_idx]
-
-    rx = csv_data["rx"][row_idx]
-    ry = csv_data["ry"][row_idx]
-    rz = csv_data["rz"][row_idx]
-    r = np.array([rx, ry, rz])
-
-    qw = csv_data["qw"][row_idx]
-    qx = csv_data["qx"][row_idx]
-    qy = csv_data["qy"][row_idx]
-    qz = csv_data["qz"][row_idx]
-    q = np.array([qw, qx, qy, qz])
-
-    pose_data.append((pose_ts, tf(q, r)))
-
-  return pose_data
+# def load_extrinsics(csv_path: str) -> Mat4 | None:
+#   """Load Extrinsics"""
+#   import pandas
+#
+#   csv_data = pandas.read_csv(csv_path)
+#   if csv_data is None:
+#     return None
+#
+#   rx = csv_data["rx"]
+#   ry = csv_data["ry"]
+#   rz = csv_data["rz"]
+#   r = np.array([rx, ry, rz])
+#
+#   qw = csv_data["qw"]
+#   qx = csv_data["qx"]
+#   qy = csv_data["qy"]
+#   qz = csv_data["qz"]
+#   q = np.array([qw, qx, qy, qz])
+#
+#   return tf(q, r)
+#
+#
+# def load_poses(csv_path: str) -> list[tuple[float, Mat4]] | None:
+#   """Load poses"""
+#   import pandas
+#
+#   csv_data = pandas.read_csv(csv_path)
+#   if csv_data is None:
+#     return None
+#
+#   pose_data = []
+#   for row_idx in range(csv_data.shape[0]):
+#     pose_ts = csv_data["#ts"][row_idx]
+#
+#     rx = csv_data["rx"][row_idx]
+#     ry = csv_data["ry"][row_idx]
+#     rz = csv_data["rz"][row_idx]
+#     r = np.array([rx, ry, rz])
+#
+#     qw = csv_data["qw"][row_idx]
+#     qx = csv_data["qx"][row_idx]
+#     qy = csv_data["qy"][row_idx]
+#     qz = csv_data["qz"][row_idx]
+#     q = np.array([qw, qx, qy, qz])
+#
+#     pose_data.append((pose_ts, tf(q, r)))
+#
+#   return pose_data
 
 
 ###############################################################################
@@ -2052,7 +2053,7 @@ def load_poses(csv_path: str) -> list[tuple[float, Mat4]] | None:
 import matplotlib.pyplot as plt
 import matplotlib.patches
 import matplotlib.transforms
-# from mpl_toolkits.mplot3d.axes3d import Axes3D
+from mpl_toolkits.mplot3d.axes3d import Axes3D
 
 
 def plot_bbox(ax, center, size):
@@ -4351,18 +4352,18 @@ class TestCV(unittest.TestCase):
       diff = norm(pt_j_gnd - pt_j_est)
       self.assertTrue(diff < 1e-5)
 
-    # # Plot 3D
-    # plt.figure()
-    # ax = plt.axes(projection='3d')
-    # plot_tf(ax, T_WC_i, size=0.1, name="pose_i")
-    # plot_tf(ax, T_WC_j, size=0.1, name="pose_j")
-    # ax.scatter(points[:, 0], points[:, 1], points[:, 2])
-    # ax = cast(Axes3D, ax)
-    # ax.set_xlabel("x [m]")
-    # ax.set_ylabel("y [m]")
-    # ax.set_zlabel("z [m]")
-    # plot_set_axes_equal(ax)
-    # plt.show()
+    # Plot 3D
+    plt.figure()
+    ax = plt.axes(projection='3d')
+    plot_tf(ax, T_WC_i, size=0.1, name="pose_i")
+    plot_tf(ax, T_WC_j, size=0.1, name="pose_j")
+    ax.scatter(points[:, 0], points[:, 1], points[:, 2])
+    ax = cast(Axes3D, ax)
+    ax.set_xlabel("x [m]")
+    ax.set_ylabel("y [m]")
+    ax.set_zlabel("z [m]")
+    plot_set_axes_equal(ax)
+    plt.show()
 
   def test_homography_pose(self):
     """Test homography_pose()"""
@@ -10836,8 +10837,8 @@ class TestCalibration(unittest.TestCase):
     # debug = True
     debug = False
     if debug:
-      plt.figure()
-      ax = plt.axes(projection="3d")
+      fig = plt.figure()
+      ax = cast(Axes3D, fig.add_subplot(111, projection="3d"))
 
       # calib_target.plot(ax, T_WF)
       for T_FC in poses:
@@ -10864,8 +10865,8 @@ class TestCalibration(unittest.TestCase):
     # debug = True
     debug = False
     if debug:
-      plt.figure()
-      ax = plt.axes(projection="3d")
+      fig = plt.figure()
+      ax = cast(Axes3D, fig.add_subplot(111, projection="3d"))
 
       # calib_target.plot(ax, T_WF)
       for T_FC in poses:
@@ -12410,8 +12411,8 @@ class TestMav(unittest.TestCase):
         if ax_xy and len(pos_data) > 100:
           pos = np.array(pos_data).T
           ax_xy.plot(pos[0, ::100], pos[1, ::100], "r-")
-          ax_xy.set_xlim([-5.0, 5.0])
-          ax_xy.set_ylim([-5.0, 5.0])
+          ax_xy.set_xlim((-5.0, 5.0))
+          ax_xy.set_ylim((-5.0, 5.0))
           ax_xy.set_xlabel("x [m]")
           ax_xy.set_ylabel("y [m]")
 
@@ -12509,16 +12510,16 @@ class TestPoE(unittest.TestCase):
       plot_set_axes_equal(ax)
       plt.show()
 
-  def test_fwdkinspace(self):
-    M = np.array([[-1, 0, 0, 0], [0, 1, 0, 6], [0, 0, -1, 2], [0, 0, 0, 1]])
-    S_list = np.array([[0, 0, 1, 4, 0, 0], [0, 0, 0, 0, 1, 0],
-                       [0, 0, -1, -6, 0, -0.1]])
-    theta_list = np.array([np.pi / 2.0, 3, np.pi])
-
-    # i = 2
-    # print(SE3Exp(svvToSE3(S_list[i, :] * theta_list[i])))
-    T = fwdkinspace(M, S_list, theta_list)
-    # print(T)
+  # def test_fwdkinspace(self):
+  #   M = np.array([[-1, 0, 0, 0], [0, 1, 0, 6], [0, 0, -1, 2], [0, 0, 0, 1]])
+  #   S_list = np.array([[0, 0, 1, 4, 0, 0], [0, 0, 0, 0, 1, 0],
+  #                      [0, 0, -1, -6, 0, -0.1]])
+  #   theta_list = np.array([np.pi / 2.0, 3, np.pi])
+  #
+  #   # i = 2
+  #   # print(SE3Exp(svvToSE3(S_list[i, :] * theta_list[i])))
+  #   # T = fwdkinspace(M, S_list, theta_list)
+  #   # print(T)
 
 
 if __name__ == "__main__":
