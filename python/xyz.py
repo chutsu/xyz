@@ -33,7 +33,6 @@ import os
 import sys
 import glob
 import math
-# import time
 import copy
 import random
 import pickle
@@ -44,6 +43,7 @@ from datetime import datetime
 from pathlib import Path
 from enum import Enum
 from dataclasses import dataclass
+from dataclasses import field
 from collections import namedtuple
 
 import typing
@@ -1994,56 +1994,6 @@ def pose_diff(pose0: Mat4, pose1: Mat4) -> tuple[Vec3, float]:
     dtheta = acos((tr - 1.0) / 2.0)
 
   return (dr, dtheta)
-
-
-# def load_extrinsics(csv_path: str) -> Mat4 | None:
-#   """Load Extrinsics"""
-#   import pandas
-#
-#   csv_data = pandas.read_csv(csv_path)
-#   if csv_data is None:
-#     return None
-#
-#   rx = csv_data["rx"]
-#   ry = csv_data["ry"]
-#   rz = csv_data["rz"]
-#   r = np.array([rx, ry, rz])
-#
-#   qw = csv_data["qw"]
-#   qx = csv_data["qx"]
-#   qy = csv_data["qy"]
-#   qz = csv_data["qz"]
-#   q = np.array([qw, qx, qy, qz])
-#
-#   return tf(q, r)
-#
-#
-# def load_poses(csv_path: str) -> list[tuple[float, Mat4]] | None:
-#   """Load poses"""
-#   import pandas
-#
-#   csv_data = pandas.read_csv(csv_path)
-#   if csv_data is None:
-#     return None
-#
-#   pose_data = []
-#   for row_idx in range(csv_data.shape[0]):
-#     pose_ts = csv_data["#ts"][row_idx]
-#
-#     rx = csv_data["rx"][row_idx]
-#     ry = csv_data["ry"][row_idx]
-#     rz = csv_data["rz"][row_idx]
-#     r = np.array([rx, ry, rz])
-#
-#     qw = csv_data["qw"][row_idx]
-#     qx = csv_data["qx"][row_idx]
-#     qy = csv_data["qy"][row_idx]
-#     qz = csv_data["qz"][row_idx]
-#     q = np.array([qw, qx, qy, qz])
-#
-#     pose_data.append((pose_ts, tf(q, r)))
-#
-#   return pose_data
 
 
 ###############################################################################
@@ -7209,7 +7159,7 @@ class ImuParams:
   noise_gyr: float
   noise_ba: float
   noise_bg: float
-  g: VecN
+  g: VecN = field(default_factory=lambda : np.array([0.0, 0.0, 9.81]))
 
 
 @dataclass
@@ -7223,7 +7173,7 @@ class ImuFactorData:
   dC: VecN
   ba: VecN
   bg: VecN
-  g: Vec3 = np.array([0.0, 0.0, 9.81])
+  g: VecN = field(default_factory=lambda : np.array([0.0, 0.0, 9.81]))
   Dt: float | np.float64 = 0.0
 
 
@@ -7238,7 +7188,7 @@ class ImuFactorData2:
   dq: VecN
   ba: VecN
   bg: VecN
-  g: Vec3 = np.array([0.0, 0.0, 9.81])
+  g: VecN = field(default_factory=lambda : np.array([0.0, 0.0, 9.81]))
   Dt: float | np.float64 = 0.0
 
 
