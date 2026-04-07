@@ -9,5 +9,5 @@ run_command() {
 
 # CMD="cargo build"
 # CMD="cargo test"
-CMD="cd ~/code/xyz/rust && cargo fmt && cargo test"
+CMD="cd ~/code/xyz/rust && cargo fmt && cargo test -- --nocapture"
 run_command "$CMD"

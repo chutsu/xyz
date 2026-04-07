@@ -1,7 +1,9 @@
 [package]
 name = "xyz_rust"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 nalgebra = "0.33"
+rand = "0.8"
+rerun = "0.30.0"

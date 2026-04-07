@@ -22,13 +22,13 @@ pub fn rotx(theta: f64) -> Matrix3d {
   let stheta = theta.sin();
 
   #[rustfmt::skip]
-  let data = vec![
+  let data = [
     1.0,    0.0,     0.0,
     0.0, ctheta, -stheta,
     0.0, stheta,  ctheta,
   ];
 
-  Matrix3d::from_vec(data)
+  Matrix3d::from_row_slice(&data)
 }
 
 /// Form rotation matrix around y axis
@@ -37,13 +37,13 @@ pub fn roty(theta: f64) -> Matrix3d {
   let stheta = theta.sin();
 
   #[rustfmt::skip]
-  let data = vec![
+  let data = [
      ctheta, 0.0, stheta,
         0.0, 1.0,    0.0,
     -stheta, 0.0, ctheta,
   ];
 
-  Matrix3d::from_vec(data)
+  Matrix3d::from_row_slice(&data)
 }
 
 /// Form rotation matrix around z axis
@@ -52,13 +52,13 @@ pub fn rotz(theta: f64) -> Matrix3d {
   let stheta = theta.sin();
 
   #[rustfmt::skip]
-  let data = vec![
+  let data = [
     ctheta, -stheta, 0.0,
     stheta,  ctheta, 0.0,
        0.0,     0.0, 1.0,
   ];
 
-  Matrix3d::from_vec(data)
+  Matrix3d::from_row_slice(&data)
 }
 
 /// Convert rotation matrix to euler angles
@@ -89,10 +89,10 @@ pub fn rot_diff(rot1: &Matrix3d, rot2: &Matrix3d, tol: f64) -> f64 {
 /// Applications to Orbits, Aerospace, and Virtual Reality. Princeton, N.J:
 /// Princeton University Press, 1999. Print.
 /// [Page 85-86, "The Aerospace Sequence"]
-pub fn euler321(yaw: f64, pitch: f64, roll: f64) -> Matrix3d {
-  let psi = yaw;
-  let theta = pitch;
+pub fn euler321(roll: f64, yaw: f64, pitch: f64) -> Matrix3d {
   let phi = roll;
+  let theta = pitch;
+  let psi = yaw;
 
   let cpsi = (psi).cos();
   let spsi = (psi).sin();
@@ -113,7 +113,7 @@ pub fn euler321(yaw: f64, pitch: f64, roll: f64) -> Matrix3d {
   let r23 = spsi * stheta * cphi - cpsi * sphi;
   let r33 = ctheta * cphi;
 
-  Matrix3d::from_vec(vec![r11, r12, r13, r21, r22, r23, r31, r32, r33])
+  Matrix3d::from_row_slice(&[r11, r12, r13, r21, r22, r23, r31, r32, r33])
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -175,7 +175,7 @@ impl AxisAngle {
     let r21 = z * y * one_c + x * s;
     let r22 = c + z * z * one_c;
 
-    Matrix3d::from([[r00, r01, r02], [r10, r11, r12], [r20, r21, r22]])
+    Matrix3d::from_row_slice(&[r00, r01, r02, r10, r11, r12, r20, r21, r22])
   }
 }
 
@@ -324,13 +324,13 @@ impl Quaternion {
 
     #[rustfmt::skip]
     let data = [
-      [qw, -qx, -qy, -qz],
-      [qx, qw, -qz, qy],
-      [qy, qz, qw, -qx],
-      [qz, -qy, qx, qw]
+      qw, -qx, -qy, -qz,
+      qx, qw, -qz, qy,
+      qy, qz, qw, -qx,
+      qz, -qy, qx, qw
     ];
 
-    Matrix4d::from(data)
+    Matrix4d::from_row_slice(&data)
   }
 
   pub fn right_product(&self) -> Matrix4d {
@@ -341,13 +341,13 @@ impl Quaternion {
 
     #[rustfmt::skip]
     let data = [
-      [qw, -qx, -qy, -qz],
-      [qx, qw, qz, -qy],
-      [qy, -qz, qw, qx],
-      [qz, qy, -qx, qw]
+      qw, -qx, -qy, -qz,
+      qx, qw, qz, -qy,
+      qy, -qz, qw, qx,
+      qz, qy, -qx, qw
     ];
 
-    Matrix4d::from(data)
+    Matrix4d::from_row_slice(&data)
   }
 
   fn mul(&self, rhs: &Quaternion) -> Quaternion {
@@ -525,7 +525,7 @@ impl Quaternion {
     let r32 = 2.0 * (qy * qz + qw * qx);
     let r33 = qw2 - qx2 - qy2 + qz2;
 
-    Matrix3d::from([[r11, r12, r13], [r21, r22, r23], [r31, r32, r33]])
+    Matrix3d::from_row_slice(&[r11, r12, r13, r21, r22, r23, r31, r32, r33])
   }
 }
 
@@ -624,10 +624,10 @@ impl Transform {
     let m22 = tf[(2, 2)];
 
     #[rustfmt::skip]
-    let rot = Matrix3d::from([
-      [m00, m01, m02],
-      [m10, m11, m12],
-      [m20, m21, m22],
+    let rot = Matrix3d::from_row_slice(&[
+      m00, m01, m02,
+      m10, m11, m12,
+      m20, m21, m22,
     ]);
     let quat = Quaternion::from_rot(&rot);
 

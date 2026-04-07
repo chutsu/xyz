@@ -177,19 +177,19 @@ pub fn radtan4_undistort(
 ) -> Vector2d {
   let max_iter = 5;
   let threshold = 1.0e-15;
-  let mut p = p0.clone();
+  let mut p = *p0;
 
   #[allow(non_snake_case)]
   for _ in 0..max_iter {
     // Error
     let pd = radtan4_distort(k1, k2, p1, p2, &p);
-    let err = p0 - &pd;
+    let err = p0 - pd;
 
     // Optimize
     let J = radtan4_point_jacobian(k1, k2, p1, p2, &p);
     let H_inv = (J.transpose() * &J).try_inverse().unwrap();
-    let dp = &H_inv * &J.transpose() * &err;
-    p = p + dp;
+    let dp = &H_inv * &J.transpose() * err;
+    p += dp;
 
     // Early exit
     if err.dot(&err) < threshold {
@@ -334,7 +334,7 @@ impl CameraModel for PinholeRadtan4 {
     let py = (point.y - cy) / fy;
     let p = Vector2d::new(px, py);
 
-    Vector3d::new(0.0, 0.0, 1.0)
+    Vector3d::new(p.x, p.y, 1.0)
   }
 
   // fn undistort(&self, intrinsic: &[f64], z: &Vector2d) -> Vector2d {
@@ -371,16 +371,3 @@ struct PinholeEqui4 {}
 
 #[derive(Debug)]
 struct OmniRadtan4 {}
-
-///////////////////////////////////////////////////////////////////////////////
-// CAMERA GEOMETRY                                                           //
-///////////////////////////////////////////////////////////////////////////////
-
-#[derive(Debug)]
-pub struct CameraGeometry {
-  pub camera_id: u8,
-  pub camera_model: String,
-  pub resolution: Resolution,
-  pub intrinsic: Vec<f64>,
-  pub extrinsic: Vec<f64>,
-}
