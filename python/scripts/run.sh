@@ -2,7 +2,7 @@
 set -e
 TARGET="dev"
 
-CMD="python3 xyz.py"
+# CMD="python3 xyz.py"
 # CMD="python3 xyz.py TestLinearAlgebra"
 # CMD="python3 xyz.py TestLinearAlgebra.test_normalize"
 # CMD="python3 xyz.py TestLinearAlgebra.test_hat"
@@ -87,7 +87,10 @@ CMD="python3 xyz.py"
 # CMD="python3 xyz.py TestMav.test_mav_trajectory_control"
 # CMD="python3 xyz.py TestPoE"
 # CMD="python3 xyz.py TestPoE.test_scene"
+CMD="python3 note-imu_preintegration.py"
 
 tmux send-keys -t dev -R C-l C-m
 tmux send-keys -t dev -R "${CMD}" C-m
 exit
+
+# python3 note-tsif.py
