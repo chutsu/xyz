@@ -235,7 +235,7 @@ from numpy.linalg import svd
 from numpy.linalg import cholesky as chol
 
 
-def pprint_matrix(mat, fmt = "g"):
+def pprint_matrix(mat, fmt="g"):
   """Pretty Print matrix"""
   col_maxes = [
     max([len(("{:" + fmt + "}").format(x)) for x in col]) for col in mat.T
@@ -360,7 +360,7 @@ def schurs_complement(
   g,
   m,
   r,
-  precond = False,
+  precond=False,
 ):
   """Shurs-complement"""
   assert H.shape[0] == (m + r)
@@ -445,8 +445,8 @@ def nearest_pd(A):
 def matrix_equal(
   A,
   B,
-  tol = 1e-8,
-  verbose = False,
+  tol=1e-8,
+  verbose=False,
 ):
   """Compare matrices `A` and `B`"""
   diff = A - B
@@ -499,7 +499,7 @@ def check_jacobian(
   fdiff,
   jac,
   threshold,
-  verbose = False,
+  verbose=False,
 ):
   """Check jacobians"""
 
@@ -1381,7 +1381,7 @@ def rot2quat(C):
   return quat_normalize(np.array([qw, qx, qy, qz]))
 
 
-def rot_diff(C0, C1, tol = 1e-5):
+def rot_diff(C0, C1, tol=1e-5):
   """Difference between two rotation matrices"""
   dC = C0.T @ C1
   tr = np.trace(dC)
@@ -2288,7 +2288,7 @@ def z_score_normalization(image):
   return (image - mean) / (std + 1e-8)  # Avoid division by zero
 
 
-def gamma_correction(image, gamma = 0.5):
+def gamma_correction(image, gamma=0.5):
   """
   Gamma correction
   """
@@ -2409,7 +2409,7 @@ def illumination_invariant_transform(image, alpha=0.9):
 def lookat(
     cam_pos,
     target_pos,
-    up_axis = np.array([0.0, -1.0, 0.0]),
+    up_axis=np.array([0.0, -1.0, 0.0]),
 ):
   """Form look at matrix"""
   assert len(cam_pos) == 3
@@ -2536,14 +2536,7 @@ def homography_find(pts_i, pts_j):
   return h.reshape((3, 3))
 
 
-def homography_pose(
-  object_points,
-  image_points,
-  fx,
-  fy,
-  cx,
-  cy,
-):
+def homography_pose(object_points, image_points, fx, fy, cx, cy):
   """
   Compute relative pose between camera and planar object T_CF.
 
@@ -2643,14 +2636,7 @@ def homography_pose(
   return tf(C, r)
 
 
-def dlt_pose(
-  obj_pts,
-  img_pts,
-  fx,
-  fy,
-  cx,
-  cy,
-):
+def dlt_pose(obj_pts, img_pts, fx, fy, cx, cy):
   """DLT Pose
 
   **IMPORTANT NOTE**: This function will not work if the object points are on a
@@ -3562,7 +3548,6 @@ def camera_geometry_setup(cam_idx, cam_res, proj_model, dist_model):
 
 # ChessboardDetector
 
-
 # class ChessboardDetector:
 #   def __init__(self):
 #     pass
@@ -3896,7 +3881,6 @@ def camera_geometry_setup(cam_idx, cam_res, proj_model, dist_model):
 #           return 1
 #         maxm = max(top / bot, maxm)
 #     return maxm
-
 
 # UNITESTS #####################################################################
 
@@ -4904,8 +4888,387 @@ class KittiRawDataset:
 #     #
 #     # self.assertTrue(dataset is not None)
 
+###############################################################################
+# SIMULATION
+###############################################################################
 
 
+def create_3d_features(x_bounds, y_bounds, z_bounds, num_features):
+  """Create 3D features randomly"""
+  features = zeros((num_features, 3))
+  for i in range(num_features):
+    features[i, 0] = random.uniform(*x_bounds)
+    features[i, 1] = random.uniform(*y_bounds)
+    features[i, 2] = random.uniform(*z_bounds)
+  return features
+
+
+def create_3d_features_perimeter(origin, dim, num_features):
+  """Create 3D features in a square"""
+  assert len(origin) == 3
+  assert len(dim) == 3
+  assert num_features > 0
+
+  # Dimension of the outskirt
+  w, l, h = dim
+
+  # Features per side
+  nb_fps = int(num_features / 4.0)
+
+  # Features in the east side
+  x_bounds = [origin[0] - w, origin[0] + w]
+  y_bounds = [origin[1] + l, origin[1] + l]
+  z_bounds = [origin[2] - h, origin[2] + h]
+  east = create_3d_features(x_bounds, y_bounds, z_bounds, nb_fps)
+
+  # Features in the north side
+  x_bounds = [origin[0] + w, origin[0] + w]
+  y_bounds = [origin[1] - l, origin[1] + l]
+  z_bounds = [origin[2] - h, origin[2] + h]
+  north = create_3d_features(x_bounds, y_bounds, z_bounds, nb_fps)
+
+  # Features in the west side
+  x_bounds = [origin[0] - w, origin[0] + w]
+  y_bounds = [origin[1] - l, origin[1] - l]
+  z_bounds = [origin[2] - h, origin[2] + h]
+  west = create_3d_features(x_bounds, y_bounds, z_bounds, nb_fps)
+
+  # Features in the south side
+  x_bounds = [origin[0] - w, origin[0] - w]
+  y_bounds = [origin[1] - l, origin[1] + l]
+  z_bounds = [origin[2] - h, origin[2] + h]
+  south = create_3d_features(x_bounds, y_bounds, z_bounds, nb_fps)
+
+  # Stack features and return
+  return np.block([[east], [north], [west], [south]])
+
+
+class SimCameraFrame:
+  """Sim camera frame"""
+  def __init__(self, ts, cam_idx, camera, T_WCi, features):
+    assert T_WCi.shape == (4, 4)
+    assert features.shape[0] > 0
+    assert features.shape[1] == 3
+
+    self.ts = ts
+    self.cam_idx = cam_idx
+    self.T_WCi = T_WCi
+    self.cam_geom = camera.data
+    self.cam_params = camera.param
+    self.feature_ids = []
+    self.measurements = []
+
+    # Simulate camera frame
+    nb_points = features.shape[0]
+    T_CiW = tf_inv(self.T_WCi)
+
+    for i in range(nb_points):
+      # Project point from world frame to camera frame
+      p_W = features[i, :]
+      p_C = tf_point(T_CiW, p_W)
+      status, z = self.cam_geom.project(self.cam_params, p_C)
+      if status:
+        self.measurements.append(z)
+        self.feature_ids.append(i)
+
+  def num_measurements(self):
+    """Return number of measurements"""
+    return len(self.measurements)
+
+  def draw_measurements(self):
+    """Returns camera measurements in an image"""
+    # kps = [kp for kp in self.measurements]
+    kps = self.measurements
+    img_w, img_h = self.cam_geom.resolution
+    img = np.zeros((img_h, img_w), dtype=np.uint8)
+    return draw_keypoints(img, kps)
+
+
+class SimCameraData:
+  """Sim camera data"""
+  def __init__(self, cam_idx, camera, features):
+    self.cam_idx = cam_idx
+    self.camera = camera
+    self.features = features
+    self.timestamps = []
+    self.poses = {}
+    self.frames = {}
+
+
+class SimImuData:
+  """Sim imu data"""
+  def __init__(self, imu_idx):
+    self.imu_idx = imu_idx
+    self.timestamps = []
+    self.poses = {}
+    self.vel = {}
+    self.acc = {}
+    self.gyr = {}
+
+  def form_imu_buffer(self, start_idx, end_idx):
+    """Form ImuBuffer"""
+    imu_ts = self.timestamps[start_idx:end_idx]
+    imu_acc = []
+    imu_gyr = []
+    for ts in self.timestamps:
+      imu_acc.append(self.acc[ts])
+      imu_gyr.append(self.gyr[ts])
+
+    return ImuBuffer(imu_ts, imu_acc, imu_gyr)
+
+
+class SimData:
+  """Sim data"""
+  def __init__(self, circle_r, circle_v, **kwargs):
+    # Settings
+    self.circle_r = circle_r
+    self.circle_v = circle_v
+    self.cam_rate = 10.0
+    self.imu_rate = 200.0
+    self.num_features = 200
+
+    # Trajectory data
+    self.g = np.array([0.0, 0.0, 9.81])
+    self.circle_dist = 2.0 * pi * circle_r
+    self.time_taken = self.circle_dist / self.circle_v
+    self.w = -2.0 * pi * (1.0 / self.time_taken)
+    self.theta_init = pi
+    self.yaw_init = pi / 2.0
+    self.features = self._setup_features()
+
+    # print(f"circle_r: {self.circle_r}")
+    # print(f"circle_v: {self.circle_v}")
+    # print(f"circle_dist: {self.circle_dist}")
+    # print(f"time_taken: {self.time_taken}")
+
+    # Simulate IMU
+    self.imu0_data = None
+    if kwargs.get("sim_imu", True):
+      self.imu0_data = self._sim_imu(0)
+
+    # Simulate camera
+    self.mcam_data = {}
+    self.cam_exts = {}
+    if kwargs.get("sim_cams", True):
+      # -- cam0
+      self.cam0_params = self._setup_camera(0)
+      C_BC0 = euler321(*deg2rad([-90.0, 0.0, -90.0]))
+      r_BC0 = np.array([0.0, 0.0, 0.0])
+      self.T_BC0 = tf(C_BC0, r_BC0)
+      self.mcam_data[0] = self._sim_cam(0, self.cam0_params, self.T_BC0)
+      self.cam_exts[0] = extrinsics_setup(self.T_BC0)
+      # -- cam1
+      self.cam1_params = self._setup_camera(1)
+      C_BC1 = euler321(*deg2rad([-90.0, 0.0, -90.0]))
+      r_BC1 = np.array([0.0, 0.0, 0.0])
+      self.T_BC1 = tf(C_BC1, r_BC1)
+      # -- Multicam data
+      self.mcam_data[1] = self._sim_cam(1, self.cam1_params, self.T_BC1)
+      self.cam_exts[1] = extrinsics_setup(self.T_BC1)
+
+    # Timeline
+    self.timeline = self._form_timeline()
+
+  def get_camera_data(self, cam_idx):
+    """Get camera data"""
+    return self.mcam_data[cam_idx]
+
+  def get_camera_params(self, cam_idx):
+    """Get camera parameters"""
+    return self.mcam_data[cam_idx].camera
+
+  def get_camera_geometry(self, cam_idx):
+    """Get camera geometry"""
+    return self.mcam_data[cam_idx].camera.data
+
+  def get_camera_extrinsics(self, cam_idx):
+    """Get camera extrinsics"""
+    return self.cam_exts[cam_idx]
+
+  def plot_scene(self):
+    """Plot 3D Scene"""
+    # Setup
+    plt.figure()
+    ax = plt.axes(projection="3d")
+
+    # Plot features
+    features = self.features
+    ax.scatter3D(  # pyright: ignore
+      features[:, 0],
+      features[:, 1],
+      features[:, 2],
+    )
+
+    # Plot camera frames
+    assert self.imu0_data and self.imu0_data.poses
+    idx = 0
+    for _, T_WB in self.imu0_data.poses.items():
+      if idx % 100 == 0:
+        T_BC0 = pose2tf(self.cam_exts[0].param)
+        T_BC1 = pose2tf(self.cam_exts[1].param)
+        plot_tf(ax, T_WB @ T_BC0)
+        plot_tf(ax, T_WB @ T_BC1)
+      if idx > 3000:
+        break
+      idx += 1
+
+    # Show
+    plt.show()
+
+  @staticmethod
+  def create_or_load(circle_r, circle_v, pickle_path):
+    """Create or load SimData"""
+    sim_data = None
+
+    if os.path.exists(pickle_path):
+      with open(pickle_path, "rb") as f:
+        sim_data = pickle.load(f)
+    else:
+      sim_data = SimData(circle_r, circle_v)
+      with open(pickle_path, "wb") as f:
+        pickle.dump(sim_data, f)
+        f.flush()
+
+    return sim_data
+
+  @staticmethod
+  def _setup_camera(cam_idx):
+    """Setup camera"""
+    res = [640, 480]
+    fov = 120.0
+    fx = focal_length(res[0], fov)
+    fy = focal_length(res[0], fov)
+    cx = res[0] / 2.0
+    cy = res[1] / 2.0
+
+    proj_model = "pinhole"
+    dist_model = "radtan4"
+    proj_params = [fx, fy, cx, cy]
+    dist_params = [0.0, 0.0, 0.0, 0.0]
+    params = np.block([*proj_params, *dist_params])
+
+    return camera_params_setup(cam_idx, res, proj_model, dist_model, params)
+
+  def _setup_features(self):
+    """Setup features"""
+    origin = [0, 0, 0]
+    dim = [self.circle_r * 2.0, self.circle_r * 2.0, self.circle_r * 1.5]
+    return create_3d_features_perimeter(origin, dim, self.num_features)
+
+  def _sim_imu(self, imu_idx):
+    """Simulate IMU"""
+    sim_data = SimImuData(imu_idx)
+
+    ts = 0
+    dt_ns = sec2ts(1.0 / self.imu_rate)
+    theta = self.theta_init
+    yaw = self.yaw_init
+
+    while ts <= sec2ts(self.time_taken):
+      # IMU pose
+      rx = self.circle_r * cos(theta)
+      ry = self.circle_r * sin(theta)
+      rz = 0.0
+      r_WS = np.array([rx, ry, rz])
+      C_WS = euler321(yaw, 0.0, 0.0)
+      T_WS = tf(C_WS, r_WS)
+
+      # IMU velocity
+      vx = -self.circle_r * self.w * sin(theta)
+      vy = self.circle_r * self.w * cos(theta)
+      vz = 0.0
+      v_WS = np.array([vx, vy, vz])
+
+      # IMU acceleration
+      ax = -self.circle_r * self.w**2 * cos(theta)
+      ay = -self.circle_r * self.w**2 * sin(theta)
+      az = 0.0
+      a_WS = np.array([ax, ay, az])
+
+      # IMU angular velocity
+      wx = 0.0
+      wy = 0.0
+      wz = self.w
+      w_WS = np.array([wx, wy, wz])
+
+      # IMU measurements
+      acc = C_WS.T @ (a_WS + self.g)
+      gyr = C_WS.T @ w_WS
+
+      # Update
+      sim_data.timestamps.append(ts)
+      sim_data.poses[ts] = T_WS
+      sim_data.vel[ts] = v_WS
+      sim_data.acc[ts] = acc
+      sim_data.gyr[ts] = gyr
+
+      theta += self.w * ts2sec(dt_ns)
+      yaw += self.w * ts2sec(dt_ns)
+      ts += dt_ns
+
+    return sim_data
+
+  def _sim_cam(self, cam_idx, cam_params, T_BCi):
+    """Simulate camera"""
+    sim_data = SimCameraData(cam_idx, cam_params, self.features)
+
+    ts = 0
+    dt_ns = sec2ts(1.0 / self.cam_rate)
+    theta = self.theta_init
+    yaw = self.yaw_init
+
+    while ts <= sec2ts(self.time_taken):
+      # Body pose
+      rx = self.circle_r * cos(theta)
+      ry = self.circle_r * sin(theta)
+      rz = 0.0
+      r_WB = np.array([rx, ry, rz])
+      C_WB = euler321(yaw, 0.0, 0.0)
+      T_WB = tf(C_WB, r_WB)
+
+      # Simulate camera pose and camera frame
+      T_WCi = T_WB @ T_BCi
+      cam_frame = SimCameraFrame(ts, cam_idx, cam_params, T_WCi, self.features)
+      sim_data.timestamps.append(ts)
+      sim_data.poses[ts] = T_WCi
+      sim_data.frames[ts] = cam_frame
+
+      # Update
+      theta += self.w * ts2sec(dt_ns)
+      yaw += self.w * ts2sec(dt_ns)
+      ts += dt_ns
+
+    return sim_data
+
+  def _form_timeline(self):
+    """Form timeline"""
+    # Form timeline
+    timeline = Timeline()
+
+    # -- Add imu events
+    assert self.imu0_data
+    imu_idx = self.imu0_data.imu_idx
+    for ts in self.imu0_data.timestamps:
+      acc = self.imu0_data.acc[ts]
+      gyr = self.imu0_data.gyr[ts]
+      imu_event = ImuEvent(ts, imu_idx, acc, gyr)
+      timeline.add_event(ts, imu_event)
+
+    # -- Add camera events
+    for cam_idx, cam_data in self.mcam_data.items():
+      for ts in cam_data.timestamps:
+        frame = cam_data.frames[ts]
+        fids = frame.feature_ids
+        kps = frame.measurements
+
+        sim_img = []
+        for i, fid in enumerate(fids):
+          sim_img.append((fid, kps[i]))
+
+        cam_event = CameraEvent(ts, cam_idx, sim_img)
+        timeline.add_event(ts, cam_event)
+
+    return timeline
 
 ###############################################################################
 # STATE ESTIMATION
@@ -5732,7 +6095,7 @@ class ImuParams:
   noise_gyr: float
   noise_ba: float
   noise_bg: float
-  g: VecN = field(default_factory=lambda : np.array([0.0, 0.0, 9.81]))
+  g: VecN = field(default_factory=lambda: np.array([0.0, 0.0, 9.81]))
 
 
 @dataclass
@@ -5746,7 +6109,7 @@ class ImuFactorData:
   dC: VecN
   ba: VecN
   bg: VecN
-  g: VecN = field(default_factory=lambda : np.array([0.0, 0.0, 9.81]))
+  g: VecN = field(default_factory=lambda: np.array([0.0, 0.0, 9.81]))
   Dt: float | np.float64 = 0.0
 
 
@@ -5761,7 +6124,7 @@ class ImuFactorData2:
   dq: VecN
   ba: VecN
   bg: VecN
-  g: VecN = field(default_factory=lambda : np.array([0.0, 0.0, 9.81]))
+  g: VecN = field(default_factory=lambda: np.array([0.0, 0.0, 9.81]))
   Dt: float | np.float64 = 0.0
 
 
@@ -7118,10 +7481,10 @@ class TestMargFactor(unittest.TestCase):
     cam_poses = [cam_pose_0]
 
     # Setup feature
-    nb_features = 10
+    num_features = 10
     features = []
     feature_positions = []
-    for i in range(nb_features):
+    for i in range(num_features):
       p_W = np.array([10, random.uniform(-2.0, 2.0), random.uniform(-2.0, 2.0)])
       features.append(feature_setup(p_W))
       feature_positions.append(p_W)
@@ -8042,8 +8405,8 @@ def draw_keypoints(
     img,
     kps,
     inliers=None,
-    radius = 1,
-    color = (0, 255, 0),
+    radius=1,
+    color=(0, 255, 0),
 ):
   """
   Draw points `kps` on image `img`. The `inliers` boolean list is optional
@@ -8162,7 +8525,7 @@ def spread_corners(img, corners, min_dist, **kwargs):
   return corners_results
 
 
-def spread_keypoints(img, kps, min_dist, prev_kps=[], debug = False):
+def spread_keypoints(img, kps, min_dist, prev_kps=[], debug=False):
   """
   Given a set of keypoints `kps` make sure they are atleast `min_dist` pixels
   away from each other, if they are not remove them.
@@ -8379,11 +8742,11 @@ class FeatureGrid:
 
 def grid_detect(
   image,
-  max_keypoints = 2000,
-  grid_rows = 3,
-  grid_cols = 4,
+  max_keypoints=2000,
+  grid_rows=3,
+  grid_cols=4,
   prev_kps=[],
-  debug = False,
+  debug=False,
 ):
   """
   Detect features uniformly using a grid system.
@@ -8480,14 +8843,14 @@ def grid_detect(
 
 def good_grid(
   image,
-  max_keypoints = 2000,
-  quality_level = 0.001,
-  use_harris = True,
-  min_dist = 20,
-  grid_rows = 2,
-  grid_cols = 3,
+  max_keypoints=2000,
+  quality_level=0.001,
+  use_harris=True,
+  min_dist=20,
+  grid_rows=2,
+  grid_cols=3,
   prev_kps=[],
-  debug = False,
+  debug=False,
 ):
   """
   Detect features uniformly using a grid system.
@@ -8601,11 +8964,11 @@ def optflow_track(
   img_i,
   img_j,
   pts_i,
-  pts_j = None,
-  patch_size = 30,
-  max_iter = 100,
-  epsilon = 0.001,
-  debug = False,
+  pts_j=None,
+  patch_size=30,
+  max_iter=100,
+  epsilon=0.001,
+  debug=False,
 ):
   """
   Track keypoints `pts_i` from image `img_i` to image `img_j` using optical
