@@ -14,8 +14,7 @@ from xyz import plot_bbox
 from xyz import plot_set_axes_equal
 
 
-
-def float_to_uint10(x, min_val = 0.0, max_val = 1.0):
+def float_to_uint10(x, min_val=0.0, max_val=1.0):
   """Convert float in [min_val, max_val] to 10-bit integer (0..1023)."""
   x_clipped = np.clip((x - min_val) / (max_val - min_val), 0.0, 1.0)
   return int(x_clipped * 1023.0)
@@ -126,8 +125,8 @@ class Plane:
   def __init__(
     self,
     normal,
-    point = None,
-    dist = None,
+    point=None,
+    dist=None,
   ):
     self.normal = normal
     if point is not None:
@@ -205,7 +204,7 @@ class Frustum:
     aspect,
     znear,
     zfar,
-    frustum_pose = None,
+    frustum_pose=None,
   ):
     self.hfov = hfov
     self.aspect = aspect
@@ -266,8 +265,8 @@ class Frustum:
     self,
     ax,
     points=None,
-    plot_planes = False,
-    plot_plane_frames = False,
+    plot_planes=False,
+    plot_plane_frames=False,
   ):
     """Plot Frustum"""
     # Plot planes

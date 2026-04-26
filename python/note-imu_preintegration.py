@@ -354,8 +354,16 @@ def estimate_scale(vision_data, imu_data, imu_params):
     b_k[0:3, 0] = pint_i.dp + RiT * Rj * TIC[0] - TIC[0]
     b_k[3:6, 0] = pint_j.dv
 
-    A[i*3:i*3+3, i*3:i*3+3] += A_k[0:6, 0:6]
-    b[i*3:i*3+3] += b_k
+    H_k = A_k.T @ A_k
+    b_k = A_k.T @ b_k
+
+    # Velocity
+    # A[i*3:i*3+3, i*3:i*3+3] += H_k[0:6, 0:6]
+    # b[i*3:i*3+3] += b_k
+
+    # Gravity and scale
+
+    # Off-diagonal
 
     # A.bottomRightCorner<4, 4>() += r_A.bottomRightCorner<4, 4>();
     # b.tail<4>() += r_b.tail<4>();
