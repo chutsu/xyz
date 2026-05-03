@@ -5,7 +5,7 @@ xyz
 robotics.
 
 Build
-=====
+-----
 
 For convenience there is a ``Makefile`` that automates the installation of
 dependencies and building of ``xyz``. To install dependencies, build and test
