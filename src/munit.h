@@ -170,12 +170,11 @@ void mu_print_log(const char *log_path) {
  * Print test stats
  */
 void mu_print_stats(void) {
-  printf("\n");
   printf(MU_WHT "Ran %d tests" MU_NRM " ", num_tests);
   printf("[");
   printf(MU_GRN "%d passed" MU_NRM ", ", num_passed);
   printf(MU_RED "%d failed" MU_NRM, num_failed);
-  printf("]\n");
+  printf("]\n\n");
 }
 
 /**

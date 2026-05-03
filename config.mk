@@ -106,4 +106,4 @@ LIBXYZ_OBJS := $(BLD_DIR)/xyz.o $(BLD_DIR)/xyz_gui.o
 # TESTS
 TESTS := \
 	$(BLD_DIR)/test_xyz \
-	$(BLD_DIR)/test_gui
+	$(BLD_DIR)/test_xyz_gui

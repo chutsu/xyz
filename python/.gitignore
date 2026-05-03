@@ -1,6 +1,0 @@
-# pixi environments
-.pixi/*
-!.pixi/config.toml
-
-# python
-__pycache__/
