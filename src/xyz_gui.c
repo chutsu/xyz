@@ -1158,9 +1158,9 @@ void gl_camera_rotate(gl_camera_t *camera,
 
   // Update camera forward
   float direction[3] = {0};
-  direction[0] = cos(yaw) * cos(pitch);
+  direction[0] = sin(yaw) * cos(pitch);
   direction[1] = sin(pitch);
-  direction[2] = sin(yaw) * cos(pitch);
+  direction[2] = cos(yaw) * cos(pitch);
   gl_normalize(direction, 3);
 
   camera->front[0] = direction[0];
@@ -1313,9 +1313,9 @@ void gui_process_input(GLFWwindow *window) {
   // -- Mouse button press
   _mouse_button_left = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
   _mouse_button_right = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT);
-  if (_mouse_button_left == GLFW_PRESS) {
+  if (_mouse_button_left == GLFW_PRESS || _mouse_button_right == GLFW_PRESS) {
     _cursor_is_dragging = 1;
-  } else if (_mouse_button_left == GLFW_RELEASE) {
+  } else {
     _cursor_is_dragging = 0;
     _ui_engaged = 0;
   }
@@ -1337,13 +1337,13 @@ void gui_process_input(GLFWwindow *window) {
     return;
   }
 
-  // Rotate camera
-  if (_cursor_is_dragging) {
+  // Rotate camera (left-click drag)
+  if (_mouse_button_left == GLFW_PRESS) {
     gl_camera_rotate(&_camera, _mouse_sensitivity, _cursor_dx, _cursor_dy);
   }
 
-  // Pan camera
-  if (_cursor_is_dragging) {
+  // Pan camera (right-click drag)
+  if (_mouse_button_right == GLFW_PRESS) {
     gl_camera_pan(&_camera, _mouse_sensitivity, _cursor_dx, _cursor_dy);
   }
 
