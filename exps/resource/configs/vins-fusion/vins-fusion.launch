@@ -1,0 +1,17 @@
+<launch>
+  <!-- ARGS -->
+  <arg name="rosbag_input_path" />
+  <arg name="rosbag_output_path" />
+  <arg name="config_file" />
+
+  <!-- ROSBAG PLAY -->
+  <node pkg="rosbag" type="play" name="player" output="screen" required="true"
+    args="--clock $(arg rosbag_input_path)"/>
+
+  <!-- ROSBAG RECORD -->
+  <node pkg="rosbag" type="record" name="recorder" output="screen" required="true"
+    args="--topic /vins_fusion/odometry -O $(arg rosbag_output_path)"/>
+
+  <!-- VINS FUSION -->
+  <node name="vins_fusion" pkg="vins" type="vins_node" output="screen" required="true" args="$(arg config_file)" />
+</launch>

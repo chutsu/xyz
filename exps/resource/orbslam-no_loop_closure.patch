@@ -1,0 +1,136 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 016e743..6090aec 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -30,7 +30,7 @@ endif()
+ 
+ LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
+ 
+-find_package(OpenCV 4.4)
++find_package(OpenCV)
+    if(NOT OpenCV_FOUND)
+       message(FATAL_ERROR "OpenCV > 4.4 not found.")
+    endif()
+diff --git a/Examples/Stereo-Inertial/stereo_inertial_euroc.cc b/Examples/Stereo-Inertial/stereo_inertial_euroc.cc
+index bb52223..2824d0d 100644
+--- a/Examples/Stereo-Inertial/stereo_inertial_euroc.cc
++++ b/Examples/Stereo-Inertial/stereo_inertial_euroc.cc
+@@ -226,10 +226,11 @@ int main(int argc, char **argv)
+     // Save camera trajectory
+     if (bFileName)
+     {
+-        const string kf_file =  "kf_" + string(argv[argc-1]) + ".txt";
+-        const string f_file =  "f_" + string(argv[argc-1]) + ".txt";
+-        SLAM.SaveTrajectoryEuRoC(f_file);
+-        SLAM.SaveKeyFrameTrajectoryEuRoC(kf_file);
++        SLAM.SaveTrajectoryEuRoC(string(argv[argc-1]));
++        // const string kf_file =  "kf_" + string(argv[argc-1]) + ".txt";
++        // const string f_file =  "f_" + string(argv[argc-1]) + ".txt";
++        // SLAM.SaveTrajectoryEuRoC(f_file);
++        // SLAM.SaveKeyFrameTrajectoryEuRoC(kf_file);
+     }
+     else
+     {
+diff --git a/src/LocalMapping.cc b/src/LocalMapping.cc
+index 53df332..ea46713 100644
+--- a/src/LocalMapping.cc
++++ b/src/LocalMapping.cc
+@@ -247,7 +247,9 @@ void LocalMapping::Run()
+             vdKFCullingSync_ms.push_back(timeKFCulling_ms);
+ #endif
+ 
+-            mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
++	    if (mpLoopCloser) {
++                mpLoopCloser->InsertKeyFrame(mpCurrentKeyFrame);
++	    }
+ 
+ #ifdef REGISTER_TIMES
+             std::chrono::steady_clock::time_point time_EndLocalMap = std::chrono::steady_clock::now();
+diff --git a/src/System.cc b/src/System.cc
+index 60d9c51..dada03a 100644
+--- a/src/System.cc
++++ b/src/System.cc
+@@ -210,8 +210,16 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
+ 
+     //Initialize the Loop Closing thread and launch
+     // mSensor!=MONOCULAR && mSensor!=IMU_MONOCULAR
+-    mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR, activeLC); // mSensor!=MONOCULAR);
+-    mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
++    bool bLoopClosing = static_cast<int>(fsSettings["System.LoopClosing"]) != 0;
++    if (bLoopClosing) {
++	cout << "Loop Closing Enabled!" << endl;
++        mpLoopCloser = new LoopClosing(mpAtlas, mpKeyFrameDatabase, mpVocabulary, mSensor!=MONOCULAR, activeLC); // mSensor!=MONOCULAR);
++        mptLoopClosing = new thread(&ORB_SLAM3::LoopClosing::Run, mpLoopCloser);
++    } else {
++	cout << "Loop Closing Disabled!" << endl;
++	mpLoopCloser = nullptr;
++	mptLoopClosing = nullptr;
++    }
+ 
+     //Set pointers between threads
+     mpTracker->SetLocalMapper(mpLocalMapper);
+@@ -220,8 +228,10 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
+     mpLocalMapper->SetTracker(mpTracker);
+     mpLocalMapper->SetLoopCloser(mpLoopCloser);
+ 
+-    mpLoopCloser->SetTracker(mpTracker);
+-    mpLoopCloser->SetLocalMapper(mpLocalMapper);
++    if (mpLoopCloser) {
++        mpLoopCloser->SetTracker(mpTracker);
++        mpLoopCloser->SetLocalMapper(mpLocalMapper);
++    }
+ 
+     //usleep(10*1000*1000);
+ 
+@@ -232,7 +242,7 @@ System::System(const string &strVocFile, const string &strSettingsFile, const eS
+         mpViewer = new Viewer(this, mpFrameDrawer,mpMapDrawer,mpTracker,strSettingsFile,settings_);
+         mptViewer = new thread(&Viewer::Run, mpViewer);
+         mpTracker->SetViewer(mpViewer);
+-        mpLoopCloser->mpViewer = mpViewer;
++        if(mpLoopCloser) mpLoopCloser->mpViewer = mpViewer;
+         mpViewer->both = mpFrameDrawer->both;
+     }
+ 
+@@ -522,7 +532,7 @@ void System::Shutdown()
+     cout << "Shutdown" << endl;
+ 
+     mpLocalMapper->RequestFinish();
+-    mpLoopCloser->RequestFinish();
++    if (mpLoopCloser) mpLoopCloser->RequestFinish();
+     /*if(mpViewer)
+     {
+         mpViewer->RequestFinish();
+diff --git a/src/Tracking.cc b/src/Tracking.cc
+index 5191451..d8e0c0d 100644
+--- a/src/Tracking.cc
++++ b/src/Tracking.cc
+@@ -3797,9 +3797,11 @@ void Tracking::Reset(bool bLocMap)
+ 
+ 
+     // Reset Loop Closing
+-    Verbose::PrintMess("Reseting Loop Closing...", Verbose::VERBOSITY_NORMAL);
+-    mpLoopClosing->RequestReset();
+-    Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
++    if (mpLoopClosing) {
++        Verbose::PrintMess("Reseting Loop Closing...", Verbose::VERBOSITY_NORMAL);
++        mpLoopClosing->RequestReset();
++        Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
++    }
+ 
+     // Clear BoW Database
+     Verbose::PrintMess("Reseting Database...", Verbose::VERBOSITY_NORMAL);
+@@ -3857,9 +3859,11 @@ void Tracking::ResetActiveMap(bool bLocMap)
+     }
+ 
+     // Reset Loop Closing
+-    Verbose::PrintMess("Reseting Loop Closing...", Verbose::VERBOSITY_NORMAL);
+-    mpLoopClosing->RequestResetActiveMap(pMap);
+-    Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
++    if (mpLoopClosing) {
++        Verbose::PrintMess("Reseting Loop Closing...", Verbose::VERBOSITY_NORMAL);
++        mpLoopClosing->RequestResetActiveMap(pMap);
++        Verbose::PrintMess("done", Verbose::VERBOSITY_NORMAL);
++    }
+ 
+     // Clear BoW Database
+     Verbose::PrintMess("Reseting Database", Verbose::VERBOSITY_NORMAL);

@@ -1,0 +1,98 @@
+<launch>
+	<!-- Settings -->
+  <arg name="robot" default="slam_bench"/>
+  <arg name="fixed_frame_id" default="world"/>
+  <arg name="calib_file" />
+  <arg name="rosbag_file" />
+  <arg name="output_file" />
+  <arg name="imu0_topic"  />
+  <arg name="cam0_topic"  />
+  <arg name="cam1_topic"  />
+
+  <!-- Play ROS bag -->
+  <node pkg="rosbag"
+    type="play"
+    name="rosbag_play"
+    output="screen"
+    args="-q $(arg rosbag_file)"
+    required="true"/>
+
+  <!-- Record ROS bag -->
+  <node pkg="rosbag"
+    type="record"
+    name="rosbag_record"
+    output="screen"
+    args="/slam_bench/vio/odom -O $(arg output_file)"
+    required="true"/>
+
+  <!-- Image Processor Nodelet  -->
+  <group ns="$(arg robot)">
+    <node pkg="nodelet" type="nodelet" name="image_processor"
+      args="standalone msckf_vio/ImageProcessorNodelet"
+      output="screen">
+
+      <rosparam command="load" file="$(arg calib_file)"/>
+      <param name="grid_row" value="4"/>
+      <param name="grid_col" value="5"/>
+      <param name="grid_min_feature_num" value="3"/>
+      <param name="grid_max_feature_num" value="4"/>
+      <param name="pyramid_levels" value="3"/>
+      <param name="patch_size" value="15"/>
+      <param name="fast_threshold" value="10"/>
+      <param name="max_iteration" value="30"/>
+      <param name="track_precision" value="0.01"/>
+      <param name="ransac_threshold" value="3"/>
+      <param name="stereo_threshold" value="5"/>
+
+      <remap from="~imu" to="$(arg imu0_topic)"/>
+      <remap from="~cam0_image" to="$(arg cam0_topic)"/>
+      <remap from="~cam1_image" to="$(arg cam1_topic)"/>
+    </node>
+  </group>
+
+  <!-- Msckf Vio Nodelet  -->
+  <group ns="$(arg robot)">
+    <node pkg="nodelet" type="nodelet" name="vio"
+      args='standalone msckf_vio/MsckfVioNodelet'
+      output="screen">
+
+      <!-- Calibration parameters -->
+      <rosparam command="load" file="$(arg calib_file)"/>
+
+      <param name="publish_tf" value="true"/>
+      <param name="frame_rate" value="20"/>
+      <param name="fixed_frame_id" value="$(arg fixed_frame_id)"/>
+      <param name="child_frame_id" value="odom"/>
+      <param name="max_cam_state_size" value="20"/>
+      <param name="position_std_threshold" value="8.0"/>
+
+      <param name="rotation_threshold" value="0.2618"/>
+      <param name="translation_threshold" value="0.4"/>
+      <param name="tracking_rate_threshold" value="0.5"/>
+
+      <!-- Feature optimization config -->
+      <param name="feature/config/translation_threshold" value="-1.0"/>
+
+      <!-- These values should be standard deviation -->
+      <param name="noise/gyro" value="0.005"/>
+      <param name="noise/acc" value="0.05"/>
+      <param name="noise/gyro_bias" value="0.001"/>
+      <param name="noise/acc_bias" value="0.01"/>
+      <param name="noise/feature" value="0.035"/>
+
+      <param name="initial_state/velocity/x" value="0.0"/>
+      <param name="initial_state/velocity/y" value="0.0"/>
+      <param name="initial_state/velocity/z" value="0.0"/>
+
+      <!-- These values should be covariance -->
+      <param name="initial_covariance/velocity" value="0.25"/>
+      <param name="initial_covariance/gyro_bias" value="0.01"/>
+      <param name="initial_covariance/acc_bias" value="0.01"/>
+      <param name="initial_covariance/extrinsic_rotation_cov" value="3.0462e-4"/>
+      <param name="initial_covariance/extrinsic_translation_cov" value="2.5e-5"/>
+
+      <remap from="~imu" to="$(arg imu0_topic)"/>
+      <remap from="~features" to="image_processor/features"/>
+    </node>
+  </group>
+</launch>

@@ -1,0 +1,75 @@
+FROM ros:kinetic-perception
+SHELL ["/bin/bash", "-c"]
+
+# Settings
+ENV ARCH=amd64
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Permissions
+RUN apt-get update && apt-get install -y sudo
+ARG USERNAME=docker
+ARG PASSWORD=docker
+ARG UID
+ARG GID
+RUN useradd -m ${USERNAME} --uid=${UID} && echo "${USERNAME}:${PASSWORD}" | chpasswd
+RUN adduser ${USERNAME} sudo
+ENV HOME /home/$USERNAME
+
+# Settings
+ENV CERES_VERSION="1.12.0"
+ENV CATKIN_WS=$HOME/catkin_ws
+
+# Install base dependencies
+RUN apt-get update -yq
+RUN apt-get install -qq -y \
+  cmake \
+  libatlas-base-dev \
+  libeigen3-dev \
+  libgoogle-glog-dev \
+  libsuitesparse-dev \
+  python-catkin-tools \
+  ros-${ROS_DISTRO}-cv-bridge \
+  ros-${ROS_DISTRO}-image-transport \
+  ros-${ROS_DISTRO}-message-filters \
+  ros-${ROS_DISTRO}-tf
+
+# Install Ceres-Solver
+WORKDIR $HOME
+RUN git clone https://ceres-solver.googlesource.com/ceres-solver \
+  && cd ceres-solver \
+  && git checkout tags/${CERES_VERSION} \
+  && mkdir build && cd build \
+  && cmake .. \
+  && make install
+
+# Install VINS-Mono
+WORKDIR $CATKIN_WS
+RUN mkdir -p src \
+  && cd src \
+  && git clone https://github.com/HKUST-Aerial-Robotics/VINS-Mono.git
+  && catkin config \
+    --extend /opt/ros/$ROS_DISTRO \
+    --cmake-args \
+    -DCMAKE_BUILD_TYPE=Release \
+  && catkin build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -j
+
+# Install tools
+RUN apt-get install -qq -y tmux vim vifm ncdu
+
+# Switch to $USERNAME
+USER $USERNAME
+RUN echo 'export PS1="[\u@docker] \W # "' >> $HOME/.bashrc \
+  && echo 'source /opt/ros/kinetic/setup.bash' >> $HOME/.bashrc \
+  && echo 'source $HOME/catkin_ws/devel/setup.bash' >> $HOME/.bashrc \
+
+# Entry point script
+WORKDIR $HOME
+RUN echo '#!/bin/bash' >> $HOME/entry.sh \
+  && echo 'export LD_LIBRARY_PATH=/usr/local/lib' >> $HOME/entry.sh \
+  && echo 'source /opt/ros/kinetic/setup.bash' >> $HOME/entry.sh \
+  && echo 'source $HOME/catkin_ws/devel/setup.bash' >> $HOME/entry.sh \
+  && echo 'exec "$@"' >> $HOME/entry.sh \
+  && chmod +x $HOME/entry.sh
+ENTRYPOINT ["/home/docker/entry.sh"]
