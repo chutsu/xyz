@@ -28,6 +28,7 @@
 #include <sys/poll.h>
 
 #include <yaml.h>
+#include <stb_image.h>
 #include <cblas.h>
 #include <suitesparse/cholmod.h>
 
@@ -1395,9 +1396,9 @@ int mav_waypoints_update(mav_waypoints_t *wps,
  * COMPUTER-VISION
  *****************************************************************************/
 
-///////////
-// IMAGE //
-///////////
+//////////////
+// IMAGE U8 //
+//////////////
 
 typedef struct image_t {
   int width;
@@ -1406,12 +1407,8 @@ typedef struct image_t {
   uint8_t *data;
 } image_t;
 
-void image_setup(image_t *img,
-                 const int width,
-                 const int height,
-                 uint8_t *data);
 image_t *image_load(const char *file_path);
-void image_print_properties(const image_t *img);
+void image_print(const image_t *img);
 void image_free(image_t *img);
 
 ////////////

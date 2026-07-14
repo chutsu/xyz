@@ -1,5 +1,10 @@
 #include "xyz.h"
 
+#ifndef STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#endif
+
 /*******************************************************************************
  * SYSTEM
  ******************************************************************************/
@@ -2422,10 +2427,8 @@ status_t tcp_client_loop(tcp_client_t *client) {
     if (client->loop_cb) {
       int retval = client->loop_cb(client);
       switch (retval) {
-        case -1:
-          return -1;
-        case 1:
-          break;
+        case -1: return -1;
+        case 1: break;
       }
     }
   }
@@ -7630,26 +7633,12 @@ int mav_waypoints_update(mav_waypoints_t *wps,
 ///////////
 
 /**
- * Setup image `img` with `width`, `height` and `data`.
- */
-void image_setup(image_t *img,
-                 const int width,
-                 const int height,
-                 uint8_t *data) {
-  assert(img != NULL);
-  img->width = width;
-  img->height = height;
-  img->data = data;
-}
-
-/**
  * Load image at `file_path`.
  * @returns Heap allocated image
  */
 image_t *image_load(const char *file_path) {
   assert(file_path != NULL);
 
-#ifdef USE_STB
   int img_w = 0;
   int img_h = 0;
   int img_c = 0;
@@ -7665,15 +7654,12 @@ image_t *image_load(const char *file_path) {
   img->channels = img_c;
   img->data = data;
   return img;
-#else
-  FATAL("Not Implemented!");
-#endif
 }
 
 /**
  * Print image properties.
  */
-void image_print_properties(const image_t *img) {
+void image_print(const image_t *img) {
   assert(img != NULL);
   printf("img.width: %d\n", img->width);
   printf("img.height: %d\n", img->height);
@@ -9337,9 +9323,7 @@ void aprilgrid_object_point(const aprilgrid_t *grid,
       object_point[1] = y + grid->tag_size;
       object_point[2] = 0;
       break;
-    default:
-      APRILGRID_FATAL("Incorrect corner id [%d]!\n", corner_idx);
-      break;
+    default: APRILGRID_FATAL("Incorrect corner id [%d]!\n", corner_idx); break;
   }
 }
 
@@ -9679,7 +9663,7 @@ aprilgrid_t *aprilgrid_detector_detect(const aprilgrid_detector_t *det,
   assert(image_stride > 0);
   assert(image_data != NULL);
 
-  // Form image_u8_t
+  // Form image_t
   image_u8_t im = {.width = image_width,
                    .height = image_height,
                    .stride = image_stride,
@@ -11363,42 +11347,18 @@ void feature_print(const feature_t *f) {
  */
 void param_type_string(const int param_type, char *s) {
   switch (param_type) {
-    case POSITION_PARAM:
-      strcpy(s, "POSITION_PARAM");
-      break;
-    case ROTATION_PARAM:
-      strcpy(s, "ROTATION_PARAM");
-      break;
-    case POSE_PARAM:
-      strcpy(s, "POSE_PARAM");
-      break;
-    case EXTRINSIC_PARAM:
-      strcpy(s, "EXTRINSIC_PARAM");
-      break;
-    case FIDUCIAL_PARAM:
-      strcpy(s, "FIDUCIAL_PARAM");
-      break;
-    case VELOCITY_PARAM:
-      strcpy(s, "VELOCITY_PARAM");
-      break;
-    case IMU_BIASES_PARAM:
-      strcpy(s, "IMU_BIASES_PARAM");
-      break;
-    case FEATURE_PARAM:
-      strcpy(s, "FEATURE_PARAM");
-      break;
-    case JOINT_PARAM:
-      strcpy(s, "JOINT_PARAM");
-      break;
-    case CAMERA_PARAM:
-      strcpy(s, "CAMERA_PARAM");
-      break;
-    case TIME_DELAY_PARAM:
-      strcpy(s, "TIME_DELAY_PARAM");
-      break;
-    default:
-      FATAL("Invalid param type [%d]!\n", param_type);
-      break;
+    case POSITION_PARAM: strcpy(s, "POSITION_PARAM"); break;
+    case ROTATION_PARAM: strcpy(s, "ROTATION_PARAM"); break;
+    case POSE_PARAM: strcpy(s, "POSE_PARAM"); break;
+    case EXTRINSIC_PARAM: strcpy(s, "EXTRINSIC_PARAM"); break;
+    case FIDUCIAL_PARAM: strcpy(s, "FIDUCIAL_PARAM"); break;
+    case VELOCITY_PARAM: strcpy(s, "VELOCITY_PARAM"); break;
+    case IMU_BIASES_PARAM: strcpy(s, "IMU_BIASES_PARAM"); break;
+    case FEATURE_PARAM: strcpy(s, "FEATURE_PARAM"); break;
+    case JOINT_PARAM: strcpy(s, "JOINT_PARAM"); break;
+    case CAMERA_PARAM: strcpy(s, "CAMERA_PARAM"); break;
+    case TIME_DELAY_PARAM: strcpy(s, "TIME_DELAY_PARAM"); break;
+    default: FATAL("Invalid param type [%d]!\n", param_type); break;
   }
 }
 
@@ -11409,38 +11369,18 @@ size_t param_global_size(const int param_type) {
   size_t param_size = 0;
 
   switch (param_type) {
-    case POSITION_PARAM:
-      param_size = 3;
-      break;
-    case ROTATION_PARAM:
-      param_size = 4;
-      break;
+    case POSITION_PARAM: param_size = 3; break;
+    case ROTATION_PARAM: param_size = 4; break;
     case POSE_PARAM:
     case EXTRINSIC_PARAM:
-    case FIDUCIAL_PARAM:
-      param_size = 7;
-      break;
-    case VELOCITY_PARAM:
-      param_size = 3;
-      break;
-    case IMU_BIASES_PARAM:
-      param_size = 6;
-      break;
-    case FEATURE_PARAM:
-      param_size = 3;
-      break;
-    case JOINT_PARAM:
-      param_size = 1;
-      break;
-    case CAMERA_PARAM:
-      param_size = 8;
-      break;
-    case TIME_DELAY_PARAM:
-      param_size = 1;
-      break;
-    default:
-      FATAL("Invalid param type [%d]!\n", param_type);
-      break;
+    case FIDUCIAL_PARAM: param_size = 7; break;
+    case VELOCITY_PARAM: param_size = 3; break;
+    case IMU_BIASES_PARAM: param_size = 6; break;
+    case FEATURE_PARAM: param_size = 3; break;
+    case JOINT_PARAM: param_size = 1; break;
+    case CAMERA_PARAM: param_size = 8; break;
+    case TIME_DELAY_PARAM: param_size = 1; break;
+    default: FATAL("Invalid param type [%d]!\n", param_type); break;
   }
 
   return param_size;
@@ -11453,38 +11393,18 @@ size_t param_local_size(const int param_type) {
   size_t param_size = 0;
 
   switch (param_type) {
-    case POSITION_PARAM:
-      param_size = 3;
-      break;
-    case ROTATION_PARAM:
-      param_size = 3;
-      break;
+    case POSITION_PARAM: param_size = 3; break;
+    case ROTATION_PARAM: param_size = 3; break;
     case POSE_PARAM:
     case EXTRINSIC_PARAM:
-    case FIDUCIAL_PARAM:
-      param_size = 6;
-      break;
-    case VELOCITY_PARAM:
-      param_size = 3;
-      break;
-    case IMU_BIASES_PARAM:
-      param_size = 6;
-      break;
-    case FEATURE_PARAM:
-      param_size = 3;
-      break;
-    case JOINT_PARAM:
-      param_size = 1;
-      break;
-    case CAMERA_PARAM:
-      param_size = 8;
-      break;
-    case TIME_DELAY_PARAM:
-      param_size = 1;
-      break;
-    default:
-      FATAL("Invalid param type [%d]!\n", param_type);
-      break;
+    case FIDUCIAL_PARAM: param_size = 6; break;
+    case VELOCITY_PARAM: param_size = 3; break;
+    case IMU_BIASES_PARAM: param_size = 6; break;
+    case FEATURE_PARAM: param_size = 3; break;
+    case JOINT_PARAM: param_size = 1; break;
+    case CAMERA_PARAM: param_size = 8; break;
+    case TIME_DELAY_PARAM: param_size = 1; break;
+    default: FATAL("Invalid param type [%d]!\n", param_type); break;
   }
 
   return param_size;
@@ -14855,24 +14775,16 @@ void marg_factor_add(marg_factor_t *marg, int factor_type, void *factor_ptr) {
       assert(marg->marg_factor != NULL); // Implementation error!
       marg->marg_factor = factor_ptr;
       break;
-    case BA_FACTOR:
-      list_push(marg->ba_factors, factor_ptr);
-      break;
-    case CAMERA_FACTOR:
-      list_push(marg->camera_factors, factor_ptr);
-      break;
-    case IMU_FACTOR:
-      list_push(marg->imu_factors, factor_ptr);
-      break;
+    case BA_FACTOR: list_push(marg->ba_factors, factor_ptr); break;
+    case CAMERA_FACTOR: list_push(marg->camera_factors, factor_ptr); break;
+    case IMU_FACTOR: list_push(marg->imu_factors, factor_ptr); break;
     case CALIB_CAMERA_FACTOR:
       list_push(marg->calib_camera_factors, factor_ptr);
       break;
     case CALIB_IMUCAM_FACTOR:
       list_push(marg->calib_imucam_factors, factor_ptr);
       break;
-    default:
-      FATAL("Implementation Error!\n");
-      break;
+    default: FATAL("Implementation Error!\n"); break;
   };
 }
 
@@ -14905,42 +14817,18 @@ static void marg_track_factor(marg_factor_t *marg,
                               const int param_type,
                               real_t *param) {
   switch (param_type) {
-    case POSITION_PARAM:
-      marg_track_pos(marg, param);
-      break;
-    case ROTATION_PARAM:
-      marg_track_rot(marg, param);
-      break;
-    case POSE_PARAM:
-      marg_track_pose(marg, param);
-      break;
-    case VELOCITY_PARAM:
-      marg_track_velocity(marg, param);
-      break;
-    case IMU_BIASES_PARAM:
-      marg_track_imu_biases(marg, param);
-      break;
-    case FEATURE_PARAM:
-      marg_track_feature(marg, param);
-      break;
-    case FIDUCIAL_PARAM:
-      marg_track_fiducial(marg, param);
-      break;
-    case EXTRINSIC_PARAM:
-      marg_track_extrinsic(marg, param);
-      break;
-    case JOINT_PARAM:
-      marg_track_joint(marg, param);
-      break;
-    case CAMERA_PARAM:
-      marg_track_camera(marg, param);
-      break;
-    case TIME_DELAY_PARAM:
-      marg_track_time_delay(marg, param);
-      break;
-    default:
-      FATAL("Implementation Error!\n");
-      break;
+    case POSITION_PARAM: marg_track_pos(marg, param); break;
+    case ROTATION_PARAM: marg_track_rot(marg, param); break;
+    case POSE_PARAM: marg_track_pose(marg, param); break;
+    case VELOCITY_PARAM: marg_track_velocity(marg, param); break;
+    case IMU_BIASES_PARAM: marg_track_imu_biases(marg, param); break;
+    case FEATURE_PARAM: marg_track_feature(marg, param); break;
+    case FIDUCIAL_PARAM: marg_track_fiducial(marg, param); break;
+    case EXTRINSIC_PARAM: marg_track_extrinsic(marg, param); break;
+    case JOINT_PARAM: marg_track_joint(marg, param); break;
+    case CAMERA_PARAM: marg_track_camera(marg, param); break;
+    case TIME_DELAY_PARAM: marg_track_time_delay(marg, param); break;
+    default: FATAL("Implementation Error!\n"); break;
   }
 }
 
@@ -15881,9 +15769,7 @@ void solver_update(solver_t *solver, real_t *dx, int sv_size) {
         break;
       case POSE_PARAM:
       case FIDUCIAL_PARAM:
-      case EXTRINSIC_PARAM:
-        pose_update(data, dx + idx);
-        break;
+      case EXTRINSIC_PARAM: pose_update(data, dx + idx); break;
       case VELOCITY_PARAM:
         for (int i = 0; i < 3; i++) {
           data[i] += dx[idx + i];
@@ -15899,20 +15785,14 @@ void solver_update(solver_t *solver, real_t *dx, int sv_size) {
           data[i] += dx[idx + i];
         }
         break;
-      case JOINT_PARAM:
-        data[0] += dx[idx];
-        break;
+      case JOINT_PARAM: data[0] += dx[idx]; break;
       case CAMERA_PARAM:
         for (int i = 0; i < 8; i++) {
           data[i] += dx[idx + i];
         }
         break;
-      case TIME_DELAY_PARAM:
-        data[0] += dx[idx];
-        break;
-      default:
-        FATAL("Invalid param type [%d]!\n", info->type);
-        break;
+      case TIME_DELAY_PARAM: data[0] += dx[idx]; break;
+      default: FATAL("Invalid param type [%d]!\n", info->type); break;
     }
   }
 
@@ -17548,28 +17428,18 @@ static void print_int_vector(const char *prefix, const int *v, const int n) {
  */
 inline void yaml_print_token(const yaml_token_t token) {
   switch (token.type) {
-    case YAML_NO_TOKEN:
-      printf("YAML_NO_TOKEN\n");
-      break;
-    case YAML_STREAM_START_TOKEN:
-      printf("YAML_STREAM_START_TOKEN\n");
-      break;
-    case YAML_STREAM_END_TOKEN:
-      printf("YAML_STREAM_END_TOKEN\n");
-      break;
+    case YAML_NO_TOKEN: printf("YAML_NO_TOKEN\n"); break;
+    case YAML_STREAM_START_TOKEN: printf("YAML_STREAM_START_TOKEN\n"); break;
+    case YAML_STREAM_END_TOKEN: printf("YAML_STREAM_END_TOKEN\n"); break;
 
     case YAML_VERSION_DIRECTIVE_TOKEN:
       printf("YAML_VERSION_DIRECTIVE_TOKEN\n");
       break;
-    case YAML_TAG_DIRECTIVE_TOKEN:
-      printf("YAML_TAG_DIRECTIVE_TOKEN\n");
-      break;
+    case YAML_TAG_DIRECTIVE_TOKEN: printf("YAML_TAG_DIRECTIVE_TOKEN\n"); break;
     case YAML_DOCUMENT_START_TOKEN:
       printf("YAML_DOCUMENT_START_TOKEN\n");
       break;
-    case YAML_DOCUMENT_END_TOKEN:
-      printf("YAML_DOCUMENT_END_TOKEN\n");
-      break;
+    case YAML_DOCUMENT_END_TOKEN: printf("YAML_DOCUMENT_END_TOKEN\n"); break;
 
     case YAML_BLOCK_SEQUENCE_START_TOKEN:
       printf("YAML_BLOCK_SEQUENCE_START_TOKEN\n");
@@ -17577,9 +17447,7 @@ inline void yaml_print_token(const yaml_token_t token) {
     case YAML_BLOCK_MAPPING_START_TOKEN:
       printf("YAML_BLOCK_MAPPING_START_TOKEN\n");
       break;
-    case YAML_BLOCK_END_TOKEN:
-      printf("YAML_BLOCK_END_TOKEN\n");
-      break;
+    case YAML_BLOCK_END_TOKEN: printf("YAML_BLOCK_END_TOKEN\n"); break;
 
     case YAML_FLOW_SEQUENCE_START_TOKEN:
       printf("YAML_FLOW_SEQUENCE_START_TOKEN\n");
@@ -17594,35 +17462,19 @@ inline void yaml_print_token(const yaml_token_t token) {
       printf("YAML_FLOW_MAPPING_END_TOKEN\n");
       break;
 
-    case YAML_BLOCK_ENTRY_TOKEN:
-      printf("YAML_BLOCK_ENTRY_TOKEN\n");
-      break;
-    case YAML_FLOW_ENTRY_TOKEN:
-      printf("YAML_FLOW_ENTRY_TOKEN\n");
-      break;
-    case YAML_KEY_TOKEN:
-      printf("YAML_KEY_TOKEN\n");
-      break;
-    case YAML_VALUE_TOKEN:
-      printf("YAML_VALUE_TOKEN\n");
-      break;
+    case YAML_BLOCK_ENTRY_TOKEN: printf("YAML_BLOCK_ENTRY_TOKEN\n"); break;
+    case YAML_FLOW_ENTRY_TOKEN: printf("YAML_FLOW_ENTRY_TOKEN\n"); break;
+    case YAML_KEY_TOKEN: printf("YAML_KEY_TOKEN\n"); break;
+    case YAML_VALUE_TOKEN: printf("YAML_VALUE_TOKEN\n"); break;
 
-    case YAML_ALIAS_TOKEN:
-      printf("YAML_ALIAS_TOKEN\n");
-      break;
-    case YAML_ANCHOR_TOKEN:
-      printf("YAML_ANCHOR_TOKEN\n");
-      break;
-    case YAML_TAG_TOKEN:
-      printf("YAML_TAG_TOKEN\n");
-      break;
+    case YAML_ALIAS_TOKEN: printf("YAML_ALIAS_TOKEN\n"); break;
+    case YAML_ANCHOR_TOKEN: printf("YAML_ANCHOR_TOKEN\n"); break;
+    case YAML_TAG_TOKEN: printf("YAML_TAG_TOKEN\n"); break;
     case YAML_SCALAR_TOKEN:
       printf("YAML_SCALAR_TOKEN [%s]\n", token.data.scalar.value);
       break;
 
-    default:
-      printf("-\n");
-      break;
+    default: printf("-\n"); break;
   }
 }
 
@@ -17654,12 +17506,8 @@ yaml_get(const char *yaml_file, const char *key, char value_type, void *value) {
     yaml_parser_scan(&parser, &token);
 
     switch (token.type) {
-      case YAML_KEY_TOKEN:
-        state = 0;
-        break;
-      case YAML_VALUE_TOKEN:
-        state = 1;
-        break;
+      case YAML_KEY_TOKEN: state = 0; break;
+      case YAML_VALUE_TOKEN: state = 1; break;
       case YAML_SCALAR_TOKEN: {
         char *tk = (char *) token.data.scalar.value;
 
@@ -17683,8 +17531,7 @@ yaml_get(const char *yaml_file, const char *key, char value_type, void *value) {
         }
         break;
       }
-      default:
-        break;
+      default: break;
     }
 
     if (token.type != YAML_STREAM_END_TOKEN) {
@@ -17733,12 +17580,8 @@ static int yaml_get_vector(const char *yaml_file,
     yaml_parser_scan(&parser, &token);
 
     switch (token.type) {
-      case YAML_KEY_TOKEN:
-        state = 0;
-        break;
-      case YAML_VALUE_TOKEN:
-        state = 1;
-        break;
+      case YAML_KEY_TOKEN: state = 0; break;
+      case YAML_VALUE_TOKEN: state = 1; break;
       case YAML_SCALAR_TOKEN: {
         char *tk = (char *) token.data.scalar.value;
 
@@ -17760,8 +17603,7 @@ static int yaml_get_vector(const char *yaml_file,
         }
         break;
       }
-      default:
-        break;
+      default: break;
     }
 
     if (token.type != YAML_STREAM_END_TOKEN) {
@@ -17816,12 +17658,8 @@ static int yaml_get_matrix(const char *yaml_file,
     // yaml_print_token(token);
 
     switch (token.type) {
-      case YAML_KEY_TOKEN:
-        state = 0;
-        break;
-      case YAML_VALUE_TOKEN:
-        state = 1;
-        break;
+      case YAML_KEY_TOKEN: state = 0; break;
+      case YAML_VALUE_TOKEN: state = 1; break;
       case YAML_SCALAR_TOKEN: {
         char *tk = (char *) token.data.scalar.value;
 
@@ -17867,8 +17705,7 @@ static int yaml_get_matrix(const char *yaml_file,
         }
         break;
       }
-      default:
-        break;
+      default: break;
     }
 
     if (token.type != YAML_STREAM_END_TOKEN) {
