@@ -1,0 +1,14 @@
+ruff==0.12.2
+pyyaml==6.0.2
+requests==2.32.4
+numpy==2.2.6
+scipy==1.15.3
+scipy-stubs==1.15.3.0
+pandas==2.3.0
+pandas-stubs==2.3.0.250703
+matplotlib==3.10.3
+matplotlib-stubs==0.1.0
+opencv-python==4.11.0.86
+opencv-stubs==0.0.12
+open3d-cpu==0.19.0
+rerun-sdk==0.25.1

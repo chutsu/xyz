@@ -87,6 +87,11 @@ deps: ## Install dependencies
 		libassimp-dev \
 		libglfw3-dev
 
+venv: ## Setup env
+	@python3 -m venv venv && \
+	venv/bin/pip3 install -r requirements.txt && \
+	echo "Run 'source venv/bin/activate' to activate the virtualenv"
+
 libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
 
 tests: $(TESTS) ## Build and run tests
