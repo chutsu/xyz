@@ -4,3 +4,4 @@ deps/include
 deps/lib
 deps/share
 target
+venv
