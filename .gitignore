@@ -4,4 +4,6 @@ deps/include
 deps/lib
 deps/share
 target
+
+scripts/__pycache__
 venv
