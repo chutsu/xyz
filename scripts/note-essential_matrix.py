@@ -2,12 +2,79 @@ import cv2
 import numpy as np
 import sympy as sp
 
-# ==============================================================================
-# 1. NULLSPACE & POLYNOMIAL CONSTRAINT GENERATION
-# ==============================================================================
+
+###############################################################################
+# UTILS
+###############################################################################
+
+def decompose_essential_matrix(E):
+  """Decompose an essential matrix into 4 possible (R, t) pose hypotheses."""
+  U, _, Vt = np.linalg.svd(E)
+  if np.linalg.det(U) < 0:
+    U *= -1
+  if np.linalg.det(Vt) < 0:
+    Vt *= -1
+
+  W = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+
+  R1 = U @ W @ Vt
+  R2 = U @ W.T @ Vt
+  t1 = U[:, 2]
+  t2 = -U[:, 2]
+
+  return [(R1, t1), (R1, t2), (R2, t1), (R2, t2)]
 
 
-def compute_nullspace_basis(pts1, pts2):
+def cheirality_check(R, t, pts1, pts2):
+  """Triangulate points and count how many have positive depth in both views."""
+  P1 = np.hstack((np.eye(3), np.zeros((3, 1))))
+  P2 = np.hstack((R, t.reshape(3, 1)))
+
+  front_count = 0
+  for i in range(len(pts1)):
+    x1, y1 = pts1[i, 0], pts1[i, 1]
+    x2, y2 = pts2[i, 0], pts2[i, 1]
+
+    A = np.array([
+        x1 * P1[2] - P1[0],
+        y1 * P1[2] - P1[1],
+        x2 * P2[2] - P2[0],
+        y2 * P2[2] - P2[1],
+    ])
+    _, _, Vt = np.linalg.svd(A)
+    X = Vt[-1]
+    X /= X[3]
+
+    depth1 = X[2]
+    depth2 = (R[2] @ X[:3]) + t[2]
+
+    if depth1 > 0 and depth2 > 0:
+      front_count += 1
+
+  return front_count
+
+
+def sampson_distance(E, pts1, pts2):
+  """Symmetric epipolar distance (Sampson) for all point pairs, summed."""
+  n = len(pts1)
+  pts1_h = np.hstack([pts1, np.ones((n, 1))])
+  pts2_h = np.hstack([pts2, np.ones((n, 1))])
+
+  Ex1 = (E @ pts1_h.T).T
+  Etx2 = (E.T @ pts2_h.T).T
+
+  numerator = np.sum(pts2_h * Ex1, axis=1)**2
+  denominator = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 + Etx2[:, 1]**2)
+  with np.errstate(divide='ignore', invalid='ignore'):
+    sd = np.where(denominator > 1e-12, numerator / denominator, 0.0)
+  return np.sum(sd)
+
+
+###############################################################################
+# NISTER 5-POINT ALGORITHM
+###############################################################################
+
+def _compute_nullspace_basis(pts1, pts2):
   """
   Builds the 5x9 linear design matrix from 5 normalized point pairs and
   computes the 4 basis matrices (Ex, Ey, Ez, Ew) spanning the null space.
@@ -24,7 +91,7 @@ def compute_nullspace_basis(pts1, pts2):
   return nullspace[0], nullspace[1], nullspace[2], nullspace[3]
 
 
-def build_constraint_matrix(Ex, Ey, Ez, Ew):
+def _build_constraint_matrix(Ex, Ey, Ez, Ew):
   """
   Substitutes E = x*Ex + y*Ey + z*Ez + Ew into the 9 matrix constraints:
 
@@ -34,10 +101,12 @@ def build_constraint_matrix(Ex, Ey, Ez, Ew):
 
   Uses sympy to perform the symbolic expansion.
   """
+  # Null-space basis matrices
   x, y, z = sp.symbols('x y z')
   _M = lambda a: sp.Matrix(a.tolist())
   E = x * _M(Ex) + y * _M(Ey) + z * _M(Ez) + _M(Ew)
 
+  # Contraints
   EET = E * E.T
   constraint = 2 * E * E.T * E - sp.trace(EET) * E
   det_constraint = E.det()
@@ -92,12 +161,7 @@ def build_constraint_matrix(Ex, Ey, Ez, Ew):
   return M
 
 
-# ==============================================================================
-# 2. ELIMINATION & ROOT SOLVING FOR (x, y, z)
-# ==============================================================================
-
-
-def solve_system_nister(M):
+def _solve_system_nister(M):
   """
   Reduces the 10x20 matrix using Gauss-Jordan elimination and solves for z
   using an 10x10 action matrix, then recovers (x, y).
@@ -149,79 +213,11 @@ def solve_system_nister(M):
   return solutions
 
 
-# ==============================================================================
-# 3. POSE RECOVERY & CHEIRALITY TEST
-# ==============================================================================
-
-
-def decompose_essential_matrix(E):
-  """Decompose an essential matrix into 4 possible (R, t) pose hypotheses."""
-  U, _, Vt = np.linalg.svd(E)
-  if np.linalg.det(U) < 0:
-    U *= -1
-  if np.linalg.det(Vt) < 0:
-    Vt *= -1
-
-  W = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
-
-  R1 = U @ W @ Vt
-  R2 = U @ W.T @ Vt
-  t1 = U[:, 2]
-  t2 = -U[:, 2]
-
-  return [(R1, t1), (R1, t2), (R2, t1), (R2, t2)]
-
-
-def tri_cheirality_check(R, t, pts1, pts2):
-  """Triangulate points and count how many have positive depth in both views."""
-  P1 = np.hstack((np.eye(3), np.zeros((3, 1))))
-  P2 = np.hstack((R, t.reshape(3, 1)))
-
-  front_count = 0
-  for i in range(len(pts1)):
-    x1, y1 = pts1[i, 0], pts1[i, 1]
-    x2, y2 = pts2[i, 0], pts2[i, 1]
-
-    A = np.array([
-        x1 * P1[2] - P1[0],
-        y1 * P1[2] - P1[1],
-        x2 * P2[2] - P2[0],
-        y2 * P2[2] - P2[1],
-    ])
-    _, _, Vt = np.linalg.svd(A)
-    X = Vt[-1]
-    X /= X[3]
-
-    depth1 = X[2]
-    depth2 = (R[2] @ X[:3]) + t[2]
-
-    if depth1 > 0 and depth2 > 0:
-      front_count += 1
-
-  return front_count
-
-
-def _sampson_distance(E, pts1, pts2):
-  """Symmetric epipolar distance (Sampson) for all point pairs, summed."""
-  n = len(pts1)
-  pts1_h = np.hstack([pts1, np.ones((n, 1))])
-  pts2_h = np.hstack([pts2, np.ones((n, 1))])
-
-  Ex1 = (E @ pts1_h.T).T
-  Etx2 = (E.T @ pts2_h.T).T
-
-  numerator = np.sum(pts2_h * Ex1, axis=1)**2
-  denominator = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 + Etx2[:, 1]**2)
-  with np.errstate(divide='ignore', invalid='ignore'):
-    sd = np.where(denominator > 1e-12, numerator / denominator, 0.0)
-  return np.sum(sd)
-
-
 def nister_5point_algorithm(pts1_norm, pts2_norm):
   """Estimate relative pose using the Nistér 5-point algorithm."""
-  Ex, Ey, Ez, Ew = compute_nullspace_basis(pts1_norm, pts2_norm)
-  M = build_constraint_matrix(Ex, Ey, Ez, Ew)
-  xyz_sols = solve_system_nister(M)
+  Ex, Ey, Ez, Ew = _compute_nullspace_basis(pts1_norm, pts2_norm)
+  M = _build_constraint_matrix(Ex, Ey, Ez, Ew)
+  xyz_sols = _solve_system_nister(M)
 
   best_R, best_t = None, None
   max_front_pts = -1
@@ -238,8 +234,8 @@ def nister_5point_algorithm(pts1_norm, pts2_norm):
     # Decompose Essential matrix into R, t
     poses = decompose_essential_matrix(E_clean)
     for R, t in poses:
-      valid_pts = tri_cheirality_check(R, t, pts1_norm, pts2_norm)
-      sd = _sampson_distance(E_clean, pts1_norm, pts2_norm)
+      valid_pts = cheirality_check(R, t, pts1_norm, pts2_norm)
+      sd = sampson_distance(E_clean, pts1_norm, pts2_norm)
       if valid_pts > max_front_pts or (valid_pts == max_front_pts and
                                        sd < best_sd):
         max_front_pts = valid_pts
@@ -250,7 +246,7 @@ def nister_5point_algorithm(pts1_norm, pts2_norm):
 
 
 # ==============================================================================
-# 4. OPENCV COMPARISON FUNCTION
+# OPENCV 5-POINT ALGORITHM
 # ==============================================================================
 
 
@@ -296,7 +292,7 @@ def opencv_5point_algorithm(pts1_norm, pts2_norm):
   best_count = -1
   for E_candidate in candidates:
     R_cv, t_cv = _try_decompose_essential(E_candidate, pts1_norm, pts2_norm)
-    count = tri_cheirality_check(R_cv, t_cv, pts1_norm, pts2_norm)
+    count = cheirality_check(R_cv, t_cv, pts1_norm, pts2_norm)
     if count > best_count:
       best_count = count
       best_R, best_t = R_cv, t_cv
@@ -307,6 +303,7 @@ def opencv_5point_algorithm(pts1_norm, pts2_norm):
 # ==============================================================================
 # VERIFICATION & COMPARISON BENCHMARK
 # ==============================================================================
+
 if __name__ == "__main__":
   np.random.seed(42)
 

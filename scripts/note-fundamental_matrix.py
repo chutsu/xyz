@@ -3,7 +3,8 @@ import numpy as np
 from numpy import pi
 import matplotlib.pylab as plt  # pyright: ignore
 
-from xyz import inv
+from numpy.linalg import inv
+
 from xyz import tf
 from xyz import tf_point
 from xyz import euler321
@@ -11,6 +12,48 @@ from xyz import focal_length
 from xyz import pinhole_project
 from xyz import plot_tf
 from xyz import plot_set_axes_equal
+
+###############################################################################
+# UTILS
+###############################################################################
+
+
+def skew(t):
+  """Skew-symmetric matrix [t]_×.
+
+  Args:
+    t: 3-element vector.
+
+  Returns:
+    3x3 skew-symmetric matrix.
+  """
+  return np.array([[0, -t[2], t[1]], [t[2], 0, -t[0]], [-t[1], t[0], 0]])
+
+
+def rot_diff(R1, R2):
+  """Angle (degrees) between two rotation matrices.
+
+  Args:
+    R1: 3x3 rotation matrix.
+    R2: 3x3 rotation matrix.
+
+  Returns:
+    Angle in degrees.
+  """
+  return np.rad2deg(np.arccos(np.clip((np.trace(R1.T @ R2) - 1) / 2, -1, 1)))
+
+
+def vecs_angle(v1, v2):
+  """Angle (degrees) between two vectors.
+
+  Args:
+    v1: 3-element vector.
+    v2: 3-element vector.
+
+  Returns:
+    Angle in degrees.
+  """
+  return np.rad2deg(np.arccos(np.clip(np.dot(v1, v2), -1, 1)))
 
 
 def random_point_cloud(n=30, center=(0.5, 0, 0), spread=0.3):
@@ -27,18 +70,6 @@ def random_point_cloud(n=30, center=(0.5, 0, 0), spread=0.3):
   return np.random.uniform(-spread, spread, (n, 3)) + center
 
 
-def skew(t):
-  """Skew-symmetric matrix [t]_×.
-
-  Args:
-    t: 3-element vector.
-
-  Returns:
-    3x3 skew-symmetric matrix.
-  """
-  return np.array([[0, -t[2], t[1]], [t[2], 0, -t[0]], [-t[1], t[0], 0]])
-
-
 def essential_matrix(R, t):
   """Essential matrix E = [t]_× @ R.
 
@@ -50,130 +81,6 @@ def essential_matrix(R, t):
     3x3 essential matrix.
   """
   return skew(t) @ R
-
-
-def fundamental_from_pose(T_WC0, T_WC1, K):
-  """Ground truth fundamental matrix from two camera poses.
-
-  Computes F such that x1^T @ F @ x0 = 0, where x0 and x1
-  are homogeneous image coordinates in camera 0 and camera 1.
-
-  Args:
-    T_WC0: 4x4 pose of camera 0 (camera-to-world).
-    T_WC1: 4x4 pose of camera 1 (camera-to-world).
-    K: 3x3 camera intrinsics matrix.
-
-  Returns:
-    3x3 fundamental matrix normalized so F[2,2] = 1.
-  """
-  T_C1C0 = inv(T_WC1) @ T_WC0
-  R = T_C1C0[:3, :3]
-  t = T_C1C0[:3, 3]
-  E = essential_matrix(R, t)
-  F = np.linalg.inv(K).T @ E @ np.linalg.inv(K)
-  F /= F[2, 2]
-  return F
-
-
-def hartley_normalize(pts):
-  """Hartley normalization of 2D points.
-
-  Translates and scales points so their centroid is at the origin
-  and their mean distance from the origin is sqrt(2).
-
-  Args:
-    pts: Nx2 array of image points.
-
-  Returns:
-    T: 3x3 normalization matrix.
-    pts_norm: Nx2 normalized points.
-  """
-  centroid = np.mean(pts, axis=0)
-  pts_shifted = pts - centroid
-  mean_dist = np.mean(np.sqrt(np.sum(pts_shifted**2, axis=1)))
-  scale = np.sqrt(2) / mean_dist
-  T = np.array([
-      [scale, 0, -scale * centroid[0]],
-      [0, scale, -scale * centroid[1]],
-      [0, 0, 1],
-  ])
-  pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
-  pts_norm_h = (T @ pts_h.T).T
-  return T, pts_norm_h[:, :2]
-
-
-def estimate_fundamental_matrix(pts1, pts2):
-  """Normalized 8-point algorithm for fundamental matrix estimation.
-
-  Args:
-    pts1: Nx2 image points from camera 1.
-    pts2: Nx2 image points from camera 2.
-
-  Returns:
-    3x3 fundamental matrix F normalized so F[2,2] = 1.
-  """
-  assert pts1.shape == pts2.shape
-  assert pts1.shape[0] >= 8
-
-  # Normalize points
-  T1, pts1_norm = hartley_normalize(pts1)
-  T2, pts2_norm = hartley_normalize(pts2)
-
-  # Build A matrix
-  A = []
-  for (x1, y1), (x2, y2) in zip(pts1_norm, pts2_norm):
-    A.append([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, 1.0])
-  A = np.asarray(A)
-
-  # Solve Af=0
-  _, _, Vt = np.linalg.svd(A)
-  f = Vt[-1]  # last column = smallest eigenvalue
-  F = f.reshape(3, 3)
-
-  # Enforce rank 2 constraint
-  U, S, Vt = np.linalg.svd(F)
-  S[2] = 0  # set smallest eigenvalue to 0
-  F = U @ np.diag(S) @ Vt
-
-  # Denormalize
-  F = T2.T @ F @ T1
-
-  # Scale
-  F /= F[2, 2]
-
-  return F
-
-
-def triangulate_dlt(P1, P2, pts1, pts2):
-  """Linear triangulation of 3D points via the Direct Linear Transform.
-
-  Solves AX = 0 from two view correspondences using SVD.
-
-  Args:
-    P1: 3x4 projection matrix for camera 1.
-    P2: 3x4 projection matrix for camera 2.
-    pts1: Nx2 image points in camera 1.
-    pts2: Nx2 image points in camera 2.
-
-  Returns:
-    Nx3 array of triangulated 3D points.
-  """
-  assert len(pts1) == len(pts2)
-
-  # Triagnulate points with DLT
-  points = []
-  for (x1, y1), (x2, y2) in zip(pts1, pts2):
-    A = np.array([
-        x1 * P1[2] - P1[0],
-        y1 * P1[2] - P1[1],
-        x2 * P2[2] - P2[0],
-        y2 * P2[2] - P2[1],
-    ])
-    _, _, Vt = np.linalg.svd(A)
-    X = Vt[-1]
-    points.append(X[:3] / X[3])
-
-  return np.array(points)
 
 
 def decompose_essential(E, pts1, pts2, K):
@@ -235,30 +142,133 @@ def decompose_essential(E, pts1, pts2, K):
   return None
 
 
-def rot_diff(R1, R2):
-  """Angle (degrees) between two rotation matrices.
+def fundamental_from_pose(T_WC0, T_WC1, K):
+  """Ground truth fundamental matrix from two camera poses.
+
+  Computes F such that x1^T @ F @ x0 = 0, where x0 and x1
+  are homogeneous image coordinates in camera 0 and camera 1.
 
   Args:
-    R1: 3x3 rotation matrix.
-    R2: 3x3 rotation matrix.
+    T_WC0: 4x4 pose of camera 0 (camera-to-world).
+    T_WC1: 4x4 pose of camera 1 (camera-to-world).
+    K: 3x3 camera intrinsics matrix.
 
   Returns:
-    Angle in degrees.
+    3x3 fundamental matrix normalized so F[2,2] = 1.
   """
-  return np.rad2deg(np.arccos(np.clip((np.trace(R1.T @ R2) - 1) / 2, -1, 1)))
+  T_C1C0 = inv(T_WC1) @ T_WC0
+  R = T_C1C0[:3, :3]
+  t = T_C1C0[:3, 3]
+  E = essential_matrix(R, t)
+  F = inv(K).T @ E @ inv(K)
+  F /= F[2, 2]
+  return F
 
 
-def vecs_angle(v1, v2):
-  """Angle (degrees) between two vectors.
+def triangulate_dlt(P1, P2, pts1, pts2):
+  """Linear triangulation of 3D points via the Direct Linear Transform.
+
+  Solves AX = 0 from two view correspondences using SVD.
 
   Args:
-    v1: 3-element vector.
-    v2: 3-element vector.
+    P1: 3x4 projection matrix for camera 1.
+    P2: 3x4 projection matrix for camera 2.
+    pts1: Nx2 image points in camera 1.
+    pts2: Nx2 image points in camera 2.
 
   Returns:
-    Angle in degrees.
+    Nx3 array of triangulated 3D points.
   """
-  return np.rad2deg(np.arccos(np.clip(np.dot(v1, v2), -1, 1)))
+  assert len(pts1) == len(pts2)
+
+  # Triagnulate points with DLT
+  points = []
+  for (x1, y1), (x2, y2) in zip(pts1, pts2):
+    A = np.array([
+        x1 * P1[2] - P1[0],
+        y1 * P1[2] - P1[1],
+        x2 * P2[2] - P2[0],
+        y2 * P2[2] - P2[1],
+    ])
+    _, _, Vt = np.linalg.svd(A)
+    X = Vt[-1]
+    points.append(X[:3] / X[3])
+
+  return np.array(points)
+
+
+###############################################################################
+# 8-POINT ALGORITHM
+###############################################################################
+
+
+def _hartley_normalize(pts):
+  """Hartley normalization of 2D points.
+
+  Translates and scales points so their centroid is at the origin
+  and their mean distance from the origin is sqrt(2).
+
+  Args:
+    pts: Nx2 array of image points.
+
+  Returns:
+    T: 3x3 normalization matrix.
+    pts_norm: Nx2 normalized points.
+  """
+  centroid = np.mean(pts, axis=0)
+  pts_shifted = pts - centroid
+  mean_dist = np.mean(np.sqrt(np.sum(pts_shifted**2, axis=1)))
+  scale = np.sqrt(2) / mean_dist
+  T = np.array([
+      [scale, 0, -scale * centroid[0]],
+      [0, scale, -scale * centroid[1]],
+      [0, 0, 1],
+  ])
+  pts_h = np.hstack([pts, np.ones((pts.shape[0], 1))])
+  pts_norm_h = (T @ pts_h.T).T
+  return T, pts_norm_h[:, :2]
+
+
+def eight_point_algorithm(pts1, pts2):
+  """Normalized 8-point algorithm for fundamental matrix estimation.
+
+  Args:
+    pts1: Nx2 image points from camera 1.
+    pts2: Nx2 image points from camera 2.
+
+  Returns:
+    3x3 fundamental matrix F normalized so F[2,2] = 1.
+  """
+  assert pts1.shape == pts2.shape
+  assert pts1.shape[0] >= 8
+
+  # Normalize points
+  T1, pts1_norm = _hartley_normalize(pts1)
+  T2, pts2_norm = _hartley_normalize(pts2)
+
+  # Build A matrix
+  A = []
+  for (x1, y1), (x2, y2) in zip(pts1_norm, pts2_norm):
+    A.append([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, 1.0])
+  A = np.asarray(A)
+
+  # Solve Af=0
+  _, _, Vt = np.linalg.svd(A)
+  f = Vt[-1]  # last column = smallest eigenvalue
+  F = f.reshape(3, 3)
+
+  # Enforce rank 2 constraint
+  U, S, Vt = np.linalg.svd(F)
+  S[2] = 0  # set smallest eigenvalue to 0
+  F = U @ np.diag(S) @ Vt
+
+  # Denormalize
+  F = T2.T @ F @ T1
+
+  # Scale
+  F /= F[2, 2]
+
+  return F
 
 
 if __name__ == "__main__":
@@ -323,7 +333,7 @@ if __name__ == "__main__":
   print("Ground truth F:\n", F_gt)
 
   # Estimated
-  F_est = estimate_fundamental_matrix(cam0_kps, cam1_kps)
+  F_est = eight_point_algorithm(cam0_kps, cam1_kps)
   print("\nEstimated F:\n", F_est)
 
   # Epipolar errors
