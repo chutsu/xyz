@@ -1,5 +1,6 @@
+import cv2
 import numpy as np
-import cv2  # Make sure opencv-python is installed (pip install opencv-python)
+import sympy as sp
 
 # ==============================================================================
 # 1. NULLSPACE & POLYNOMIAL CONSTRAINT GENERATION
@@ -30,9 +31,26 @@ def build_constraint_matrix(Ex, Ey, Ez, Ew):
     2 * E * E^T * E - trace(E * E^T) * E = 0
 
   and det(E) = 0. Returns a 10x20 coefficient matrix.
-  """
-  E_bases = [Ex, Ey, Ez, Ew]
 
+  Uses sympy to perform the symbolic expansion.
+  """
+  x, y, z = sp.symbols('x y z')
+  _M = lambda a: sp.Matrix(a.tolist())
+  E = x * _M(Ex) + y * _M(Ey) + z * _M(Ez) + _M(Ew)
+
+  EET = E * E.T
+  constraint = 2 * E * E.T * E - sp.trace(EET) * E
+  det_constraint = E.det()
+
+  # Graded lexicographic ordering of monomials in (x, y, z),
+  # total degree descending, then x-exponent descending.
+  # Columns 0-9  (degree 3) : x^3, x^2y, x^2z, xy^2, xyz, xz^2, y^3, y^2z, yz^2, z^3
+  # Columns 10-15 (degree 2) : x^2, xy, xz, y^2, yz, z^2
+  # Columns 16-18 (degree 1) : x, y, z
+  # Column 19    (degree 0) : 1
+  #
+  # The split at col 10 separates cubic coefficients (L = M[:, :10]) from
+  # lower-degree coefficients (R = M[:, 10:]), enabling the elimination step.
   monomial_map = {
       (3, 0, 0): 0,
       (2, 1, 0): 1,
@@ -57,43 +75,19 @@ def build_constraint_matrix(Ex, Ey, Ez, Ew):
   }
   M = np.zeros((10, 20))
 
-  # 9 Equations from 2*E*E^T*E - trace(E*E^T)*E = 0
   row = 0
   for r in range(3):
     for c in range(3):
-      for i in range(4):
-        for j in range(4):
-          for k in range(4):
-            EEtE_rc = 2.0 * (E_bases[i] @ E_bases[j].T @ E_bases[k])[r, c]
-            trEEt_E_rc = np.trace(E_bases[i] @ E_bases[j].T) * E_bases[k][r, c]
-            coeff = EEtE_rc - trEEt_E_rc
-
-            if abs(coeff) > 1e-12:
-              powers = [0, 0, 0, 0]
-              powers[i] += 1
-              powers[j] += 1
-              powers[k] += 1
-              col = monomial_map[(powers[0], powers[1], powers[2])]
-              M[row, col] += coeff
+      poly = sp.Poly(sp.expand(constraint[r, c]), x, y, z)
+      for monom, coeff in poly.terms():
+        if monom in monomial_map:
+          M[row, monomial_map[monom]] = float(coeff)
       row += 1
 
-  # 10th Equation from det(E) = 0
-  for i in range(4):
-    for j in range(4):
-      for k in range(4):
-        det_term = (E_bases[i][0, 0] * (E_bases[j][1, 1] * E_bases[k][2, 2] -
-                                        E_bases[j][1, 2] * E_bases[k][2, 1]) -
-                    E_bases[i][0, 1] * (E_bases[j][1, 0] * E_bases[k][2, 2] -
-                                        E_bases[j][1, 2] * E_bases[k][2, 0]) +
-                    E_bases[i][0, 2] * (E_bases[j][1, 0] * E_bases[k][2, 1] -
-                                        E_bases[j][1, 1] * E_bases[k][2, 0]))
-        if abs(det_term) > 1e-12:
-          powers = [0, 0, 0, 0]
-          powers[i] += 1
-          powers[j] += 1
-          powers[k] += 1
-          col = monomial_map[(powers[0], powers[1], powers[2])]
-          M[9, col] += det_term
+  poly_det = sp.Poly(sp.expand(det_constraint), x, y, z)
+  for monom, coeff in poly_det.terms():
+    if monom in monomial_map:
+      M[9, monomial_map[monom]] = float(coeff)
 
   return M
 
@@ -108,26 +102,36 @@ def solve_system_nister(M):
   Reduces the 10x20 matrix using Gauss-Jordan elimination and solves for z
   using an 10x10 action matrix, then recovers (x, y).
   """
+  # Split M = [L | R] where L holds cubic coeffs and R holds lower-degree coeffs
   L = M[:, :10]
   R = M[:, 10:]
-
   if np.linalg.matrix_rank(L) < 10:
     return []
 
+  # L @ cubic + R @ lower = 0  =>  cubic = -L^{-1} @ R @ lower = -B @ lower
   B = np.linalg.solve(L, R)
 
+  # B is 10x10: L * cubic = -R * lower  =>  cubic = -L^{-1} * R * lower = -B * lower
+  # So cubic_monomial_i = -sum_j B[i,j] * lower_monomial_j
+  #
+  # Action matrix implements multiplication by z in the quotient ring.
+  # Basis vector v = [x^2, xy, xz, y^2, yz, z^2, x, y, z, 1]^T.
+  # Action satisfies  Action @ v  =  z * v,  so its eigenvalues are z-solutions.
+  #
+  # For each basis element multiplied by z, if the result is a cubic monomial,
+  # substitute using cubic = -B * lower.  If it is already a lower monomial,
+  # write a one-hot row.
   Action = np.zeros((10, 10))
-  Action[0] = -B[2]  # z * x^2  = x^2*z
-  Action[1] = -B[4]  # z * xy   = x*y*z
-  Action[2] = -B[5]  # z * xz   = x*z^2
-  Action[3] = -B[7]  # z * y^2  = y^2*z
-  Action[4] = -B[8]  # z * yz   = y*z^2
-  Action[5] = -B[9]  # z * z^2  = z^3
-  Action[6] = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
-  Action[7] = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
-  Action[8] = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
-  Action[9] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
-
+  Action[0] = -B[2]  # z * x^2  = x^2*z  = -B[2] @ lower
+  Action[1] = -B[4]  # z * xy   = x*y*z   = -B[4] @ lower
+  Action[2] = -B[5]  # z * xz   = x*z^2   = -B[5] @ lower
+  Action[3] = -B[7]  # z * y^2  = y^2*z   = -B[7] @ lower
+  Action[4] = -B[8]  # z * yz   = y*z^2   = -B[8] @ lower
+  Action[5] = -B[9]  # z * z^2  = z^3     = -B[9] @ lower
+  Action[6] = [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]  # z * x   = xz  -> basis index 2
+  Action[7] = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]  # z * y   = yz  -> basis index 4
+  Action[8] = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]  # z * z   = z^2 -> basis index 5
+  Action[9] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]  # z * 1   = z   -> basis index 8
   eigvals, eigvecs = np.linalg.eig(Action)
 
   solutions = []
