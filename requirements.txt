@@ -12,3 +12,4 @@ opencv-python==4.11.0.86
 opencv-stubs==0.0.12
 open3d-cpu==0.19.0
 rerun-sdk==0.25.1
+sympy==1.14.0
