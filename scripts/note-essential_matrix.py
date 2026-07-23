@@ -2,10 +2,25 @@ import cv2
 import numpy as np
 import sympy as sp
 
-
 ###############################################################################
 # UTILS
 ###############################################################################
+
+
+def skew(v):
+  """Returns 3x3 skew-symmetric matrix for vector v."""
+  return np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+
+
+def rodrigues(w):
+  """Exponential map from lie algebra so(3) vector to SO(3) rotation matrix."""
+  theta = np.linalg.norm(w)
+  if theta < 1e-8:
+    return np.eye(3)
+  k = w / theta
+  K = skew(k)
+  return np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
+
 
 def decompose_essential_matrix(E):
   """Decompose an essential matrix into 4 possible (R, t) pose hypotheses."""
@@ -73,6 +88,7 @@ def sampson_distance(E, pts1, pts2):
 ###############################################################################
 # NISTER 5-POINT ALGORITHM
 ###############################################################################
+
 
 def _compute_nullspace_basis(pts1, pts2):
   """
@@ -245,9 +261,180 @@ def nister_5point_algorithm(pts1_norm, pts2_norm):
   return best_R, best_t
 
 
-# ==============================================================================
+###############################################################################
+# LUI 5-POINT ALGORITHM
+###############################################################################
+
+
+def _compute_angular_residuals(R1, R2, v1, v2):
+  """
+  Projects unit vectors v1, v2 using candidate rotations R1, R2.
+  Measures 2D angular difference on the x-y tangent plane.
+  """
+  # 1. Rotate 3D unit vectors
+  p1_3d = (R1 @ v1.T).T  # Shape: (5, 3)
+  p2_3d = (R2 @ v2.T).T  # Shape: (5, 3)
+
+  # 2. Extract 2D polar angles on x-y plane (looking along baseline e_z)
+  theta1 = np.arctan2(p1_3d[:, 1], p1_3d[:, 0])
+  theta2 = np.arctan2(p2_3d[:, 1], p2_3d[:, 0])
+
+  # 3. Signed angular difference wrapped to [-pi, pi]
+  residuals = theta1 - theta2
+  residuals = (residuals + np.pi) % (2 * np.pi) - np.pi
+  return residuals, p1_3d, p2_3d
+
+
+def solve_5pt_lui(v1, v2, max_iters=50, tol=1e-10):
+  """
+  Iterative 5-point solver by Vincent Lui & Tom Drummond.
+
+  v1, v2: (N, 3) arrays of unit bearing vectors in camera 1 and camera 2 frames,
+           where N >= 5.
+  Returns: R (3x3) relative rotation from camera 1 to camera 2,
+           t (3,) translation direction in camera 2's frame.
+  """
+  v1, v2 = v1.copy(), v2.copy()
+  assert v1.shape[1] == 3 and v2.shape[1] == 3
+  assert v1.shape[0] >= 5 and v2.shape[0] >= 5
+
+  # Initialize rotations to identity
+  R1 = np.eye(3)
+  R2 = np.eye(3)
+  n_pts = len(v1)
+
+  # 5 parameters: alpha = [w1_x, w1_y, w1_z, w2_x, w2_y]
+  # Note: w2_z is omitted to lock baseline gauge (5 DoF total)
+  for _ in range(max_iters):
+    r, p1, p2 = _compute_angular_residuals(R1, R2, v1, v2)
+
+    if np.linalg.norm(r) < tol:
+      break
+
+    # Analytical Jacobian: d(r_k) / d(alpha)
+    #
+    #   r_k = atan2(y1_k, x1_k) - atan2(y2_k, x2_k)
+    #   where p1_k = R1 @ v1_k = [x1, y1, z1]
+    #         p2_k = R2 @ v2_k = [x2, y2, z2]
+    #
+    # For a left perturbation rodrigues(dw) @ R:
+    #   d(r_k)/d(dw_i) = (x1*dy_i - y1*dx_i) / (x1^2 + y1^2)
+    #   where [dx_i, dy_i, dz_i] = skew(e_i) @ p
+    #
+    x1, y1, z1 = p1[:, 0], p1[:, 1], p1[:, 2]
+    x2, y2, z2 = p2[:, 0], p2[:, 1], p2[:, 2]
+    sq1 = x1*x1 + y1*y1
+    sq2 = x2*x2 + y2*y2
+    mask1 = sq1 > 1e-12
+    mask2 = sq2 > 1e-12
+
+    J = np.zeros((n_pts, 5))
+    J[:, 0] = np.where(mask1, -x1 * z1 / sq1, 0.0)
+    J[:, 1] = np.where(mask1, -y1 * z1 / sq1, 0.0)
+    J[:, 2] = 1.0
+    J[:, 3] = np.where(mask2, x2 * z2 / sq2, 0.0)
+    J[:, 4] = np.where(mask2, y2 * z2 / sq2, 0.0)
+
+    # Gauss-Newton step
+    try:
+      if n_pts == 5:
+        delta = np.linalg.solve(J, -r)
+      else:
+        delta, _, _, _ = np.linalg.lstsq(J, -r, rcond=None)
+    except np.linalg.LinAlgError:
+      break
+
+    # Line search: backtrack if step increases residual norm
+    norm0 = np.linalg.norm(r)
+    step = 1.0
+    for _ in range(12):
+      R1_test = rodrigues(step * delta[0:3]) @ R1
+      w2_test = np.array([step * delta[3], step * delta[4], 0.0])
+      r_test, _, _ = _compute_angular_residuals(R1_test, rodrigues(w2_test) @ R2, v1, v2)
+      if np.linalg.norm(r_test) < norm0:
+        break
+      step *= 0.5
+
+    R1 = rodrigues(step * delta[0:3]) @ R1
+    w2_update = np.array([step * delta[3], step * delta[4], 0.0])
+    R2 = rodrigues(w2_update) @ R2
+
+  # Form results
+  ez = np.array([0.0, 0.0, 1.0])
+  t = R2.T @ ez
+  R = R2.T @ R1
+
+  return R, t
+
+
+def _sampson_per_point(E, pts1, pts2):
+  """Per-point Sampson distance for RANSAC inlier counting."""
+  n = len(pts1)
+  pts1_h = np.hstack([pts1, np.ones((n, 1))])
+  pts2_h = np.hstack([pts2, np.ones((n, 1))])
+  Ex1 = (E @ pts1_h.T).T
+  Etx2 = (E.T @ pts2_h.T).T
+  numerator = np.sum(pts2_h * Ex1, axis=1)**2
+  denominator = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 + Etx2[:, 1]**2)
+  with np.errstate(divide='ignore', invalid='ignore'):
+    return np.where(denominator > 1e-12, numerator / denominator, 0.0)
+
+
+def ransac_5pt_lui(pts1, pts2, max_iters=500, threshold=1e-4):
+  """RANSAC wrapper around the Lui 5-point solver.
+
+  Randomly samples 5-point subsets, fits the model, and returns the
+  pose with the most inliers (Sampson distance < threshold).
+  The winning hypothesis is refined on all inlier points.
+  """
+  N = len(pts1)
+  best_R, best_t = np.eye(3), np.zeros(3)
+  best_score = -1
+
+  # Precompute bearing vectors for all points
+  v1_all = np.column_stack([pts1, np.ones(N)])
+  v1_all /= np.linalg.norm(v1_all, axis=1, keepdims=True)
+  v2_all = np.column_stack([pts2, np.ones(N)])
+  v2_all /= np.linalg.norm(v2_all, axis=1, keepdims=True)
+
+  # RANSAC
+  for _ in range(max_iters):
+    idx = np.random.choice(N, 5, replace=False)
+    try:
+      R, t = solve_5pt_lui(v1_all[idx], v2_all[idx])
+    except Exception:
+      continue
+
+    E = skew(t) @ R
+    scores = _sampson_per_point(E, pts1, pts2)
+    inliers = int(np.sum(scores < threshold))
+
+    if inliers > best_score:
+      best_score = inliers
+      best_R, best_t = R.copy(), t.copy()
+
+  # Refinement: re-fit on all inliers
+  E_best = skew(best_t) @ best_R
+  scores = _sampson_per_point(E_best, pts1, pts2)
+  inlier_mask = scores < threshold
+  if np.sum(inlier_mask) >= 5:
+    try:
+      R_ref, t_ref = solve_5pt_lui(v1_all[inlier_mask], v2_all[inlier_mask],
+                                   max_iters=100, tol=1e-12)
+      # Accept refinement if it doesn't regress
+      E_ref = skew(t_ref) @ R_ref
+      scores_ref = _sampson_per_point(E_ref, pts1, pts2)
+      if np.sum(scores_ref < threshold) >= best_score:
+        best_R, best_t = R_ref, t_ref
+    except Exception:
+      pass
+
+  return best_R, best_t
+
+
+###############################################################################
 # OPENCV 5-POINT ALGORITHM
-# ==============================================================================
+###############################################################################
 
 
 def _try_decompose_essential(E_cv, pts1_norm, pts2_norm):
@@ -300,9 +487,9 @@ def opencv_5point_algorithm(pts1_norm, pts2_norm):
   return best_R, best_t
 
 
-# ==============================================================================
+###############################################################################
 # VERIFICATION & COMPARISON BENCHMARK
-# ==============================================================================
+###############################################################################
 
 if __name__ == "__main__":
   np.random.seed(42)
@@ -326,20 +513,46 @@ if __name__ == "__main__":
   X_cam2 = (R_gt @ X_3D.T).T + t_gt
   pts2 = X_cam2[:, :2] / X_cam2[:, 2:]
 
+  # Build unit bearing vectors for raw Lui solver (first 5 points)
+  v1 = np.column_stack([pts1[:5], np.ones(5)])
+  v1 /= np.linalg.norm(v1, axis=1, keepdims=True)
+  v2 = np.column_stack([pts2[:5], np.ones(5)])
+  v2 /= np.linalg.norm(v2, axis=1, keepdims=True)
+
   # 3. Execute Solvers
+  import time
+
+  t0 = time.time()
   R_custom, t_custom = nister_5point_algorithm(pts1, pts2)
+  t_custom_elapsed = time.time() - t0
   if R_custom is None or t_custom is None:
     raise RuntimeError("Custom 5-point algorithm failed to find a solution")
 
+  t0 = time.time()
   R_cv, t_cv = opencv_5point_algorithm(pts1, pts2)
+  t_cv_elapsed = time.time() - t0
   if R_cv is None or t_cv is None:
     raise RuntimeError("OpenCV 5-point algorithm failed to find a solution")
+
+  # Raw Lui (first 5 points, no RANSAC)
+  t0 = time.time()
+  R_lui_raw, t_lui_raw = solve_5pt_lui(v1, v2)
+  t_lui_raw_elapsed = time.time() - t0
+
+  # RANSAC Lui (all 20 points)
+  t0 = time.time()
+  R_lui_ransac, t_lui_ransac = ransac_5pt_lui(pts1, pts2, max_iters=200, threshold=1e-4)
+  t_lui_ransac_elapsed = time.time() - t0
 
   # Align sign of translation vectors if inverted (t vs -t ambiguity)
   if np.dot(t_cv, t_gt) < 0:
     t_cv *= -1
   if np.dot(t_custom, t_gt) < 0:
     t_custom *= -1
+  if np.dot(t_lui_raw, t_gt) < 0:
+    t_lui_raw *= -1
+  if np.dot(t_lui_ransac, t_gt) < 0:
+    t_lui_ransac *= -1
 
   # 4. Display Results
   print("==========================================================")
@@ -355,6 +568,7 @@ if __name__ == "__main__":
   print("t:", np.round(t_custom, 5))
   print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_custom):.2e}")
   print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_custom):.2e}")
+  print(f"Time: {t_custom_elapsed*1000:.1f} ms")
 
   print("\n==========================================================")
   print(" OPENCV `cv2.findEssentialMat` IMPLEMENTATION")
@@ -363,3 +577,22 @@ if __name__ == "__main__":
   print("t:", np.round(t_cv, 5))
   print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_cv):.2e}")
   print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_cv):.2e}")
+  print(f"Time: {t_cv_elapsed*1000:.1f} ms")
+
+  print("\n==========================================================")
+  print(" LUI 5-POINT SOLVER (raw, first 5 pts)")
+  print("==========================================================")
+  print("R:\n", np.round(R_lui_raw, 5))
+  print("t:", np.round(t_lui_raw, 5))
+  print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_lui_raw):.2e}")
+  print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_lui_raw):.2e}")
+  print(f"Time: {t_lui_raw_elapsed*1000:.1f} ms")
+
+  print("\n==========================================================")
+  print(" LUI 5-POINT SOLVER (RANSAC, all 20 pts)")
+  print("==========================================================")
+  print("R:\n", np.round(R_lui_ransac, 5))
+  print("t:", np.round(t_lui_ransac, 5))
+  print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_lui_ransac):.2e}")
+  print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_lui_ransac):.2e}")
+  print(f"Time: {t_lui_ransac_elapsed*1000:.1f} ms")
