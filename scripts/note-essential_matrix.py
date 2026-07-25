@@ -285,7 +285,7 @@ def _compute_angular_residuals(R1, R2, v1, v2):
   return residuals, p1_3d, p2_3d
 
 
-def solve_5pt_lui(v1, v2, max_iters=50, tol=1e-10):
+def lui_5point_algorithm(v1, v2, max_iters=100, tol=1e-20):
   """
   Iterative 5-point solver by Vincent Lui & Tom Drummond.
 
@@ -401,7 +401,7 @@ def ransac_5pt_lui(pts1, pts2, max_iters=500, threshold=1e-4):
   for _ in range(max_iters):
     idx = np.random.choice(N, 5, replace=False)
     try:
-      R, t = solve_5pt_lui(v1_all[idx], v2_all[idx])
+      R, t = lui_5point_algorithm(v1_all[idx], v2_all[idx])
     except Exception:
       continue
 
@@ -419,7 +419,7 @@ def ransac_5pt_lui(pts1, pts2, max_iters=500, threshold=1e-4):
   inlier_mask = scores < threshold
   if np.sum(inlier_mask) >= 5:
     try:
-      R_ref, t_ref = solve_5pt_lui(v1_all[inlier_mask], v2_all[inlier_mask],
+      R_ref, t_ref = lui_5point_algorithm(v1_all[inlier_mask], v2_all[inlier_mask],
                                    max_iters=100, tol=1e-12)
       # Accept refinement if it doesn't regress
       E_ref = skew(t_ref) @ R_ref
@@ -536,7 +536,7 @@ if __name__ == "__main__":
 
   # Raw Lui (first 5 points, no RANSAC)
   t0 = time.time()
-  R_lui_raw, t_lui_raw = solve_5pt_lui(v1, v2)
+  R_lui_raw, t_lui_raw = lui_5point_algorithm(v1, v2)
   t_lui_raw_elapsed = time.time() - t0
 
   # RANSAC Lui (all 20 points)
@@ -562,31 +562,24 @@ if __name__ == "__main__":
   print("t:", np.round(t_gt, 5))
 
   print("\n==========================================================")
-  print(" CUSTOM NISTÉR 5-POINT IMPLEMENTATION")
-  print("==========================================================")
-  print("R:\n", np.round(R_custom, 5))
-  print("t:", np.round(t_custom, 5))
-  print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_custom):.2e}")
-  print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_custom):.2e}")
-  print(f"Time: {t_custom_elapsed*1000:.1f} ms")
-
-  print("\n==========================================================")
   print(" OPENCV `cv2.findEssentialMat` IMPLEMENTATION")
   print("==========================================================")
   print("R:\n", np.round(R_cv, 5))
   print("t:", np.round(t_cv, 5))
   print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_cv):.2e}")
-  print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_cv):.2e}")
+  t_ang = np.degrees(np.arccos(np.clip(np.dot(t_gt, t_cv), -1.0, 1.0)))
+  print(f"t Error (Angle):          {t_ang:.4f} deg")
   print(f"Time: {t_cv_elapsed*1000:.1f} ms")
 
   print("\n==========================================================")
-  print(" LUI 5-POINT SOLVER (raw, first 5 pts)")
+  print(" CUSTOM NISTÉR 5-POINT IMPLEMENTATION")
   print("==========================================================")
-  print("R:\n", np.round(R_lui_raw, 5))
-  print("t:", np.round(t_lui_raw, 5))
-  print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_lui_raw):.2e}")
-  print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_lui_raw):.2e}")
-  print(f"Time: {t_lui_raw_elapsed*1000:.1f} ms")
+  print("R:\n", np.round(R_custom, 5))
+  print("t:", np.round(t_custom, 5))
+  print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_custom):.2e}")
+  t_ang = np.degrees(np.arccos(np.clip(np.dot(t_gt, t_custom), -1.0, 1.0)))
+  print(f"t Error (Angle):          {t_ang:.4f} deg")
+  print(f"Time: {t_custom_elapsed*1000:.1f} ms")
 
   print("\n==========================================================")
   print(" LUI 5-POINT SOLVER (RANSAC, all 20 pts)")
@@ -594,5 +587,6 @@ if __name__ == "__main__":
   print("R:\n", np.round(R_lui_ransac, 5))
   print("t:", np.round(t_lui_ransac, 5))
   print(f"R Error (Frobenius Norm): {np.linalg.norm(R_gt - R_lui_ransac):.2e}")
-  print(f"t Error (Euclidean):      {np.linalg.norm(t_gt - t_lui_ransac):.2e}")
+  t_ang = np.degrees(np.arccos(np.clip(np.dot(t_gt, t_lui_ransac), -1.0, 1.0)))
+  print(f"t Error (Angle):          {t_ang:.4f} deg")
   print(f"Time: {t_lui_ransac_elapsed*1000:.1f} ms")
