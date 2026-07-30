@@ -1,66 +1,75 @@
 import cv2
 import numpy as np
+from numpy.typing import NDArray
+from typing import Any, Callable, Optional
+
+Arr = NDArray[Any]
 
 ###############################################################################
 # UTILS
 ###############################################################################
 
 
-def skew(v):
+def skew(v: Arr) -> Arr:
   """Returns 3x3 skew-symmetric matrix for vector v."""
   return np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
 
 
-def rodrigues(w):
+def rodrigues(w: Arr) -> Arr:
   """Exponential map from lie algebra so(3) vector to SO(3) rotation matrix."""
-  theta = np.linalg.norm(w)
+  theta: float = float(np.linalg.norm(w))
   if theta < 1e-8:
     return np.eye(3)
-  k = w / theta
-  K = skew(k)
+  k: Arr = w / theta
+  K: Arr = skew(k)
   return np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
 
 
-def decompose_essential_matrix(E):
+def decompose_essential_matrix(E: Arr) -> list[tuple[Arr, Arr]]:
   """Decompose an essential matrix into 4 possible (R, t) pose hypotheses."""
-  U, _, Vt = np.linalg.svd(E)
-  if np.linalg.det(U) < 0:
-    U *= -1
-  if np.linalg.det(Vt) < 0:
-    Vt *= -1
+  u: Arr
+  vt: Arr
+  u, _, vt = np.linalg.svd(E)
+  if np.linalg.det(u) < 0:
+    u *= -1
+  if np.linalg.det(vt) < 0:
+    vt *= -1
 
-  W = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+  W: Arr = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
 
-  R1 = U @ W @ Vt
-  R2 = U @ W.T @ Vt
-  t1 = U[:, 2]
-  t2 = -U[:, 2]
+  R1: Arr = u @ W @ vt
+  R2: Arr = u @ W.T @ vt
+  t1: Arr = u[:, 2]
+  t2: Arr = -u[:, 2]
 
   return [(R1, t1), (R1, t2), (R2, t1), (R2, t2)]
 
 
-def cheirality_check(R, t, pts1, pts2):
+def cheirality_check(R: Arr, t: Arr, pts1: Arr, pts2: Arr) -> int:
   """Triangulate points and count how many have positive depth in both views."""
-  P1 = np.hstack((np.eye(3), np.zeros((3, 1))))
-  P2 = np.hstack((R, t.reshape(3, 1)))
+  P1: Arr = np.hstack((np.eye(3), np.zeros((3, 1))))
+  P2: Arr = np.hstack((R, t.reshape(3, 1)))
 
-  front_count = 0
+  front_count: int = 0
   for i in range(len(pts1)):
-    x1, y1 = pts1[i, 0], pts1[i, 1]
-    x2, y2 = pts2[i, 0], pts2[i, 1]
+    x1: float = pts1[i, 0]
+    y1: float = pts1[i, 1]
+    x2: float = pts2[i, 0]
+    y2: float = pts2[i, 1]
 
-    A = np.array([
+    A: Arr = np.array([
         x1 * P1[2] - P1[0],
         y1 * P1[2] - P1[1],
         x2 * P2[2] - P2[0],
         y2 * P2[2] - P2[1],
     ])
-    _, _, Vt = np.linalg.svd(A)
-    X = Vt[-1]
-    X /= X[3]
+    vt: Arr
+    _, _, vt = np.linalg.svd(A)
+    x_vec: Arr = vt[-1]
+    x_vec /= x_vec[3]
 
-    depth1 = X[2]
-    depth2 = (R[2] @ X[:3]) + t[2]
+    depth1: float = x_vec[2]
+    depth2: float = (R[2] @ x_vec[:3]) + t[2]
 
     if depth1 > 0 and depth2 > 0:
       front_count += 1
@@ -68,19 +77,20 @@ def cheirality_check(R, t, pts1, pts2):
   return front_count
 
 
-def sampson_distance(E, pts1, pts2):
+def sampson_distance(E: Arr, pts1: Arr, pts2: Arr) -> float:
   """Symmetric epipolar distance (Sampson) for all point pairs, summed."""
-  n = len(pts1)
-  pts1_h = np.hstack([pts1, np.ones((n, 1))])
-  pts2_h = np.hstack([pts2, np.ones((n, 1))])
+  n: int = len(pts1)
+  pts1_h: Arr = np.hstack([pts1, np.ones((n, 1))])
+  pts2_h: Arr = np.hstack([pts2, np.ones((n, 1))])
 
-  Ex1 = (E @ pts1_h.T).T
-  Etx2 = (E.T @ pts2_h.T).T
+  Ex1: Arr = (E @ pts1_h.T).T
+  Etx2: Arr = (E.T @ pts2_h.T).T
 
-  numerator = np.sum(pts2_h * Ex1, axis=1)**2
-  denominator = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 + Etx2[:, 1]**2)
+  numerator: Arr = np.sum(pts2_h * Ex1, axis=1)**2
+  denominator: Arr = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 +
+                      Etx2[:, 1]**2)
   with np.errstate(divide='ignore', invalid='ignore'):
-    sd = np.where(denominator > 1e-12, numerator / denominator, 0.0)
+    sd: Arr = np.where(denominator > 1e-12, numerator / denominator, 0.0)
   return np.sum(sd)
 
 
@@ -89,24 +99,29 @@ def sampson_distance(E, pts1, pts2):
 ###############################################################################
 
 
-def _try_decompose_essential(E_cv, pts1_norm, pts2_norm):
+def _try_decompose_essential(E_cv: Arr, pts1_norm: Arr,
+                             pts2_norm: Arr) -> tuple[Arr, Arr]:
   """Decompose E and recover pose using OpenCV's recoverPose."""
-  K = np.eye(3)
-  _, R_cv, t_cv, _ = cv2.recoverPose(E_cv, pts1_norm, pts2_norm, K)
+  K: Arr = np.eye(3)
+  R_cv: Arr
+  t_cv: Arr
+  _, R_cv, t_cv, _ = cv2.recoverPose(E_cv, pts1_norm, pts2_norm,
+                                     K)  # type: ignore[reportUnknownMemberType]
   return R_cv, t_cv.ravel()
 
 
-def opencv_5point_algorithm(pts1_norm, pts2_norm):
+def opencv_5point_algorithm(pts1_norm: Arr, pts2_norm: Arr) -> tuple[Arr, Arr]:
   """
   Estimates relative pose using OpenCV's built-in 5-point solver safely.
   """
   # 1. Estimate Essential Matrix
-  E_cv, _ = cv2.findEssentialMat(pts1_norm,
-                                 pts2_norm,
-                                 cameraMatrix=np.eye(3),
-                                 method=cv2.RANSAC,
-                                 prob=0.99,
-                                 threshold=1e-3)
+  E_cv, _ = cv2.findEssentialMat(
+      pts1_norm,  # type: ignore[reportUnknownMemberType]
+      pts2_norm,
+      cameraMatrix=np.eye(3),
+      method=cv2.RANSAC,
+      prob=0.99,
+      threshold=1e-3)
 
   # 2. Check if E_cv is None or empty
   if E_cv is None or E_cv.size == 0:
@@ -114,7 +129,7 @@ def opencv_5point_algorithm(pts1_norm, pts2_norm):
 
   # 3. Handle cases where multiple essential matrices are returned.
   # OpenCV stacks them horizontally (3x(3*N)) or vertically (N*3 x 3).
-  candidates = []
+  candidates: list[Arr] = []
   if E_cv.shape == (3, 3):
     candidates = [E_cv]
   elif E_cv.shape[0] == 3 and E_cv.shape[1] > 3:
@@ -127,11 +142,12 @@ def opencv_5point_algorithm(pts1_norm, pts2_norm):
     raise RuntimeError(f"Unexpected Essential Matrix shape: {E_cv.shape}")
 
   # Try each candidate and return the one with most cheirally consistent points
-  best_R, best_t = np.eye(3), np.zeros(3)
-  best_count = -1
+  best_R: Arr = np.eye(3)
+  best_t: Arr = np.zeros(3)
+  best_count: int = -1
   for E_candidate in candidates:
     R_cv, t_cv = _try_decompose_essential(E_candidate, pts1_norm, pts2_norm)
-    count = cheirality_check(R_cv, t_cv, pts1_norm, pts2_norm)
+    count: int = cheirality_check(R_cv, t_cv, pts1_norm, pts2_norm)
     if count > best_count:
       best_count = count
       best_R, best_t = R_cv, t_cv
@@ -144,32 +160,35 @@ def opencv_5point_algorithm(pts1_norm, pts2_norm):
 ###############################################################################
 
 
-def _compute_nullspace_basis(pts1, pts2):
+def _compute_nullspace_basis(pts1: Arr, pts2: Arr) -> tuple[Arr, Arr, Arr, Arr]:
   """
   Builds the 5x9 linear design matrix from 5 normalized point pairs and
   computes the 4 basis matrices (Ex, Ey, Ez, Ew) spanning the null space.
   """
-  A = np.zeros((5, 9))
+  A: Arr = np.zeros((5, 9))
   for i in range(5):
-    x1, y1 = pts1[i, 0], pts1[i, 1]
-    x2, y2 = pts2[i, 0], pts2[i, 1]
+    x1: float = pts1[i, 0]
+    y1: float = pts1[i, 1]
+    x2: float = pts2[i, 0]
+    y2: float = pts2[i, 1]
     A[i] = [x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, 1.0]
 
-  _, _, Vt = np.linalg.svd(A)
-  nullspace = Vt[5:].reshape(4, 3, 3)
+  vt: Arr
+  _, _, vt = np.linalg.svd(A)
+  nullspace: Arr = vt[5:].reshape(4, 3, 3)
 
   return nullspace[0], nullspace[1], nullspace[2], nullspace[3]
 
 
 # Monomial column lookup for _build_constraint_matrix.
-# Variable encoding: 0→1 (constant), 1→x, 2→y, 3→z.
+# Variable encoding: 0-1 (constant), 1-x, 2-y, 3-z.
 # Column layout (same as original sympy version):
 #   0-9:   degree 3 (x^3 … z^3)
 #   10-15: degree 2 (x^2 … z^2)
 #   16-18: degree 1 (x, y, z)
 #   19:    degree 0 (1)
-_MONOMIAL_COL = np.zeros((4, 4, 4), dtype=np.int32)
-_C3 = {
+_MONOMIAL_COL: Arr = np.zeros((4, 4, 4), dtype=np.int32)
+_C3: dict[tuple[int, int, int], int] = {
     (3, 0, 0): 0,
     (2, 1, 0): 1,
     (2, 0, 1): 2,
@@ -181,7 +200,7 @@ _C3 = {
     (0, 1, 2): 8,
     (0, 0, 3): 9
 }
-_C2 = {
+_C2: dict[tuple[int, int, int], int] = {
     (2, 0, 0): 10,
     (1, 1, 0): 11,
     (1, 0, 1): 12,
@@ -189,16 +208,23 @@ _C2 = {
     (0, 1, 1): 14,
     (0, 0, 2): 15
 }
-_C1 = {(1, 0, 0): 16, (0, 1, 0): 17, (0, 0, 1): 18}
+_C1: dict[tuple[int, int, int], int] = {
+    (1, 0, 0): 16,
+    (0, 1, 0): 17,
+    (0, 0, 1): 18
+}
 for v1 in range(4):
   for v2 in range(4):
     for v3 in range(4):
-      cnt = [0, 0, 0]
+      cnt: list[int] = [0, 0, 0]
       for v in (v1, v2, v3):
         if v > 0:
           cnt[v - 1] += 1
+      a: int
+      b: int
+      c: int
       a, b, c = cnt
-      d = a + b + c
+      d: int = a + b + c
       if d == 3:
         _MONOMIAL_COL[v1, v2, v3] = _C3[(a, b, c)]
       elif d == 2:
@@ -209,7 +235,7 @@ for v1 in range(4):
         _MONOMIAL_COL[v1, v2, v3] = 19
 
 
-def _build_constraint_matrix(Ex, Ey, Ez, Ew):
+def _build_constraint_matrix(Ex: Arr, Ey: Arr, Ez: Arr, Ew: Arr) -> Arr:
   """
   Substitutes E = x*Ex + y*Ey + z*Ez + Ew into the 9 matrix constraints:
 
@@ -220,35 +246,36 @@ def _build_constraint_matrix(Ex, Ey, Ez, Ew):
   Computes the polynomial coefficients numerically (no symbolic algebra).
   """
   # Stack basis coefficients: C[p,q] = [Ew[p,q], Ex[p,q], Ey[p,q], Ez[p,q]]
-  C = np.stack([Ew, Ex, Ey, Ez], axis=-1)
+  C: Arr = np.stack([Ew, Ex, Ey, Ez], axis=-1)
 
-  M = np.zeros((10, 20))
+  M: Arr = np.zeros((10, 20))
 
   # Accumulate coefficients from a triple product of three E entries.
-  # L1 * L2 * L3 where each Li = Σ_k C[pi,qi,k] * var_k
-  def _acc(row, p1, q1, p2, q2, p3, q3, scale):
-    c1 = C[p1, q1]
-    c2 = C[p2, q2]
-    c3 = C[p3, q3]
+  # L1 * L2 * L3 where each Li = .k C[pi,qi,k] * var_k
+  def _acc(row: int, p1: int, q1: int, p2: int, q2: int, p3: int, q3: int,
+           scale: float) -> None:
+    c1: Arr = C[p1, q1]
+    c2: Arr = C[p2, q2]
+    c3: Arr = C[p3, q3]
     for i in range(4):
-      ci = c1[i]
+      ci: float = c1[i]
       if ci == 0:
         continue
       for j in range(4):
-        cij = ci * c2[j]
+        cij: float = ci * c2[j]
         if cij == 0:
           continue
         for k in range(4):
-          ck = c3[k]
+          ck: float = c3[k]
           if ck == 0:
             continue
           M[row, _MONOMIAL_COL[i, j, k]] += scale * cij * ck
 
   # 9 matrix constraints: C[i,j] = 2*E*E^T*E - trace(E*E^T)*E = 0
   #
-  # C[i,j] = 2 * Σ_k Σ_l E[i,l] * E[k,l] * E[k,j]
-  #        - Σ_m Σ_n E[m,n] * E[m,n] * E[i,j]
-  row = 0
+  # C[i,j] = 2 * .k .l E[i,l] * E[k,l] * E[k,j]
+  #        - .m .n E[m,n] * E[m,n] * E[i,j]
+  row: int = 0
   for i in range(3):
     for j in range(3):
       for k in range(3):
@@ -273,19 +300,19 @@ def _build_constraint_matrix(Ex, Ey, Ez, Ew):
   return M
 
 
-def _solve_system_nister(M):
+def _solve_system_nister(M: Arr) -> list[tuple[float, float, float]]:
   """
   Reduces the 10x20 matrix using Gauss-Jordan elimination and solves for z
   using an 10x10 action matrix, then recovers (x, y).
   """
   # Split M = [L | R] where L holds cubic coeffs and R holds lower-degree coeffs
-  L = M[:, :10]
-  R = M[:, 10:]
+  L: Arr = M[:, :10]
+  R: Arr = M[:, 10:]
   if np.linalg.matrix_rank(L) < 10:
     return []
 
   # L @ cubic + R @ lower = 0  =>  cubic = -L^{-1} @ R @ lower = -B @ lower
-  B = np.linalg.solve(L, R)
+  B: Arr = np.linalg.solve(L, R)
 
   # B is 10x10: L * cubic = -R * lower  =>  cubic = -L^{-1} * R * lower = -B * lower
   # So cubic_monomial_i = -sum_j B[i,j] * lower_monomial_j
@@ -297,7 +324,7 @@ def _solve_system_nister(M):
   # For each basis element multiplied by z, if the result is a cubic monomial,
   # substitute using cubic = -B * lower.  If it is already a lower monomial,
   # write a one-hot row.
-  Action = np.zeros((10, 10))
+  Action: Arr = np.zeros((10, 10))
   Action[0] = -B[2]  # z * x^2  = x^2*z  = -B[2] @ lower
   Action[1] = -B[4]  # z * xy   = x*y*z   = -B[4] @ lower
   Action[2] = -B[5]  # z * xz   = x*z^2   = -B[5] @ lower
@@ -308,51 +335,64 @@ def _solve_system_nister(M):
   Action[7] = [0, 0, 0, 0, 1, 0, 0, 0, 0, 0]  # z * y   = yz  -> basis index 4
   Action[8] = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]  # z * z   = z^2 -> basis index 5
   Action[9] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]  # z * 1   = z   -> basis index 8
+  eigvals: Arr
+  eigvecs: Arr
   eigvals, eigvecs = np.linalg.eig(Action)
 
-  solutions = []
+  solutions: list[tuple[float, float, float]] = []
   for i in range(10):
-    if np.abs(np.imag(eigvals[i])) < 1e-6:
-      z_val = np.real(eigvals[i])
-      vec = np.real(eigvecs[:, i])
+    if np.abs(np.imag(
+        eigvals[i])) < 1e-6:  # type: ignore[reportUnknownArgumentType]
+      z_val: float = float(np.real(eigvals[i]))
+      vec: Arr = np.real(eigvecs[:, i])
 
       if np.abs(vec[-1]) > 1e-8:
         vec /= vec[-1]
-        x_val = vec[6]
-        y_val = vec[7]
+        x_val: float = vec[6]
+        y_val: float = vec[7]
         solutions.append((x_val, y_val, z_val))
 
   return solutions
 
 
-def nister_5point_algorithm(pts1_norm, pts2_norm):
+def nister_5point_algorithm(
+    pts1_norm: Arr, pts2_norm: Arr) -> tuple[Optional[Arr], Optional[Arr]]:
   """Estimate relative pose using the Nister 5-point algorithm."""
+  Ex: Arr
+  Ey: Arr
+  Ez: Arr
+  Ew: Arr
   Ex, Ey, Ez, Ew = _compute_nullspace_basis(pts1_norm, pts2_norm)
-  M = _build_constraint_matrix(Ex, Ey, Ez, Ew)
-  xyz_sols = _solve_system_nister(M)
+  M: Arr = _build_constraint_matrix(Ex, Ey, Ez, Ew)
+  xyz_sols: list[tuple[float, float, float]] = _solve_system_nister(M)
 
-  best_R, best_t = None, None
-  max_front_pts = -1
-  best_sd = float('inf')
+  best_R: Optional[Arr] = None
+  best_t: Optional[Arr] = None
+  max_front_pts: int = -1
+  best_sd: float = float('inf')
 
   for x, y, z in xyz_sols:
     # Form candidate
-    E_candidate = x * Ex + y * Ey + z * Ez + Ew
+    e_candidate: Arr = x * Ex + y * Ey + z * Ez + Ew
 
     # Ensure singular values are positive and rank-2
-    U, S, Vt = np.linalg.svd(E_candidate)
-    E_clean = U @ np.diag([(S[0] + S[1]) / 2.0, (S[0] + S[1]) / 2.0, 0.0]) @ Vt
+    u: Arr
+    s: Arr
+    vt: Arr
+    u, s, vt = np.linalg.svd(e_candidate)
+    e_clean: Arr = u @ np.diag([(s[0] + s[1]) / 2.0,
+                                (s[0] + s[1]) / 2.0, 0.0]) @ vt
 
     # Decompose Essential matrix into R, t
-    poses = decompose_essential_matrix(E_clean)
-    for R, t in poses:
-      valid_pts = cheirality_check(R, t, pts1_norm, pts2_norm)
-      sd = sampson_distance(E_clean, pts1_norm, pts2_norm)
+    poses: list[tuple[Arr, Arr]] = decompose_essential_matrix(e_clean)
+    for r, t in poses:
+      valid_pts: int = cheirality_check(r, t, pts1_norm, pts2_norm)
+      sd: float = sampson_distance(e_clean, pts1_norm, pts2_norm)
       if valid_pts > max_front_pts or (valid_pts == max_front_pts and
                                        sd < best_sd):
         max_front_pts = valid_pts
         best_sd = sd
-        best_R, best_t = R, t
+        best_R, best_t = r, t
 
   return best_R, best_t
 
@@ -362,42 +402,43 @@ def nister_5point_algorithm(pts1_norm, pts2_norm):
 ###############################################################################
 
 
-def _compute_angular_residuals(R1, R2, v1, v2):
+def _compute_angular_residuals(r1: Arr, r2: Arr, v1: Arr,
+                               v2: Arr) -> tuple[Arr, Arr, Arr]:
   """
   Projects unit vectors v1, v2 using candidate rotations R1, R2.
   Measures 2D angular difference on the x-y tangent plane.
   """
   # 1. Rotate 3D unit vectors
-  p1_3d = (R1 @ v1.T).T  # Shape: (5, 3)
-  p2_3d = (R2 @ v2.T).T  # Shape: (5, 3)
+  p1_3d: Arr = (r1 @ v1.T).T  # Shape: (5, 3)
+  p2_3d: Arr = (r2 @ v2.T).T  # Shape: (5, 3)
 
   # 2. Extract 2D polar angles on x-y plane (looking along baseline e_z)
-  theta1 = np.arctan2(p1_3d[:, 1], p1_3d[:, 0])
-  theta2 = np.arctan2(p2_3d[:, 1], p2_3d[:, 0])
+  theta1: Arr = np.arctan2(p1_3d[:, 1], p1_3d[:, 0])
+  theta2: Arr = np.arctan2(p2_3d[:, 1], p2_3d[:, 0])
 
   # 3. Signed angular difference wrapped to [-pi, pi]
-  residuals = theta1 - theta2
+  residuals: Arr = theta1 - theta2
   residuals = (residuals + np.pi) % (2 * np.pi) - np.pi
   return residuals, p1_3d, p2_3d
 
 
-def rotation_from_vectors(a, b):
+def rotation_from_vectors(a: Arr, b: Arr) -> Arr:
   """Find R such that R @ a = b for unit vectors a, b."""
-  v = np.cross(a, b)
-  s = np.linalg.norm(v)
-  c = np.dot(a, b)
+  v: Arr = np.cross(a, b)
+  s: float = float(np.linalg.norm(v))
+  c: float = float(np.dot(a, b))
   if s < 1e-12:
     return np.eye(3) if c > 0 else -np.eye(3)
-  V = skew(v)
+  V: Arr = skew(v)
   return np.eye(3) + V + V @ V * (1.0 - c) / (s * s)
 
 
-def lui_5point_algorithm(v1,
-                         v2,
-                         max_iters=100,
-                         tol=1e-20,
-                         R_init=None,
-                         t_init=None):
+def lui_5point_algorithm(v1: Arr,
+                         v2: Arr,
+                         max_iters: int = 100,
+                         tol: float = 1e-20,
+                         R_init: Optional[Arr] = None,
+                         t_init: Optional[Arr] = None) -> tuple[Arr, Arr]:
   """
   Iterative 5-point solver by Vincent Lui & Tom Drummond.
 
@@ -408,71 +449,83 @@ def lui_5point_algorithm(v1,
   Returns: R (3x3) relative rotation from camera 1 to camera 2,
            t (3,) translation direction in camera 2's frame.
   """
-  v1, v2 = v1.copy(), v2.copy()
+  v1 = v1.copy()
+  v2 = v2.copy()
   assert v1.shape[1] == 3 and v2.shape[1] == 3
   assert v1.shape[0] >= 5 and v2.shape[0] >= 5
 
   if R_init is not None and t_init is not None:
-    R2 = rotation_from_vectors(t_init / np.linalg.norm(t_init),
-                               np.array([0.0, 0.0, 1.0]))
-    R1 = R2 @ R_init
+    r2: Arr = rotation_from_vectors(t_init / np.linalg.norm(t_init),
+                                    np.array([0.0, 0.0, 1.0]))
+    r1: Arr = r2 @ R_init
   else:
-    R1 = np.eye(3)
-    R2 = np.eye(3)
-  n_pts = len(v1)
+    r1 = np.eye(3)
+    r2 = np.eye(3)
+  n_pts: int = len(v1)
 
-  lam = 1e-3
-  r, p1, p2 = _compute_angular_residuals(R1, R2, v1, v2)
-  prev_err = np.linalg.norm(r)
-  stagnation_count = 0
+  lam: float = 1e-3
+  r: Arr
+  p1: Arr
+  p2: Arr
+  r, p1, p2 = _compute_angular_residuals(r1, r2, v1, v2)
+  prev_err: float = float(np.linalg.norm(r))
+  stagnation_count: int = 0
 
   for _ in range(max_iters):
     if prev_err < tol:
       break
 
-    x1, y1, z1 = p1[:, 0], p1[:, 1], p1[:, 2]
-    x2, y2, z2 = p2[:, 0], p2[:, 1], p2[:, 2]
-    sq1 = x1 * x1 + y1 * y1
-    sq2 = x2 * x2 + y2 * y2
-    mask1 = sq1 > 1e-12
-    mask2 = sq2 > 1e-12
+    x1: Arr = p1[:, 0]
+    y1: Arr = p1[:, 1]
+    z1: Arr = p1[:, 2]
+    x2: Arr = p2[:, 0]
+    y2: Arr = p2[:, 1]
+    z2: Arr = p2[:, 2]
+    sq1: Arr = x1 * x1 + y1 * y1
+    sq2: Arr = x2 * x2 + y2 * y2
+    mask1: Arr = sq1 > 1e-12
+    mask2: Arr = sq2 > 1e-12
 
-    J = np.zeros((n_pts, 5))
+    J: Arr = np.zeros((n_pts, 5))
     J[:, 0] = np.where(mask1, -x1 * z1 / sq1, 0.0)
     J[:, 1] = np.where(mask1, -y1 * z1 / sq1, 0.0)
     J[:, 2] = 1.0
     J[:, 3] = np.where(mask2, x2 * z2 / sq2, 0.0)
     J[:, 4] = np.where(mask2, y2 * z2 / sq2, 0.0)
 
-    JtJ = J.T @ J
-    Jt_r = J.T @ -r
+    JtJ: Arr = J.T @ J
+    Jt_r: Arr = J.T @ -r
 
-    accepted = False
+    accepted: bool = False
     for _ in range(30):
       try:
-        delta = np.linalg.solve(JtJ + lam * np.diag(np.diag(JtJ)), Jt_r)
+        delta: Arr = np.linalg.solve(JtJ + lam * np.diag(np.diag(JtJ)), Jt_r)
       except np.linalg.LinAlgError:
         lam *= 2
         continue
 
-      R1_test = rodrigues(delta[0:3]) @ R1
-      w2_test = np.array([delta[3], delta[4], 0.0])
+      r1_test: Arr = rodrigues(delta[0:3]) @ r1
+      w2: Arr = np.array([delta[3], delta[4], 0.0])
+      r_test: Arr
+      p1_test: Arr
+      p2_test: Arr
       r_test, p1_test, p2_test = _compute_angular_residuals(
-          R1_test,
-          rodrigues(w2_test) @ R2, v1, v2)
-      new_err = np.linalg.norm(r_test)
+          r1_test,
+          rodrigues(w2) @ r2, v1, v2)
+      new_err: float = float(np.linalg.norm(r_test))
 
       if new_err < prev_err:
-        R1 = R1_test
-        R2 = rodrigues(w2_test) @ R2
+        r1 = r1_test
+        r2 = rodrigues(w2) @ r2
         r, p1, p2 = r_test, p1_test, p2_test
 
-        rel_change = abs(prev_err - new_err) / max(float(prev_err), 1e-12)
+        rel_change: float = abs(prev_err - new_err) / max(
+            float(prev_err), 1e-12)
         if rel_change < 1e-6:
           stagnation_count += 1
           if stagnation_count >= 3:
-            ez = np.array([0.0, 0.0, 1.0])
-            return R2.T @ R1, R2.T @ ez
+            ez: Arr = np.array([0.0, 0.0, 1.0])
+            return r2.T @ r1, r2.T @ ez
         else:
           stagnation_count = 0
 
@@ -487,68 +540,67 @@ def lui_5point_algorithm(v1,
       break
 
   ez = np.array([0.0, 0.0, 1.0])
-  t = R2.T @ ez
-  R = R2.T @ R1
+  t_vec: Arr = r2.T @ ez
+  r: Arr = r2.T @ r1
 
-  return R, t
-
-
-def _sampson_from_pose(R, t, pts1, pts2):
-  """Per-point Sampson distance from pose (R, t) for RANSAC scoring."""
-  E = skew(t) @ R
-  return _sampson_per_point(E, pts1, pts2)
+  return r, t_vec
 
 
-def _sampson_per_point(E, pts1, pts2):
+def _sampson_per_point(E: Arr, pts1: Arr, pts2: Arr) -> Arr:
   """Per-point Sampson distance for RANSAC inlier counting."""
-  n = len(pts1)
-  pts1_h = np.hstack([pts1, np.ones((n, 1))])
-  pts2_h = np.hstack([pts2, np.ones((n, 1))])
-  Ex1 = (E @ pts1_h.T).T
-  Etx2 = (E.T @ pts2_h.T).T
-  numerator = np.sum(pts2_h * Ex1, axis=1)**2
-  denominator = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 + Etx2[:, 1]**2)
+  n: int = len(pts1)
+  pts1_h: Arr = np.hstack([pts1, np.ones((n, 1))])
+  pts2_h: Arr = np.hstack([pts2, np.ones((n, 1))])
+  Ex1: Arr = (E @ pts1_h.T).T
+  Etx2: Arr = (E.T @ pts2_h.T).T
+  numerator: Arr = np.sum(pts2_h * Ex1, axis=1)**2
+  denominator: Arr = (Ex1[:, 0]**2 + Ex1[:, 1]**2 + Etx2[:, 0]**2 +
+                      Etx2[:, 1]**2)
   with np.errstate(divide='ignore', invalid='ignore'):
     return np.where(denominator > 1e-12, numerator / denominator, 0.0)
 
 
-def ransac_5pt_lui(pts1, pts2, max_iters=500, threshold=1e-4):
+def ransac_5pt_lui(pts1: Arr,
+                   pts2: Arr,
+                   max_iters: int = 500,
+                   threshold: float = 1e-4) -> tuple[Arr, Arr]:
   """RANSAC wrapper around the Lui 5-point solver.
 
   Randomly samples 5-point subsets, fits the model, and returns the
   pose with the most inliers (Sampson distance < threshold).
   The winning hypothesis is refined on all inlier points.
   """
-  N = len(pts1)
-  best_R, best_t = np.eye(3), np.zeros(3)
-  best_score = -1
+  N: int = len(pts1)
+  best_R: Arr = np.eye(3)
+  best_t: Arr = np.zeros(3)
+  best_score: int = -1
 
   # Precompute bearing vectors for all points
-  v1_all = np.column_stack([pts1, np.ones(N)])
+  v1_all: Arr = np.column_stack([pts1, np.ones(N)])
   v1_all /= np.linalg.norm(v1_all, axis=1, keepdims=True)
-  v2_all = np.column_stack([pts2, np.ones(N)])
+  v2_all: Arr = np.column_stack([pts2, np.ones(N)])
   v2_all /= np.linalg.norm(v2_all, axis=1, keepdims=True)
 
   # RANSAC
   for _ in range(max_iters):
-    idx = np.random.choice(N, 5, replace=False)
+    idx: Arr = np.random.choice(N, 5, replace=False)
     try:
-      R, t = lui_5point_algorithm(v1_all[idx], v2_all[idx])
+      r, t = lui_5point_algorithm(v1_all[idx], v2_all[idx])
     except Exception:
       continue
 
-    E = skew(t) @ R
-    scores = _sampson_per_point(E, pts1, pts2)
-    inliers = int(np.sum(scores < threshold))
+    e: Arr = skew(t) @ r
+    scores: Arr = _sampson_per_point(e, pts1, pts2)
+    inliers: int = int(np.sum(scores < threshold))
 
     if inliers > best_score:
       best_score = inliers
-      best_R, best_t = R.copy(), t.copy()
+      best_R, best_t = r.copy(), t.copy()
 
   # Refinement: re-fit on all inliers (initialize from best RANSAC hypothesis)
-  E_best = skew(best_t) @ best_R
+  E_best: Arr = skew(best_t) @ best_R
   scores = _sampson_per_point(E_best, pts1, pts2)
-  inlier_mask = scores < threshold
+  inlier_mask: Arr = scores < threshold
   if np.sum(inlier_mask) >= 5:
     try:
       R_ref, t_ref = lui_5point_algorithm(v1_all[inlier_mask],
@@ -558,8 +610,8 @@ def ransac_5pt_lui(pts1, pts2, max_iters=500, threshold=1e-4):
                                           R_init=best_R,
                                           t_init=best_t)
       # Accept refinement if it doesn't regress
-      E_ref = skew(t_ref) @ R_ref
-      scores_ref = _sampson_per_point(E_ref, pts1, pts2)
+      E_ref: Arr = skew(t_ref) @ R_ref
+      scores_ref: Arr = _sampson_per_point(E_ref, pts1, pts2)
       if np.sum(scores_ref < threshold) >= best_score:
         best_R, best_t = R_ref, t_ref
     except Exception:
@@ -573,134 +625,142 @@ def ransac_5pt_lui(pts1, pts2, max_iters=500, threshold=1e-4):
 ###############################################################################
 
 
-def _essential_from_params(w):
+def _essential_from_params(w: Arr) -> tuple[Arr, Arr, Arr]:
   """Extract essential matrix E from parameter vector w = [ax, ay, az, theta, phi].
 
   R = rodrigues(w[:3]),  t = [sin(theta)cos(phi), sin(theta)sin(phi), cos(theta)].
   """
-  R = rodrigues(w[:3])
-  theta, phi = w[3], w[4]
-  st = np.sin(theta)
-  t = np.array([st * np.cos(phi), st * np.sin(phi), np.cos(theta)])
-  return skew(t) @ R, R, t
+  r: Arr = rodrigues(w[:3])
+  theta: float = w[3]
+  phi: float = w[4]
+  st: float = np.sin(theta)
+  t_vec: Arr = np.array([st * np.cos(phi), st * np.sin(phi), np.cos(theta)])
+  return skew(t_vec) @ r, r, t_vec
 
 
-def _epipolar_dist_residuals(w, pts1_h, pts2_h):
+def _epipolar_dist_residuals(w: Arr, pts1_h: Arr, pts2_h: Arr) -> Arr:
   """Epipolar distance r_i = (x'^T E x) / sqrt((x'^T E)_1^2 + (x'^T E)_2^2)."""
-  E, _, _ = _essential_from_params(w)
-  Ex1 = (E @ pts1_h.T).T
-  numerator = np.sum(pts2_h * Ex1, axis=1)
-  denominator = np.sqrt(Ex1[:, 0]**2 + Ex1[:, 1]**2)
+  e: Arr
+  e, _, _ = _essential_from_params(w)
+  Ex1: Arr = (e @ pts1_h.T).T
+  numerator: Arr = np.sum(pts2_h * Ex1, axis=1)
+  denominator: Arr = np.sqrt(Ex1[:, 0]**2 + Ex1[:, 1]**2)
   with np.errstate(divide='ignore', invalid='ignore'):
     return np.where(denominator > 1e-12, numerator / denominator, 0.0)
 
 
-def _so3_right_jacobian(r):
+def _so3_right_jacobian(r: Arr) -> Arr:
   """Right Jacobian of SO(3) exponential map at r (axis-angle vector)."""
-  theta = np.linalg.norm(r)
+  theta: float = float(np.linalg.norm(r))
   if theta < 1e-8:
     return np.eye(3)
-  rx = skew(r / theta)
-  a = (1.0 - np.cos(theta)) / theta
-  b = (theta - np.sin(theta)) / theta
+  rx: Arr = skew(r / theta)
+  a: float = (1.0 - np.cos(theta)) / theta
+  b: float = (theta - np.sin(theta)) / theta
   return np.eye(3) - a * rx + b * rx @ rx
 
 
-def _dE_dparams(w):
+def _dE_dparams(w: Arr) -> list[Arr]:
   """Analytical derivatives of E w.r.t. each parameter in w.
 
   Returns list [dE_da, dE_db, dE_dg, dE_dtheta, dE_dphi] of 3x3 arrays.
   """
-  R = rodrigues(w[:3])
-  theta, phi = w[3], w[4]
-  st, ct = np.sin(theta), np.cos(theta)
-  sp, cp = np.sin(phi), np.cos(phi)
-  t = np.array([st * cp, st * sp, ct])
+  r: Arr = rodrigues(w[:3])
+  theta: float = w[3]
+  phi: float = w[4]
+  st: float = np.sin(theta)
+  ct: float = np.cos(theta)
+  sp: float = np.sin(phi)
+  cp: float = np.cos(phi)
+  t_vec: Arr = np.array([st * cp, st * sp, ct])
 
   # Translation derivatives
-  dt_dtheta = np.array([ct * cp, ct * sp, -st])
-  dt_dphi = np.array([-st * sp, st * cp, 0.0])
+  dt_dtheta: Arr = np.array([ct * cp, ct * sp, -st])
+  dt_dphi: Arr = np.array([-st * sp, st * cp, 0.0])
 
   # Rotation derivatives: dR/dr_k = R @ skew(J_r[:, k])
-  Jr = _so3_right_jacobian(w[:3])
-  dE = []
+  Jr: Arr = _so3_right_jacobian(w[:3])
+  dE: list[Arr] = []
   for k in range(3):
-    dR = R @ skew(Jr[:, k])
-    dE.append(skew(t) @ dR)
-  dE.append(skew(dt_dtheta) @ R)
-  dE.append(skew(dt_dphi) @ R)
+    dR: Arr = r @ skew(Jr[:, k])
+    dE.append(skew(t_vec) @ dR)
+  dE.append(skew(dt_dtheta) @ r)
+  dE.append(skew(dt_dphi) @ r)
   return dE
 
 
-def _jacobian_epipolar(w, pts1_h, pts2_h):
+def _jacobian_epipolar(w: Arr, pts1_h: Arr, pts2_h: Arr) -> Arr:
   """Analytical Nx5 Jacobian of epipolar distance residuals."""
-  E, _, _ = _essential_from_params(w)
-  dE = _dE_dparams(w)
-  N = len(pts1_h)
-  J = np.zeros((N, 5))
+  e: Arr
+  e, _, _ = _essential_from_params(w)
+  dE: list[Arr] = _dE_dparams(w)
+  N: int = len(pts1_h)
+  J: Arr = np.zeros((N, 5))
 
-  Ex1 = (E @ pts1_h.T).T
-  a = Ex1[:, 0]  # (x'^T E)_1
-  b = Ex1[:, 1]  # (x'^T E)_2
-  d_sq = a * a + b * b
-  d = np.sqrt(d_sq)
-  n = np.sum(pts2_h * Ex1, axis=1)
+  Ex1: Arr = (e @ pts1_h.T).T
+  a: Arr = Ex1[:, 0]  # (x'^T E)_1
+  b: Arr = Ex1[:, 1]  # (x'^T E)_2
+  d_sq: Arr = a * a + b * b
+  d: Arr = np.sqrt(d_sq)
+  n: Arr = np.sum(pts2_h * Ex1, axis=1)
 
   for j in range(5):
-    dEx1 = (dE[j] @ pts1_h.T).T
-    dn = np.sum(pts2_h * dEx1, axis=1)
-    da = dEx1[:, 0]
-    db = dEx1[:, 1]
-    dd = np.where(d > 1e-12, (a * da + b * db) / d, 0.0)
+    dEx1: Arr = (dE[j] @ pts1_h.T).T
+    dn: Arr = np.sum(pts2_h * dEx1, axis=1)
+    da: Arr = dEx1[:, 0]
+    db: Arr = dEx1[:, 1]
+    dd: Arr = np.where(d > 1e-12, (a * da + b * db) / d, 0.0)
 
-    denom = d_sq + 1e-12
+    denom: Arr = d_sq + 1e-12
     J[:, j] = (dn * d - n * dd) / denom
 
   return J
 
 
-def _lm_solve(w, pts1_h, pts2_h, max_iters, tol):
+def _lm_solve(w: Arr, pts1_h: Arr, pts2_h: Arr, max_iters: int,
+              tol: float) -> tuple[Arr, float]:
   """Run Levenberg-Marquardt optimization from a single initial w.
 
   Uses analytical Jacobians of the epipolar distance residuals.
 
   Returns (w_opt, cost) where cost = 0.5 * ||r||^2.
   """
-  lam = 1e-3
-  nu = 2.0
-  eps_jac = 1e-8
+  lam: float = 1e-3
+  nu: float = 2.0
 
-  r = _epipolar_dist_residuals(w, pts1_h, pts2_h)
-  cost = 0.5 * np.dot(r, r)
+  r: Arr = _epipolar_dist_residuals(w, pts1_h, pts2_h)
+  cost: float = 0.5 * float(np.dot(r, r))
 
   for _ in range(max_iters):
-    J = _jacobian_epipolar(w, pts1_h, pts2_h)
-    g = J.T @ r
-    H = J.T @ J
+    j: Arr = _jacobian_epipolar(w, pts1_h, pts2_h)
+    g: Arr = j.T @ r
+    hess: Arr = j.T @ j
 
     if np.linalg.norm(g, np.inf) < tol:
       break
 
-    diag_H = np.diag(H)
-    accepted = False
+    diag_hess: Arr = np.diag(hess)
+    accepted: bool = False
     for _ in range(30):
       try:
-        h = np.linalg.solve(H + lam * np.diag(diag_H), -g)
+        h: Arr = np.linalg.solve(hess + lam * np.diag(diag_hess), -g)
       except np.linalg.LinAlgError:
         lam *= nu
         nu *= 2
         continue
 
-      w_new = w + h
-      r_new = _epipolar_dist_residuals(w_new, pts1_h, pts2_h)
-      new_cost = 0.5 * np.dot(r_new, r_new)
+      w_new: Arr = w + h
+      r_new: Arr = _epipolar_dist_residuals(w_new, pts1_h, pts2_h)
+      new_cost: float = 0.5 * float(np.dot(r_new, r_new))
 
-      l_pred = r + J @ h
-      pred_cost = 0.5 * np.dot(l_pred, l_pred)
-      actual_reduction = cost - new_cost
-      pred_reduction = cost - pred_cost
+      jh: Arr = j @ h  # type: ignore[reportUnknownVariableType]
+      l_pred: Arr = r + jh  # type: ignore[reportUnknownVariableType]
+      pred_cost: float = 0.5 * float(np.dot(
+          l_pred, l_pred))  # type: ignore[reportUnknownArgumentType]
+      actual_reduction: float = cost - new_cost
+      pred_reduction: float = cost - pred_cost
 
-      rho = 0.0 if abs(
+      rho: float = 0.0 if abs(
           pred_reduction) < 1e-16 else actual_reduction / pred_reduction
 
       if rho > 0:
@@ -723,26 +783,26 @@ def _lm_solve(w, pts1_h, pts2_h, max_iters, tol):
   return w, cost
 
 
-def _generate_seeds(n_seeds, rng):
+def _generate_seeds(n_seeds: int, rng: np.random.Generator) -> list[Arr]:
   """Generate candidate initial parameter vectors for multi-start."""
-  seeds = [np.zeros(5)]
+  seeds: list[Arr] = [np.zeros(5)]
   for _ in range(n_seeds - 1):
-    w = np.zeros(5)
+    w: Arr = np.zeros(5)
     w[:3] = rng.uniform(-0.5, 0.5, 3)
-    theta = rng.uniform(0.1, np.pi - 0.1)
-    phi = rng.uniform(-np.pi, np.pi)
+    theta: float = rng.uniform(0.1, np.pi - 0.1)
+    phi: float = rng.uniform(-np.pi, np.pi)
     w[3] = theta
     w[4] = phi
     seeds.append(w)
   return seeds
 
 
-def hedborg_5point_algorithm(pts1_norm,
-                             pts2_norm,
-                             max_iters=50,
-                             tol=1e-20,
-                             R_init=None,
-                             t_init=None):
+def hedborg_5point_algorithm(pts1_norm: Arr,
+                             pts2_norm: Arr,
+                             max_iters: int = 50,
+                             tol: float = 1e-20,
+                             R_init: Optional[Arr] = None,
+                             t_init: Optional[Arr] = None) -> tuple[Arr, Arr]:
   """Fast iterative 5-point relative pose via Levenberg-Marquardt (Hedborg & Felsberg 2013).
 
   Uses multi-start initialisation: tries several candidate parameter vectors
@@ -762,37 +822,40 @@ def hedborg_5point_algorithm(pts1_norm,
   Returns:
     R (3x3), t (3,) describing the relative pose.
   """
-  n_pts = len(pts1_norm)
-  pts1_h = np.column_stack([pts1_norm, np.ones(n_pts)])
-  pts2_h = np.column_stack([pts2_norm, np.ones(n_pts)])
+  n_pts: int = len(pts1_norm)
+  pts1_h: Arr = np.column_stack([pts1_norm, np.ones(n_pts)])
+  pts2_h: Arr = np.column_stack([pts2_norm, np.ones(n_pts)])
 
-  rng = np.random.default_rng(0)
-  n_seeds = 4 if R_init is None else 1
+  rng: np.random.Generator = np.random.default_rng(0)
+  n_seeds: int = 4 if R_init is None else 1
 
   if R_init is not None and t_init is not None:
-    w_rot = cv2.Rodrigues(R_init)[0].ravel()
-    t_dir = t_init / np.linalg.norm(t_init)
-    theta = np.arccos(np.clip(t_dir[2], -1.0, 1.0))
-    phi = np.arctan2(t_dir[1], t_dir[0])
-    single_seed = np.array([w_rot[0], w_rot[1], w_rot[2], theta, phi])
-    seeds = [single_seed]
+    w_rot: Arr = cv2.Rodrigues(R_init)[0].ravel()
+    t_dir: Arr = t_init / np.linalg.norm(t_init)
+    theta: float = np.arccos(np.clip(t_dir[2], -1.0, 1.0))
+    phi: float = np.arctan2(t_dir[1], t_dir[0])
+    single_seed: Arr = np.array([w_rot[0], w_rot[1], w_rot[2], theta, phi])
+    seeds: list[Arr] = [single_seed]
   else:
     seeds = _generate_seeds(n_seeds, rng)
 
-  best_w = seeds[0]
-  best_cost = float('inf')
+  best_w: Arr = seeds[0]
+  best_cost: float = float('inf')
   for seed in seeds:
     w_opt, cost = _lm_solve(seed.copy(), pts1_h, pts2_h, max_iters, tol)
     if cost < best_cost:
       best_cost = cost
       best_w = w_opt
 
-  _, R, t = _essential_from_params(best_w)
+  _, r, t = _essential_from_params(best_w)
   t = t / np.linalg.norm(t)
-  return R, t
+  return r, t
 
 
-def ransac_5pt_hedborg(pts1, pts2, max_iters=500, threshold=1e-4):
+def ransac_5pt_hedborg(pts1: Arr,
+                       pts2: Arr,
+                       max_iters: int = 500,
+                       threshold: float = 1e-4) -> tuple[Arr, Arr]:
   """RANSAC wrapper around the Hedborg 5-point solver.
 
   Uses inlier count as primary score and total Sampson distance as
@@ -806,33 +869,34 @@ def ransac_5pt_hedborg(pts1, pts2, max_iters=500, threshold=1e-4):
   Returns:
     R (3x3), t (3,).
   """
-  N = len(pts1)
-  best_R, best_t = np.eye(3), np.zeros(3)
-  best_score = -1
-  best_sampson = float('inf')
+  N: int = len(pts1)
+  best_R: Arr = np.eye(3)
+  best_t: Arr = np.zeros(3)
+  best_score: int = -1
+  best_sampson: float = float('inf')
 
   for _ in range(max_iters):
-    idx = np.random.choice(N, 5, replace=False)
+    idx: Arr = np.random.choice(N, 5, replace=False)
     try:
-      R, t = hedborg_5point_algorithm(pts1[idx], pts2[idx])
+      r, t = hedborg_5point_algorithm(pts1[idx], pts2[idx])
     except Exception:
       continue
 
-    E = skew(t) @ R
-    scores = _sampson_per_point(E, pts1, pts2)
-    inliers = int(np.sum(scores < threshold))
-    total_sampson = np.sum(scores)
+    e: Arr = skew(t) @ r
+    scores: Arr = _sampson_per_point(e, pts1, pts2)
+    inliers: int = int(np.sum(scores < threshold))
+    total_sampson: float = np.sum(scores)
 
     if inliers > best_score or (inliers == best_score and
                                 total_sampson < best_sampson):
       best_score = inliers
       best_sampson = total_sampson
-      best_R, best_t = R.copy(), t.copy()
+      best_R, best_t = r.copy(), t.copy()
 
   # Refinement: re-fit on all inliers (initialize from best RANSAC hypothesis)
-  E_best = skew(best_t) @ best_R
+  E_best: Arr = skew(best_t) @ best_R
   scores = _sampson_per_point(E_best, pts1, pts2)
-  inlier_mask = scores < threshold
+  inlier_mask: Arr = scores < threshold
   if np.sum(inlier_mask) >= 5:
     try:
       R_ref, t_ref = hedborg_5point_algorithm(pts1[inlier_mask],
@@ -841,8 +905,8 @@ def ransac_5pt_hedborg(pts1, pts2, max_iters=500, threshold=1e-4):
                                               tol=1e-12,
                                               R_init=best_R,
                                               t_init=best_t)
-      E_ref = skew(t_ref) @ R_ref
-      scores_ref = _sampson_per_point(E_ref, pts1, pts2)
+      E_ref: Arr = skew(t_ref) @ R_ref
+      scores_ref: Arr = _sampson_per_point(E_ref, pts1, pts2)
       if np.sum(scores_ref < threshold) >= best_score:
         best_R, best_t = R_ref, t_ref
     except Exception:
@@ -856,18 +920,19 @@ def ransac_5pt_hedborg(pts1, pts2, max_iters=500, threshold=1e-4):
 ###############################################################################
 
 
-def ransac_preemptive(pts1,
-                      pts2,
-                      solver_fn,
-                      sample_size=5,
-                      num_hypotheses=100,
-                      threshold=1e-4,
-                      stage_sizes=None,
-                      keep_frac=0.5,
-                      min_inliers=None,
-                      refine=True,
-                      refine_fn=None,
-                      rng=None):
+def ransac_preemptive(
+    pts1: Arr,
+    pts2: Arr,
+    solver_fn: Callable[[Arr, Arr], tuple[Optional[Arr], Optional[Arr]]],
+    sample_size: int = 5,
+    num_hypotheses: int = 100,
+    threshold: float = 1e-4,
+    stage_sizes: Optional[list[int]] = None,
+    keep_frac: float = 0.5,
+    min_inliers: Optional[int] = None,
+    refine: bool = True,
+    refine_fn: Optional[Callable[[Arr, Arr, Arr, Arr], tuple[Arr, Arr]]] = None,
+    rng: Optional[np.random.Generator] = None) -> tuple[Arr, Arr]:
   """Pre-emptive RANSAC with progressive hypothesis pruning.
 
   Generates ``num_hypotheses`` model hypotheses from random minimal
@@ -901,34 +966,34 @@ def ransac_preemptive(pts1,
   Returns:
     (R, t) relative pose with the most inliers.
   """
-  N = len(pts1)
+  N: int = len(pts1)
   if rng is None:
     rng = np.random.default_rng()
 
   # Stage 0: generate candidate hypotheses
-  hypotheses = []
+  hypotheses: list[tuple[Arr, Arr]] = []
   for _ in range(num_hypotheses):
-    idx = rng.choice(N, sample_size, replace=False)
+    idx: Arr = rng.choice(N, sample_size, replace=False)
     try:
-      R, t = solver_fn(pts1[idx], pts2[idx])
-      if R is not None:
-        hypotheses.append((R, t))
+      r_raw, t_raw = solver_fn(pts1[idx], pts2[idx])
+      if r_raw is not None and t_raw is not None:
+        hypotheses.append((r_raw, t_raw))
     except Exception:
       continue
 
   if not hypotheses:
     return np.eye(3), np.zeros(3)
 
-  M = len(hypotheses)
+  M: int = len(hypotheses)
 
   # Determine pre-emptive stage sizes (geometric progression)
   if stage_sizes is None:
-    n_stages = max(2, int(np.log2(M)))
-    start = min(N, max(sample_size * 10, 50))
-    stage_sizes = np.geomspace(start, N, n_stages).astype(int)
-    stage_sizes = np.unique(stage_sizes)
+    n_stages: int = max(2, int(np.log2(M)))
+    start: int = min(N, max(sample_size * 10, 50))
+    stage_sizes_arr: Arr = np.geomspace(start, N, n_stages).astype(int)
+    stage_sizes = list(np.unique(stage_sizes_arr))
     if len(stage_sizes) == 0 or stage_sizes[-1] < N:
-      stage_sizes = np.append(stage_sizes, N)
+      stage_sizes.append(N)
   else:
     stage_sizes = [s for s in stage_sizes if s >= sample_size]
     if len(stage_sizes) == 0:
@@ -937,65 +1002,66 @@ def ransac_preemptive(pts1,
       stage_sizes.append(N)
 
   # Fixed permutation so all hypotheses see the same subsets
-  perm = rng.permutation(N)
-  active = list(range(M))
+  perm: Arr = rng.permutation(N)
+  active: list[int] = list(range(M))
 
   # Pre-emptive stages
   for sz in stage_sizes:
     if len(active) <= 1:
       break
-    n_test = min(sz, N)
-    subset = perm[:n_test]
+    n_test: int = min(sz, N)
+    subset: Arr = perm[:n_test]
 
-    inliers_arr = np.zeros(len(active))
-    sampson_arr = np.full(len(active), float('inf'))
+    inliers_arr: Arr = np.zeros(len(active))
+    sampson_arr: Arr = np.full(len(active), float('inf'))
 
     for i, hyp_idx in enumerate(active):
-      R, t = hypotheses[hyp_idx]
-      E = skew(t) @ R
-      scores = _sampson_per_point(E, pts1[subset], pts2[subset])
+      r, t = hypotheses[hyp_idx]
+      e: Arr = skew(t) @ r
+      scores: Arr = _sampson_per_point(e, pts1[subset], pts2[subset])
       inliers_arr[i] = np.sum(scores < threshold)
       sampson_arr[i] = np.sum(scores)
 
-    n_keep = max(1, int(len(active) * keep_frac))
-    order = np.lexsort((sampson_arr, -inliers_arr))
+    n_keep: int = max(1, int(len(active) * keep_frac))
+    order: Arr = np.lexsort((sampson_arr, -inliers_arr))
     active = [active[i] for i in order[:n_keep]]
 
     if min_inliers is not None and inliers_arr[order[0]] >= min_inliers:
       break
 
   # Final scoring on all points
-  best_R, best_t = np.eye(3), np.zeros(3)
-  best_score = -1
-  best_sampson = float('inf')
+  best_R: Arr = np.eye(3)
+  best_t: Arr = np.zeros(3)
+  best_score: int = -1
+  best_sampson: float = float('inf')
 
   for hyp_idx in active:
-    R, t = hypotheses[hyp_idx]
-    E = skew(t) @ R
-    scores = _sampson_per_point(E, pts1, pts2)
-    inliers = int(np.sum(scores < threshold))
-    total = np.sum(scores)
+    r, t = hypotheses[hyp_idx]
+    e: Arr = skew(t) @ r
+    scores: Arr = _sampson_per_point(e, pts1, pts2)
+    inliers: int = int(np.sum(scores < threshold))
+    total: float = np.sum(scores)
 
     if inliers > best_score or (inliers == best_score and total < best_sampson):
       best_score = inliers
       best_sampson = total
-      best_R, best_t = R.copy(), t.copy()
+      best_R, best_t = r.copy(), t.copy()
 
   # Refinement on all inliers
   if refine:
-    E_best = skew(best_t) @ best_R
+    E_best: Arr = skew(best_t) @ best_R
     scores = _sampson_per_point(E_best, pts1, pts2)
-    mask = scores < threshold
+    mask: Arr = scores < threshold
     if np.sum(mask) >= sample_size:
       try:
         if refine_fn is not None:
           R_ref, t_ref = refine_fn(pts1[mask], pts2[mask], best_R, best_t)
         else:
           R_ref, t_ref = solver_fn(pts1[mask], pts2[mask])
-        if R_ref is not None:
+        if R_ref is not None and t_ref is not None:
           t_ref = t_ref / (np.linalg.norm(t_ref) + 1e-12)
-          E_ref = skew(t_ref) @ R_ref
-          scores_ref = _sampson_per_point(E_ref, pts1, pts2)
+          E_ref: Arr = skew(t_ref) @ R_ref
+          scores_ref: Arr = _sampson_per_point(E_ref, pts1, pts2)
           if np.sum(scores_ref < threshold) >= best_score:
             best_R, best_t = R_ref, t_ref
       except Exception:
@@ -1004,26 +1070,29 @@ def ransac_preemptive(pts1,
   return best_R, best_t
 
 
-def _lui_adapter(pts1_sample, pts2_sample):
+def _lui_adapter(pts1_sample: Arr, pts2_sample: Arr) -> tuple[Arr, Arr]:
   """Adapter: (N,2) image points -> bearing vectors for Lui solver."""
-  v1 = np.column_stack([pts1_sample, np.ones(len(pts1_sample))])
+  v1: Arr = np.column_stack([pts1_sample, np.ones(len(pts1_sample))])
   v1 /= np.linalg.norm(v1, axis=1, keepdims=True)
-  v2 = np.column_stack([pts2_sample, np.ones(len(pts2_sample))])
+  v2: Arr = np.column_stack([pts2_sample, np.ones(len(pts2_sample))])
   v2 /= np.linalg.norm(v2, axis=1, keepdims=True)
   return lui_5point_algorithm(v1, v2)
 
 
-def ransac_5pt_nister_preemptive(pts1, pts2, **kwargs):
+def ransac_5pt_nister_preemptive(pts1: Arr, pts2: Arr,
+                                 **kwargs: Any) -> tuple[Arr, Arr]:
   """Pre-emptive RANSAC with the Nister 5-point solver."""
   return ransac_preemptive(pts1, pts2, nister_5point_algorithm, **kwargs)
 
 
-def ransac_5pt_lui_preemptive(pts1, pts2, **kwargs):
+def ransac_5pt_lui_preemptive(pts1: Arr, pts2: Arr,
+                              **kwargs: Any) -> tuple[Arr, Arr]:
   """Pre-emptive RANSAC with the Lui 5-point solver."""
   return ransac_preemptive(pts1, pts2, _lui_adapter, **kwargs)
 
 
-def _hedborg_refine(pts1, pts2, R_init, t_init):
+def _hedborg_refine(pts1: Arr, pts2: Arr, R_init: Arr,
+                    t_init: Arr) -> tuple[Arr, Arr]:
   """Refine Hedborg from an initial guess (avoids multi-start)."""
   return hedborg_5point_algorithm(pts1,
                                   pts2,
@@ -1033,7 +1102,8 @@ def _hedborg_refine(pts1, pts2, R_init, t_init):
                                   t_init=t_init)
 
 
-def ransac_5pt_hedborg_preemptive(pts1, pts2, **kwargs):
+def ransac_5pt_hedborg_preemptive(pts1: Arr, pts2: Arr,
+                                  **kwargs: Any) -> tuple[Arr, Arr]:
   """Pre-emptive RANSAC with the Hedborg 5-point solver.
 
   The refinement step initialises the LM solver from the best RANSAC
@@ -1048,69 +1118,77 @@ def ransac_5pt_hedborg_preemptive(pts1, pts2, **kwargs):
 ###############################################################################
 
 
-def _run_solvers(pts1, pts2, R_gt, t_gt, ransac_iters=200):
+def _run_solvers(pts1: Arr,
+                 pts2: Arr,
+                 R_gt: Arr,
+                 t_gt: Arr,
+                 ransac_iters: int = 200
+                ) -> dict[str, tuple[float, float, float]]:
   """Run all solvers once and return dict of {name: (R_err, t_ang, elapsed_ms)}."""
-  N = len(pts1)
+  N: int = len(pts1)
   import time
 
-  v1_all = np.column_stack([pts1, np.ones(N)])
+  v1_all: Arr = np.column_stack([pts1, np.ones(N)])
   v1_all /= np.linalg.norm(v1_all, axis=1, keepdims=True)
-  v2_all = np.column_stack([pts2, np.ones(N)])
+  v2_all: Arr = np.column_stack([pts2, np.ones(N)])
   v2_all /= np.linalg.norm(v2_all, axis=1, keepdims=True)
 
-  def _t_err(t):
+  def _t_err(t: Arr) -> float:
     if np.dot(t, t_gt) < 0:
       t *= -1
-    return np.degrees(np.arccos(np.clip(np.dot(t_gt, t), -1.0, 1.0)))
+    return float(np.degrees(np.arccos(np.clip(np.dot(t_gt, t), -1.0, 1.0))))
 
-  def _r_err(R):
-    return np.linalg.norm(R_gt - R)
+  def _r_err(R: Arr) -> float:
+    return float(np.linalg.norm(R_gt - R))
 
-  out = {}
+  out: dict[str, tuple[float, float, float]] = {}
 
-  t0 = time.time()
-  R, t = nister_5point_algorithm(pts1, pts2)
-  if R is None:
-    R, t = np.eye(3), np.zeros(3)
-  out['Nister'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
-
-  t0 = time.time()
-  R, t = opencv_5point_algorithm(pts1, pts2)
-  out['OpenCV'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
+  t0: float = time.time()
+  r, t = nister_5point_algorithm(pts1, pts2)
+  if r is None or t is None:
+    r, t = np.eye(3), np.zeros(3)
+  out['Nister'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
-  R, t = lui_5point_algorithm(v1_all[:5], v2_all[:5])
-  out['Lui'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
+  r, t = opencv_5point_algorithm(pts1, pts2)
+  out['OpenCV'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
-  R, t = hedborg_5point_algorithm(pts1, pts2)
-  out['Hedborg'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
+  r, t = lui_5point_algorithm(v1_all[:5], v2_all[:5])
+  out['Lui'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
-  R, t = ransac_5pt_nister_preemptive(pts1,
+  r, t = hedborg_5point_algorithm(pts1, pts2)
+  out['Hedborg'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
+
+  t0 = time.time()
+  r, t = ransac_5pt_nister_preemptive(pts1,
                                       pts2,
                                       num_hypotheses=ransac_iters,
                                       threshold=1e-4)
-  out['Nister RANSAC'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
+  out['Nister RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
-  R, t = ransac_5pt_lui_preemptive(pts1,
+  r, t = ransac_5pt_lui_preemptive(pts1,
                                    pts2,
                                    num_hypotheses=ransac_iters,
                                    threshold=1e-4)
-  out['Lui RANSAC'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
+  out['Lui RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
-  R, t = ransac_5pt_hedborg_preemptive(pts1,
+  r, t = ransac_5pt_hedborg_preemptive(pts1,
                                        pts2,
                                        num_hypotheses=ransac_iters,
                                        threshold=1e-4)
-  out['Hedborg RANSAC'] = (_r_err(R), _t_err(t), (time.time() - t0) * 1000)
+  out['Hedborg RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   return out
 
 
-def _add_pixel_noise(pts, sigma_px, f=500.0, rng=None):
+def _add_pixel_noise(pts: Arr,
+                     sigma_px: float,
+                     f: float = 500.0,
+                     rng: Any = None) -> Arr:
   """Add zero-mean Gaussian noise in pixel space, then convert back."""
   if rng is None:
     rng = np.random
@@ -1119,16 +1197,17 @@ def _add_pixel_noise(pts, sigma_px, f=500.0, rng=None):
   return pts + rng.randn(*pts.shape) * sigma_px / f
 
 
-def benchmark_summary(R_gt,
-                      t_gt,
-                      pts1_clean,
-                      pts2_clean,
-                      noise_sigmas_px=(0.0, 0.5, 1.0, 2.0, 4.0),
-                      focal_length=500.0,
-                      n_trials=10,
-                      ransac_iters=100):
+def benchmark_summary(R_gt: Arr,
+                      t_gt: Arr,
+                      pts1_clean: Arr,
+                      pts2_clean: Arr,
+                      noise_sigmas_px: tuple[float,
+                                             ...] = (0.0, 0.5, 1.0, 2.0, 4.0),
+                      focal_length: float = 500.0,
+                      n_trials: int = 10,
+                      ransac_iters: int = 100) -> None:
   """Run multiple trials at each pixel-noise level and print statistical summary."""
-  method_names = [
+  method_names: list[str] = [
       'OpenCV',
       'Nister',
       'Lui',
@@ -1139,55 +1218,63 @@ def benchmark_summary(R_gt,
   ]
 
   for sigma_px in noise_sigmas_px:
-    r_errs = {m: [] for m in method_names}
-    t_errs = {m: [] for m in method_names}
+    r_errs: dict[str, list[float]] = {m: [] for m in method_names}
+    t_errs: dict[str, list[float]] = {m: [] for m in method_names}
 
     for _ in range(n_trials):
-      pts1 = _add_pixel_noise(pts1_clean, sigma_px, focal_length)
-      pts2 = _add_pixel_noise(pts2_clean, sigma_px, focal_length)
+      pts1: Arr = _add_pixel_noise(pts1_clean, sigma_px, focal_length)
+      pts2: Arr = _add_pixel_noise(pts2_clean, sigma_px, focal_length)
 
       try:
-        out = _run_solvers(pts1, pts2, R_gt, t_gt, ransac_iters=ransac_iters)
+        result: dict[str,
+                     tuple[float, float,
+                           float]] = _run_solvers(pts1,
+                                                  pts2,
+                                                  R_gt,
+                                                  t_gt,
+                                                  ransac_iters=ransac_iters)
         for m in method_names:
-          if m in out:
-            r_errs[m].append(out[m][0])
-            t_errs[m].append(out[m][1])
+          if m in result:
+            r_errs[m].append(result[m][0])
+            t_errs[m].append(result[m][1])
       except Exception:
         pass
 
-    def _fmt(a):
+    def _fmt(a: list[float]) -> str:
       if len(a) == 0:
         return f"{'—':>28}"
-      return f"{a.mean():>12.4e} ± {a.std():>12.4e}"
+      r_arr: Arr = np.array(a)
+      return f"{r_arr.mean():>12.4e} ± {r_arr.std():>12.4e}"
 
-    hdr = f"Noise {sigma_px:.1f} px"
+    hdr: str = f"Noise {sigma_px:.1f} px"
     print(f"\n{'='*len(hdr)}")
     print(hdr)
     print(f"{'='*len(hdr)}")
     print(f"{'Method':<20} {'R_err':>28} {'t_err (deg)':>28}  {'n':>4}")
     print("-" * 84)
     for m in method_names:
-      r = np.array(r_errs[m])
-      t = np.array(t_errs[m])
+      r: list[float] = r_errs[m]
+      t: list[float] = t_errs[m]
       print(f"{m:<20} {_fmt(r)}  {_fmt(t)}  {len(r):>4}")
 
 
-def outlier_benchmark(R_gt,
-                      t_gt,
-                      pts1_clean,
-                      pts2_clean,
-                      outlier_fracs=(0.0, 0.1, 0.2, 0.3, 0.4, 0.5),
-                      noise_sigma_px=1.0,
-                      focal_length=500.0,
-                      n_trials=10,
-                      ransac_iters=100):
+def outlier_benchmark(R_gt: Arr,
+                      t_gt: Arr,
+                      pts1_clean: Arr,
+                      pts2_clean: Arr,
+                      outlier_fracs: tuple[float, ...] = (0.0, 0.1, 0.2, 0.3,
+                                                          0.4, 0.5),
+                      noise_sigma_px: float = 1.0,
+                      focal_length: float = 500.0,
+                      n_trials: int = 10,
+                      ransac_iters: int = 100) -> None:
   """Benchmark all solvers with varying fractions of outlier correspondences.
 
   At each outlier fraction, a subset of point pairs are replaced with
   random uniform correspondences (outliers), and mild Gaussian noise
   (in pixels) is added to all points.
   """
-  method_names = [
+  method_names: list[str] = [
       'OpenCV',
       'Nister',
       'Lui',
@@ -1197,64 +1284,72 @@ def outlier_benchmark(R_gt,
       'Hedborg RANSAC',
   ]
 
-  N = len(pts1_clean)
+  N: int = len(pts1_clean)
   for outlier_frac in outlier_fracs:
-    r_errs = {m: [] for m in method_names}
-    t_errs = {m: [] for m in method_names}
+    r_errs: dict[str, list[float]] = {m: [] for m in method_names}
+    t_errs: dict[str, list[float]] = {m: [] for m in method_names}
 
     for _ in range(n_trials):
-      pts1 = _add_pixel_noise(pts1_clean, noise_sigma_px, focal_length)
-      pts2 = _add_pixel_noise(pts2_clean, noise_sigma_px, focal_length)
+      pts1: Arr = _add_pixel_noise(pts1_clean, noise_sigma_px, focal_length)
+      pts2: Arr = _add_pixel_noise(pts2_clean, noise_sigma_px, focal_length)
 
       if outlier_frac > 0:
-        n_out = max(1, int(N * outlier_frac))
-        idx = np.random.choice(N, n_out, replace=False)
-        bound = max(np.abs(pts1_clean).max(), np.abs(pts2_clean).max()) * 2
+        n_out: int = max(1, int(N * outlier_frac))
+        idx: Arr = np.random.choice(N, n_out, replace=False)
+        bound: float = max(np.abs(pts1_clean).max(),
+                           np.abs(pts2_clean).max()) * 2
         pts1[idx] = np.random.uniform(-bound, bound, (n_out, 2))
         pts2[idx] = np.random.uniform(-bound, bound, (n_out, 2))
 
       try:
-        out = _run_solvers(pts1, pts2, R_gt, t_gt, ransac_iters=ransac_iters)
+        result: dict[str,
+                     tuple[float, float,
+                           float]] = _run_solvers(pts1,
+                                                  pts2,
+                                                  R_gt,
+                                                  t_gt,
+                                                  ransac_iters=ransac_iters)
         for m in method_names:
-          if m in out:
-            r_errs[m].append(out[m][0])
-            t_errs[m].append(out[m][1])
+          if m in result:
+            r_errs[m].append(result[m][0])
+            t_errs[m].append(result[m][1])
       except Exception:
         pass
 
-    def _fmt(a):
+    def _fmt(a: list[float]) -> str:
       if len(a) == 0:
         return f"{'—':>28}"
-      return f"{a.mean():>12.4e} ± {a.std():>12.4e}"
+      r_arr: Arr = np.array(a)
+      return f"{r_arr.mean():>12.4e} ± {r_arr.std():>12.4e}"
 
-    hdr = f"Outliers {outlier_frac*100:.0f}%  (noise {noise_sigma_px:.1f} px)"
+    hdr: str = f"Outliers {outlier_frac*100:.0f}%  (noise {noise_sigma_px:.1f} px)"
     print(f"\n{'='*len(hdr)}")
     print(hdr)
     print(f"{'='*len(hdr)}")
     print(f"{'Method':<20} {'R_err':>28} {'t_err (deg)':>28}  {'n':>4}")
     print("-" * 84)
     for m in method_names:
-      r = np.array(r_errs[m])
-      t = np.array(t_errs[m])
+      r: list[float] = r_errs[m]
+      t: list[float] = t_errs[m]
       print(f"{m:<20} {_fmt(r)}  {_fmt(t)}  {len(r):>4}")
 
 
 if __name__ == "__main__":
   np.random.seed(42)
 
-  theta = np.radians(15.0)
-  R_gt = np.array([[np.cos(theta), 0, np.sin(theta)], [0, 1, 0],
-                   [-np.sin(theta), 0, np.cos(theta)]])
-  t_gt = np.array([0.5, -0.2, 0.84])
+  theta: float = np.radians(15.0)
+  R_gt: Arr = np.array([[np.cos(theta), 0, np.sin(theta)], [0, 1, 0],
+                        [-np.sin(theta), 0, np.cos(theta)]])
+  t_gt: Arr = np.array([0.5, -0.2, 0.84])
   t_gt /= np.linalg.norm(t_gt)
 
-  N = 60
-  X_3D = np.random.uniform(-1, 1, (N, 3))
+  N: int = 60
+  X_3D: Arr = np.random.uniform(-1, 1, (N, 3))
   X_3D[:, 2] += 3.0
 
-  pts1_clean = X_3D[:, :2] / X_3D[:, 2:]
-  X_cam2 = (R_gt @ X_3D.T).T + t_gt
-  pts2_clean = X_cam2[:, :2] / X_cam2[:, 2:]
+  pts1_clean: Arr = X_3D[:, :2] / X_3D[:, 2:]
+  X_cam2: Arr = (R_gt @ X_3D.T).T + t_gt
+  pts2_clean: Arr = X_cam2[:, :2] / X_cam2[:, 2:]
 
   benchmark_summary(
       R_gt=R_gt,
