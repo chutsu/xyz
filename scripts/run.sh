@@ -22,6 +22,26 @@ run_memcheck() {
 }
 
 ###############################################################################
+# Python
+###############################################################################
+
+run_script() {
+  TARGET="dev"
+
+  tmux send-keys -t $TARGET -R C-l C-m
+  tmux send-keys -t $TARGET -R "\
+    cd $HOME/code/xyz \
+      && clear \
+      && cd scripts \
+      && python3 $1 \
+  " C-m C-m
+  exit
+}
+
+# run_script note-fundamental_matrix.py
+run_script note-essential_matrix.py
+
+###############################################################################
 # C
 ###############################################################################
 
@@ -48,29 +68,8 @@ run_test() {
       && make libxyz -j \
       && time make tests -j \
       && cd build \
-      && $DEBUG ./$1 --target $2 \
-      && python3 ~/code/xyz/scripts/plot_lidar_points.py
+      && $DEBUG ./$1 --target $2
   " C-m C-m
-
-#   tmux send-keys -t $TARGET -R "\
-# python3 - <<EOF
-# import numpy as np
-# import matplotlib.pyplot as plt
-#
-# points = np.genfromtxt('/tmp/points.csv')
-# points_out = np.genfromtxt('/tmp/points_downsampled.csv')
-#
-# fig = plt.figure(figsize=(12, 6))
-# ax1 = fig.add_subplot(121, projection='3d')
-# ax1.scatter(points[:, 0], points[:, 1], points[:, 2])
-# ax2 = fig.add_subplot(122, projection='3d')
-# ax2.scatter(points_out[:, 0], points_out[:, 1], points_out[:, 2])
-#
-# plt.tight_layout()
-# plt.show()
-# EOF
-#   " C-m C-m
-
   exit
 }
 

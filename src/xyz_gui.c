@@ -1,12 +1,10 @@
 #include "xyz_gui.h"
 
 #ifndef STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #endif
 
 #ifndef STB_IMAGE_WRITE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #endif
 
@@ -95,24 +93,12 @@ gl_enum_t gl_check_error(const char *file, const int line) {
   while ((error_code = glGetError()) != GL_NO_ERROR) {
     char error[1000] = {0};
     switch (error_code) {
-      case GL_INVALID_ENUM:
-        strcpy(error, "INVALID_ENUM");
-        break;
-      case GL_INVALID_VALUE:
-        strcpy(error, "INVALID_VALUE");
-        break;
-      case GL_INVALID_OPERATION:
-        strcpy(error, "INVALID_OPERATION");
-        break;
-      case GL_STACK_OVERFLOW:
-        strcpy(error, "STACK_OVERFLOW");
-        break;
-      case GL_STACK_UNDERFLOW:
-        strcpy(error, "STACK_UNDERFLOW");
-        break;
-      case GL_OUT_OF_MEMORY:
-        strcpy(error, "OUT_OF_MEMORY");
-        break;
+      case GL_INVALID_ENUM: strcpy(error, "INVALID_ENUM"); break;
+      case GL_INVALID_VALUE: strcpy(error, "INVALID_VALUE"); break;
+      case GL_INVALID_OPERATION: strcpy(error, "INVALID_OPERATION"); break;
+      case GL_STACK_OVERFLOW: strcpy(error, "STACK_OVERFLOW"); break;
+      case GL_STACK_UNDERFLOW: strcpy(error, "STACK_UNDERFLOW"); break;
+      case GL_OUT_OF_MEMORY: strcpy(error, "OUT_OF_MEMORY"); break;
       case GL_INVALID_FRAMEBUFFER_OPERATION:
         strcpy(error, "INVALID_FRAMEBUFFER_OPERATION");
         break;
@@ -3069,21 +3055,11 @@ static void assimp_load_textures(const struct aiMaterial *material,
   // Type name
   char type_name[30] = {0};
   switch (type) {
-    case aiTextureType_DIFFUSE:
-      strcpy(type_name, "texture_diffuse");
-      break;
-    case aiTextureType_SPECULAR:
-      strcpy(type_name, "texture_specular");
-      break;
-    case aiTextureType_HEIGHT:
-      strcpy(type_name, "texture_height");
-      break;
-    case aiTextureType_AMBIENT:
-      strcpy(type_name, "texture_ambient");
-      break;
-    default:
-      FATAL("Not Implemented!");
-      break;
+    case aiTextureType_DIFFUSE: strcpy(type_name, "texture_diffuse"); break;
+    case aiTextureType_SPECULAR: strcpy(type_name, "texture_specular"); break;
+    case aiTextureType_HEIGHT: strcpy(type_name, "texture_height"); break;
+    case aiTextureType_AMBIENT: strcpy(type_name, "texture_ambient"); break;
+    default: FATAL("Not Implemented!"); break;
   }
 
   // Load texture

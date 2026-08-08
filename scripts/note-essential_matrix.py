@@ -625,23 +625,50 @@ def ransac_5pt_lui(pts1: Arr,
 ###############################################################################
 
 
-def _essential_from_params(w: Arr) -> tuple[Arr, Arr, Arr]:
-  """Extract essential matrix E from parameter vector w = [ax, ay, az, theta, phi].
+def _tangent_basis(t: Arr) -> tuple[Arr, Arr]:
+  """Build orthonormal basis [e1, e2] for the tangent space of S^2 at t."""
+  e1: Arr = np.cross(t, np.array([1.0, 0.0, 0.0]))
+  if np.linalg.norm(e1) < 1e-8:
+    e1 = np.cross(t, np.array([0.0, 1.0, 0.0]))
+  e1 = e1 / np.linalg.norm(e1)
+  e2: Arr = np.cross(t, e1)
+  e2 = e2 / np.linalg.norm(e2)
+  return e1, e2
 
-  R = rodrigues(w[:3]),  t = [sin(theta)cos(phi), sin(theta)sin(phi), cos(theta)].
+
+def _sphere_exp_map(t: Arr, v: Arr) -> Arr:
+  """Exponential map on S^2 at t with tangent vector v (orthogonal to t)."""
+  theta: float = float(np.linalg.norm(v))
+  if theta < 1e-12:
+    return t
+  return np.cos(theta) * t + np.sin(theta) * (v / theta)
+
+
+def _essential_from_params(w: Arr, t_cur: Arr) -> tuple[Arr, Arr, Arr]:
+  """Extract essential matrix E from parameter vector w = [ax, ay, az, du, dv].
+
+  R = rodrigues(w[:3]), t = exp_map(t_cur, w[3:5] projected to tangent space).
   """
   r: Arr = rodrigues(w[:3])
-  theta: float = w[3]
-  phi: float = w[4]
-  st: float = np.sin(theta)
-  t_vec: Arr = np.array([st * np.cos(phi), st * np.sin(phi), np.cos(theta)])
+  du: float = w[3]
+  dv: float = w[4]
+  e1: Arr
+  e2: Arr
+  e1, e2 = _tangent_basis(t_cur)
+  v: Arr = du * e1 + dv * e2
+  t_vec: Arr = _sphere_exp_map(t_cur, v)
   return skew(t_vec) @ r, r, t_vec
 
 
-def _epipolar_dist_residuals(w: Arr, pts1_h: Arr, pts2_h: Arr) -> Arr:
+def _epipolar_dist_residuals(
+    w: Arr,
+    t_cur: Arr,
+    pts1_h: Arr,
+    pts2_h: Arr,
+) -> Arr:
   """Epipolar distance r_i = (x'^T E x) / sqrt((x'^T E)_1^2 + (x'^T E)_2^2)."""
   e: Arr
-  e, _, _ = _essential_from_params(w)
+  e, _, _ = _essential_from_params(w, t_cur)
   Ex1: Arr = (e @ pts1_h.T).T
   numerator: Arr = np.sum(pts2_h * Ex1, axis=1)
   denominator: Arr = np.sqrt(Ex1[:, 0]**2 + Ex1[:, 1]**2)
@@ -660,23 +687,23 @@ def _so3_right_jacobian(r: Arr) -> Arr:
   return np.eye(3) - a * rx + b * rx @ rx
 
 
-def _dE_dparams(w: Arr) -> list[Arr]:
+def _dE_dparams(w: Arr, t_cur: Arr) -> list[Arr]:
   """Analytical derivatives of E w.r.t. each parameter in w.
 
-  Returns list [dE_da, dE_db, dE_dg, dE_dtheta, dE_dphi] of 3x3 arrays.
+  Returns list [dE_da, dE_db, dE_dg, dE_du, dE_dv] of 3x3 arrays.
+  w = [ax, ay, az, du, dv] where (du, dv) are tangent space coords at t_cur.
   """
   r: Arr = rodrigues(w[:3])
-  theta: float = w[3]
-  phi: float = w[4]
-  st: float = np.sin(theta)
-  ct: float = np.cos(theta)
-  sp: float = np.sin(phi)
-  cp: float = np.cos(phi)
-  t_vec: Arr = np.array([st * cp, st * sp, ct])
+  e1: Arr
+  e2: Arr
+  e1, e2 = _tangent_basis(t_cur)
+  du: float = w[3]
+  dv: float = w[4]
+  v: Arr = du * e1 + dv * e2
+  t_vec: Arr = _sphere_exp_map(t_cur, v)
 
-  # Translation derivatives
-  dt_dtheta: Arr = np.array([ct * cp, ct * sp, -st])
-  dt_dphi: Arr = np.array([-st * sp, st * cp, 0.0])
+  # Jacobian of exp_map at v=0 is identity: dt/du = e1, dt/dv = e2
+  # (re-linearisation happens after each accepted step, keeping w[3:5] near 0)
 
   # Rotation derivatives: dR/dr_k = R @ skew(J_r[:, k])
   Jr: Arr = _so3_right_jacobian(w[:3])
@@ -684,16 +711,16 @@ def _dE_dparams(w: Arr) -> list[Arr]:
   for k in range(3):
     dR: Arr = r @ skew(Jr[:, k])
     dE.append(skew(t_vec) @ dR)
-  dE.append(skew(dt_dtheta) @ r)
-  dE.append(skew(dt_dphi) @ r)
+  dE.append(skew(e1) @ r)  # dE/du
+  dE.append(skew(e2) @ r)  # dE/dv
   return dE
 
 
-def _jacobian_epipolar(w: Arr, pts1_h: Arr, pts2_h: Arr) -> Arr:
+def _jacobian_epipolar(w: Arr, t_cur: Arr, pts1_h: Arr, pts2_h: Arr) -> Arr:
   """Analytical Nx5 Jacobian of epipolar distance residuals."""
   e: Arr
-  e, _, _ = _essential_from_params(w)
-  dE: list[Arr] = _dE_dparams(w)
+  e, _, _ = _essential_from_params(w, t_cur)
+  dE: list[Arr] = _dE_dparams(w, t_cur)
   N: int = len(pts1_h)
   J: Arr = np.zeros((N, 5))
 
@@ -717,26 +744,35 @@ def _jacobian_epipolar(w: Arr, pts1_h: Arr, pts2_h: Arr) -> Arr:
   return J
 
 
-def _lm_solve(w: Arr, pts1_h: Arr, pts2_h: Arr, max_iters: int,
-              tol: float) -> tuple[Arr, float]:
+def _lm_solve(
+    w: Arr,
+    t_cur: Arr,
+    pts1_h: Arr,
+    pts2_h: Arr,
+    max_iters: int,
+    tol: float,
+) -> tuple[Arr, Arr, float]:
   """Run Levenberg-Marquardt optimization from a single initial w.
 
   Uses analytical Jacobians of the epipolar distance residuals.
+  w = [ax, ay, az, du, dv] with translation in tangent space at t_cur.
+  After each accepted step, t_cur is updated and w[3:5] reset to 0
+  (re-linearisation on the S^2 manifold).
 
-  Returns (w_opt, cost) where cost = 0.5 * ||r||^2.
+  Returns (w_opt, t_cur_opt, cost) where cost = 0.5 * ||r||^2.
   """
   lam: float = 1e-3
   nu: float = 2.0
 
-  r: Arr = _epipolar_dist_residuals(w, pts1_h, pts2_h)
+  r: Arr = _epipolar_dist_residuals(w, t_cur, pts1_h, pts2_h)
   cost: float = 0.5 * float(np.dot(r, r))
 
   for _ in range(max_iters):
-    j: Arr = _jacobian_epipolar(w, pts1_h, pts2_h)
+    j: Arr = _jacobian_epipolar(w, t_cur, pts1_h, pts2_h)
     g: Arr = j.T @ r
     hess: Arr = j.T @ j
 
-    if np.linalg.norm(g, np.inf) < tol:
+    if float(np.linalg.norm(g, np.inf)) < tol:
       break
 
     diag_hess: Arr = np.diag(hess)
@@ -749,8 +785,20 @@ def _lm_solve(w: Arr, pts1_h: Arr, pts2_h: Arr, max_iters: int,
         nu *= 2
         continue
 
-      w_new: Arr = w + h
-      r_new: Arr = _epipolar_dist_residuals(w_new, pts1_h, pts2_h)
+      # Update rotation (axis-angle accumulates)
+      w_new: Arr = w.copy()
+      w_new[:3] = w[:3] + h[:3]
+      # Update translation via exponential map on S^2
+      e1: Arr
+      e2: Arr
+      e1, e2 = _tangent_basis(t_cur)
+      v: Arr = h[3] * e1 + h[4] * e2
+      t_new: Arr = _sphere_exp_map(t_cur, v)
+      # Reset tangent-space parameters after the step
+      w_new[3] = 0.0
+      w_new[4] = 0.0
+
+      r_new: Arr = _epipolar_dist_residuals(w_new, t_new, pts1_h, pts2_h)
       new_cost: float = 0.5 * float(np.dot(r_new, r_new))
 
       jh: Arr = j @ h  # type: ignore[reportUnknownVariableType]
@@ -765,13 +813,14 @@ def _lm_solve(w: Arr, pts1_h: Arr, pts2_h: Arr, max_iters: int,
 
       if rho > 0:
         w = w_new
+        t_cur = t_new
         r = r_new
         cost = new_cost
         lam *= max(1.0 / 3.0, 1.0 - (2.0 * rho - 1.0)**3)
         nu = 2.0
         accepted = True
-        if np.linalg.norm(h) < tol:
-          return w, cost
+        if float(np.linalg.norm(h)) < tol:
+          return w, t_cur, cost
         break
       else:
         lam *= nu
@@ -780,37 +829,52 @@ def _lm_solve(w: Arr, pts1_h: Arr, pts2_h: Arr, max_iters: int,
     if not accepted:
       break
 
-  return w, cost
+  return w, t_cur, cost
 
 
-def _generate_seeds(n_seeds: int, rng: np.random.Generator) -> list[Arr]:
-  """Generate candidate initial parameter vectors for multi-start."""
-  seeds: list[Arr] = [np.zeros(5)]
+def _generate_seeds(
+    n_seeds: int,
+    rng: np.random.Generator,
+) -> list[tuple[Arr, Arr]]:
+  """Generate candidate initial (w, t_cur) pairs for multi-start.
+
+  w = [ax, ay, az, 0, 0]  (tangent-space params start at zero).
+  t_cur is a random unit vector on S^2.
+  """
+  t0: Arr = np.array([0.0, 0.0, 1.0])
+  seeds: list[tuple[Arr, Arr]] = [(np.zeros(5), t0.copy())]
   for _ in range(n_seeds - 1):
     w: Arr = np.zeros(5)
     w[:3] = rng.uniform(-0.5, 0.5, 3)
     theta: float = rng.uniform(0.1, np.pi - 0.1)
     phi: float = rng.uniform(-np.pi, np.pi)
-    w[3] = theta
-    w[4] = phi
-    seeds.append(w)
+    t_cur: Arr = np.array([
+        np.sin(theta) * np.cos(phi),
+        np.sin(theta) * np.sin(phi),
+        np.cos(theta),
+    ])
+    seeds.append((w, t_cur))
   return seeds
 
 
-def hedborg_5point_algorithm(pts1_norm: Arr,
-                             pts2_norm: Arr,
-                             max_iters: int = 50,
-                             tol: float = 1e-20,
-                             R_init: Optional[Arr] = None,
-                             t_init: Optional[Arr] = None) -> tuple[Arr, Arr]:
+def hedborg_5point_algorithm(
+    pts1_norm: Arr,
+    pts2_norm: Arr,
+    max_iters: int = 50,
+    tol: float = 1e-20,
+    R_init: Optional[Arr] = None,
+    t_init: Optional[Arr] = None,
+) -> tuple[Arr, Arr]:
   """Fast iterative 5-point relative pose via Levenberg-Marquardt (Hedborg & Felsberg 2013).
 
   Uses multi-start initialisation: tries several candidate parameter vectors
   and picks the one with the lowest final epipolar cost.
 
   The solver parameterises the essential matrix with 5 parameters
-  w = [ax, ay, az, theta, phi] (axis-angle rotation + spherical translation)
-  and minimises the epipolar distance using LM with analytical Jacobians.
+  w = [ax, ay, az, du, dv] where (du, dv) are coordinates in the tangent
+  space of S^2 at the current translation estimate t_cur.  After each
+  accepted LM step the translation is updated via the exponential map on
+  S^2 and the tangent-space parameters are reset to zero (re-linearisation).
 
   Args:
     pts1_norm, pts2_norm: (N, 2) normalized image coordinates (N >= 5).
@@ -832,30 +896,33 @@ def hedborg_5point_algorithm(pts1_norm: Arr,
   if R_init is not None and t_init is not None:
     w_rot: Arr = cv2.Rodrigues(R_init)[0].ravel()
     t_dir: Arr = t_init / np.linalg.norm(t_init)
-    theta: float = np.arccos(np.clip(t_dir[2], -1.0, 1.0))
-    phi: float = np.arctan2(t_dir[1], t_dir[0])
-    single_seed: Arr = np.array([w_rot[0], w_rot[1], w_rot[2], theta, phi])
-    seeds: list[Arr] = [single_seed]
+    single_seed_w: Arr = np.array([w_rot[0], w_rot[1], w_rot[2], 0.0, 0.0])
+    seeds: list[tuple[Arr, Arr]] = [(single_seed_w, t_dir)]
   else:
     seeds = _generate_seeds(n_seeds, rng)
 
-  best_w: Arr = seeds[0]
+  best_w: Arr = seeds[0][0]
+  best_t_cur: Arr = seeds[0][1]
   best_cost: float = float('inf')
-  for seed in seeds:
-    w_opt, cost = _lm_solve(seed.copy(), pts1_h, pts2_h, max_iters, tol)
+  for seed_w, seed_t_cur in seeds:
+    w_opt, t_cur_opt, cost = _lm_solve(seed_w.copy(), seed_t_cur, pts1_h,
+                                       pts2_h, max_iters, tol)
     if cost < best_cost:
       best_cost = cost
       best_w = w_opt
+      best_t_cur = t_cur_opt
 
-  _, r, t = _essential_from_params(best_w)
+  _, r, t = _essential_from_params(best_w, best_t_cur)
   t = t / np.linalg.norm(t)
   return r, t
 
 
-def ransac_5pt_hedborg(pts1: Arr,
-                       pts2: Arr,
-                       max_iters: int = 500,
-                       threshold: float = 1e-4) -> tuple[Arr, Arr]:
+def ransac_5pt_hedborg(
+    pts1: Arr,
+    pts2: Arr,
+    max_iters: int = 500,
+    threshold: float = 1e-4,
+) -> tuple[Arr, Arr]:
   """RANSAC wrapper around the Hedborg 5-point solver.
 
   Uses inlier count as primary score and total Sampson distance as
@@ -901,7 +968,7 @@ def ransac_5pt_hedborg(pts1: Arr,
     try:
       R_ref, t_ref = hedborg_5point_algorithm(pts1[inlier_mask],
                                               pts2[inlier_mask],
-                                              max_iters=20,
+                                              max_iters=50,
                                               tol=1e-12,
                                               R_init=best_R,
                                               t_init=best_t)
@@ -1070,6 +1137,146 @@ def ransac_preemptive(
   return best_R, best_t
 
 
+def _epipolar_inliers(E: Arr, pts1: Arr, pts2: Arr, threshold: float) -> Arr:
+  """Epipolar distance inlier mask, matching OpenCV's RANSAC metric.
+
+  d = |x2' * E * x1| / sqrt((E*x1)_1^2 + (E*x1)_2^2)
+  """
+  n: int = len(pts1)
+  pts1_h: Arr = np.hstack([pts1, np.ones((n, 1))])
+  pts2_h: Arr = np.hstack([pts2, np.ones((n, 1))])
+  Ex1: Arr = (E @ pts1_h.T).T
+  numerator: Arr = np.abs(np.sum(pts2_h * Ex1, axis=1))
+  denominator: Arr = np.sqrt(Ex1[:, 0]**2 + Ex1[:, 1]**2)
+  with np.errstate(divide='ignore', invalid='ignore'):
+    dist: Arr = np.where(denominator > 1e-12, numerator / denominator,
+                         float('inf'))
+  return dist < threshold
+
+
+def _compute_nister_candidates(pts1: Arr, pts2: Arr) -> list[Arr]:
+  """Compute all E matrix candidates from 5-point Nister solver (no pose selection)."""
+  Ex: Arr
+  Ey: Arr
+  Ez: Arr
+  Ew: Arr
+  Ex, Ey, Ez, Ew = _compute_nullspace_basis(pts1, pts2)
+  M: Arr = _build_constraint_matrix(Ex, Ey, Ez, Ew)
+  xyz_sols: list[tuple[float, float, float]] = _solve_system_nister(M)
+  candidates: list[Arr] = []
+  for x, y, z in xyz_sols:
+    e_candidate: Arr = x * Ex + y * Ey + z * Ez + Ew
+    u: Arr
+    s: Arr
+    vt: Arr
+    u, s, vt = np.linalg.svd(e_candidate)
+    e_clean: Arr = u @ np.diag([(s[0] + s[1]) / 2.0,
+                                (s[0] + s[1]) / 2.0, 0.0]) @ vt
+    candidates.append(e_clean)
+  return candidates
+
+
+def ransac_5pt_standard(
+    pts1: Arr,
+    pts2: Arr,
+    max_iters: int = 2000,
+    threshold: float = 1e-3,
+    prob: float = 0.99,
+) -> tuple[Arr, Arr]:
+  """Standard RANSAC with the Nister 5-point solver (matching OpenCV's approach).
+
+  For each 5-point sample, computes ALL candidate E matrices from the
+  5-point polynomial solver and scores each one against the full point
+  set using epipolar distance (matching OpenCV's metric).  The best E
+  by inlier count is kept.
+
+  Adaptively determines iteration count based on the best inlier ratio
+  seen so far (same adaptive scheme as ``cv2.findEssentialMat`` with
+  ``cv2.RANSAC``).
+  """
+  N: int = len(pts1)
+  best_E: Optional[Arr] = None
+  best_score: int = -1
+
+  iters: int = 0
+  max_attempts: int = max_iters
+
+  while iters < max_attempts:
+    idx: Arr = np.random.choice(N, 5, replace=False)
+    try:
+      e_candidates: list[Arr] = _compute_nister_candidates(pts1[idx], pts2[idx])
+    except Exception:
+      iters += 1
+      continue
+
+    if not e_candidates:
+      iters += 1
+      continue
+
+    for e_candidate in e_candidates:
+      inlier_mask: Arr = _epipolar_inliers(e_candidate, pts1, pts2, threshold)
+      inliers: int = int(np.sum(inlier_mask))
+
+      if inliers > best_score:
+        best_score = inliers
+        best_E = e_candidate.copy()
+
+        # Adaptive iteration count (OpenCV style)
+        inlier_ratio: float = inliers / N
+        if inlier_ratio >= 1.0:
+          max_attempts = iters + 1
+        elif inlier_ratio > 0.0:
+          denom: float = 1.0 - inlier_ratio**5
+          if denom > 0.0:
+            adapt_iters = int(np.log(1.0 - prob) / np.log(denom))
+            max_attempts = min(max_iters, max(adapt_iters, 10))
+
+    iters += 1
+
+  if best_E is None:
+    return np.eye(3), np.zeros(3)
+
+  # Decompose best E into R, t with cheirality check
+  poses: list[tuple[Arr, Arr]] = decompose_essential_matrix(best_E)
+  best_R: Arr = np.eye(3)
+  best_t: Arr = np.zeros(3)
+  best_pts: int = -1
+  for r_candidate, t_candidate in poses:
+    front_pts: int = cheirality_check(r_candidate, t_candidate, pts1, pts2)
+    if front_pts > best_pts:
+      best_pts = front_pts
+      best_R, best_t = r_candidate, t_candidate
+
+  # Refinement on all inliers
+  inlier_mask = _epipolar_inliers(best_E, pts1, pts2, threshold)
+  if np.sum(inlier_mask) >= 5:
+    try:
+      ref_candidates: list[Arr] = _compute_nister_candidates(
+          pts1[inlier_mask], pts2[inlier_mask])
+      if ref_candidates:
+        best_ref_E: Arr = ref_candidates[0]
+        best_ref_score: int = int(
+            np.sum(_epipolar_inliers(best_ref_E, pts1, pts2, threshold)))
+        for e_ref in ref_candidates[1:]:
+          s: int = int(np.sum(_epipolar_inliers(e_ref, pts1, pts2, threshold)))
+          if s > best_ref_score:
+            best_ref_score = s
+            best_ref_E = e_ref
+        if best_ref_score >= best_score:
+          ref_poses: list[tuple[Arr,
+                                Arr]] = decompose_essential_matrix(best_ref_E)
+          best_ref_pts: int = -1
+          for r_ref, t_ref in ref_poses:
+            fp: int = cheirality_check(r_ref, t_ref, pts1, pts2)
+            if fp > best_ref_pts:
+              best_ref_pts = fp
+              best_R, best_t = r_ref, t_ref
+    except Exception:
+      pass
+
+  return best_R, best_t
+
+
 def _lui_adapter(pts1_sample: Arr, pts2_sample: Arr) -> tuple[Arr, Arr]:
   """Adapter: (N,2) image points -> bearing vectors for Lui solver."""
   v1: Arr = np.column_stack([pts1_sample, np.ones(len(pts1_sample))])
@@ -1102,8 +1309,11 @@ def _hedborg_refine(pts1: Arr, pts2: Arr, R_init: Arr,
                                   t_init=t_init)
 
 
-def ransac_5pt_hedborg_preemptive(pts1: Arr, pts2: Arr,
-                                  **kwargs: Any) -> tuple[Arr, Arr]:
+def ransac_5pt_hedborg_preemptive(
+    pts1: Arr,
+    pts2: Arr,
+    **kwargs: Any,
+) -> tuple[Arr, Arr]:
   """Pre-emptive RANSAC with the Hedborg 5-point solver.
 
   The refinement step initialises the LM solver from the best RANSAC
@@ -1162,24 +1372,25 @@ def _run_solvers(pts1: Arr,
   out['Hedborg'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
+  r, t = ransac_5pt_standard(pts1, pts2, max_iters=ransac_iters, threshold=1e-3)
+  out['Nister RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
+
+  t0 = time.time()
   r, t = ransac_5pt_nister_preemptive(pts1,
                                       pts2,
                                       num_hypotheses=ransac_iters,
-                                      threshold=1e-4)
-  out['Nister RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
+                                      threshold=1e-3)
+  out['Nister Preemptive'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
   r, t = ransac_5pt_lui_preemptive(pts1,
                                    pts2,
                                    num_hypotheses=ransac_iters,
-                                   threshold=1e-4)
+                                   threshold=1e-3)
   out['Lui RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   t0 = time.time()
-  r, t = ransac_5pt_hedborg_preemptive(pts1,
-                                       pts2,
-                                       num_hypotheses=ransac_iters,
-                                       threshold=1e-4)
+  r, t = ransac_5pt_hedborg(pts1, pts2, max_iters=ransac_iters, threshold=1e-3)
   out['Hedborg RANSAC'] = (_r_err(r), _t_err(t), (time.time() - t0) * 1000)
 
   return out
@@ -1212,7 +1423,8 @@ def benchmark_summary(R_gt: Arr,
       'Nister',
       'Lui',
       'Hedborg',
-      'Nister RANSAC',
+      'Nister Standard',
+      'Nister Preemptive',
       'Lui RANSAC',
       'Hedborg RANSAC',
   ]
@@ -1262,8 +1474,7 @@ def outlier_benchmark(R_gt: Arr,
                       t_gt: Arr,
                       pts1_clean: Arr,
                       pts2_clean: Arr,
-                      outlier_fracs: tuple[float, ...] = (0.0, 0.1, 0.2, 0.3,
-                                                          0.4, 0.5),
+                      outlier_fracs: tuple[float, ...] = (0.3, 0.4, 0.5),
                       noise_sigma_px: float = 1.0,
                       focal_length: float = 500.0,
                       n_trials: int = 10,
@@ -1279,7 +1490,8 @@ def outlier_benchmark(R_gt: Arr,
       'Nister',
       'Lui',
       'Hedborg',
-      'Nister RANSAC',
+      'Nister Standard',
+      'Nister Preemptive',
       'Lui RANSAC',
       'Hedborg RANSAC',
   ]
@@ -1351,14 +1563,14 @@ if __name__ == "__main__":
   X_cam2: Arr = (R_gt @ X_3D.T).T + t_gt
   pts2_clean: Arr = X_cam2[:, :2] / X_cam2[:, 2:]
 
-  benchmark_summary(
-      R_gt=R_gt,
-      t_gt=t_gt,
-      pts1_clean=pts1_clean,
-      pts2_clean=pts2_clean,
-      n_trials=10,
-      ransac_iters=50,
-  )
+  # benchmark_summary(
+  #     R_gt=R_gt,
+  #     t_gt=t_gt,
+  #     pts1_clean=pts1_clean,
+  #     pts2_clean=pts2_clean,
+  #     n_trials=10,
+  #     ransac_iters=50,
+  # )
 
   outlier_benchmark(
       R_gt=R_gt,

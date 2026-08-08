@@ -7,8 +7,7 @@
 #include <assert.h>
 #include <libgen.h>
 
-#include "stb_image.h"
-#include "glad.h"
+#include <glad.h>
 #include <GLFW/glfw3.h>
 
 #include <assimp/cimport.h>

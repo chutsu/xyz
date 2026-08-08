@@ -2839,6 +2839,174 @@ int test_image_print_properties(void) { return 0; }
 
 int test_image_free(void) { return 0; }
 
+int test_pinhole_focal(void) {
+  const real_t focal = pinhole_focal(640, 90.0);
+  MU_ASSERT(fltcmp(focal, 320.0) == 0);
+  return 0;
+}
+
+int test_pinhole_K(void) {
+  const real_t params[4] = {1.0, 2.0, 3.0, 4.0};
+  real_t K[3 * 3] = {0};
+  pinhole_K(params, K);
+
+  MU_ASSERT(fltcmp(K[0], 1.0) == 0);
+  MU_ASSERT(fltcmp(K[1], 0.0) == 0);
+  MU_ASSERT(fltcmp(K[2], 3.0) == 0);
+
+  MU_ASSERT(fltcmp(K[3], 0.0) == 0);
+  MU_ASSERT(fltcmp(K[4], 2.0) == 0);
+  MU_ASSERT(fltcmp(K[5], 4.0) == 0);
+
+  MU_ASSERT(fltcmp(K[6], 0.0) == 0);
+  MU_ASSERT(fltcmp(K[7], 0.0) == 0);
+  MU_ASSERT(fltcmp(K[8], 1.0) == 0);
+
+  return 0;
+}
+
+int test_pinhole_projection_matrix(void) {
+  // Camera parameters
+  const int img_w = 640;
+  const int img_h = 320;
+  const real_t fx = pinhole_focal(img_w, 90.0);
+  const real_t fy = pinhole_focal(img_w, 90.0);
+  const real_t cx = img_w / 2.0;
+  const real_t cy = img_h / 2.0;
+  const real_t params[4] = {fx, fy, cx, cy};
+
+  // Camera pose
+  const real_t ypr_WC0[3] = {-M_PI / 2.0, 0, -M_PI / 2.0};
+  const real_t r_WC0[3] = {0.0, 0.0, 0.0};
+  real_t T_WC0[4 * 4] = {0};
+  tf_euler_set(T_WC0, ypr_WC0);
+  tf_trans_set(T_WC0, r_WC0);
+
+  // Camera projection matrix
+  real_t P[3 * 4] = {0};
+  pinhole_projection_matrix(params, T_WC0, P);
+
+  // Project point using projection matrix
+  const real_t p_W[3] = {1.0, 0.1, 0.2};
+  const real_t hp_W[4] = {p_W[0], p_W[1], p_W[2], 1.0};
+  real_t hp[3] = {0};
+  dot(P, 3, 4, hp_W, 4, 1, hp);
+  real_t z[2] = {hp[0], hp[1]};
+
+  // Project point by inverting T_WC0 and projecting the point
+  real_t p_C[3] = {0};
+  real_t T_C0W[4 * 4] = {0};
+  real_t z_gnd[2] = {0};
+  tf_inv(T_WC0, T_C0W);
+  tf_point(T_C0W, p_W, p_C);
+  pinhole_project(params, p_C, z_gnd);
+
+  // Assert
+  MU_ASSERT(fltcmp(z_gnd[0], z[0]) == 0);
+  MU_ASSERT(fltcmp(z_gnd[1], z[1]) == 0);
+
+  return 0;
+}
+
+int test_pinhole_project(void) {
+  const real_t img_w = 640;
+  const real_t img_h = 480;
+  const real_t fx = pinhole_focal(img_w, 90.0);
+  const real_t fy = pinhole_focal(img_w, 90.0);
+  const real_t cx = img_w / 2.0;
+  const real_t cy = img_h / 2.0;
+  const real_t params[4] = {fx, fy, cx, cy};
+  const real_t p_C[3] = {0.0, 0.0, 1.0};
+  real_t z[2] = {0.0, 0.0};
+  pinhole_project(params, p_C, z);
+
+  // print_vector("p_C", p_C, 3);
+  // print_vector("z", z, 2);
+  MU_ASSERT(fltcmp(z[0], 320.0) == 0);
+  MU_ASSERT(fltcmp(z[1], 240.0) == 0);
+
+  return 0;
+}
+
+int test_pinhole_point_jacobian(void) {
+  // Camera parameters
+  const int img_w = 640;
+  const int img_h = 320;
+  const real_t fx = pinhole_focal(img_w, 90.0);
+  const real_t fy = pinhole_focal(img_w, 90.0);
+  const real_t cx = img_w / 2.0;
+  const real_t cy = img_h / 2.0;
+  const real_t params[4] = {fx, fy, cx, cy};
+
+  // Calculate analytical jacobian
+  real_t J_point[2 * 2] = {0};
+  pinhole_point_jacobian(params, J_point);
+
+  // Numerical differentiation
+  const real_t p_C[3] = {0.1, 0.2, 1.0};
+  real_t z[2] = {0};
+  pinhole_project(params, p_C, z);
+
+  const real_t h = 1e-8;
+  const real_t tol = 1e-4;
+  real_t J_numdiff[2 * 2] = {0};
+
+  for (size_t i = 0; i < 2; i++) {
+    real_t z_fd[2] = {0};
+    real_t p_C_fd[3] = {p_C[0], p_C[1], p_C[2]};
+    p_C_fd[i] += h;
+    pinhole_project(params, p_C_fd, z_fd);
+    J_numdiff[i] = (z_fd[0] - z[0]) / h;
+    J_numdiff[i + 2] = (z_fd[1] - z[1]) / h;
+  }
+
+  // Assert
+  MU_ASSERT(check_jacobian("J_point", J_numdiff, J_point, 2, 2, tol, 0) == 0);
+
+  return 0;
+}
+
+int test_pinhole_params_jacobian(void) {
+  // Camera parameters
+  const int img_w = 640;
+  const int img_h = 320;
+  const real_t fx = pinhole_focal(img_w, 90.0);
+  const real_t fy = pinhole_focal(img_w, 90.0);
+  const real_t cx = img_w / 2.0;
+  const real_t cy = img_h / 2.0;
+  const real_t params[4] = {fx, fy, cx, cy};
+
+  // Calculate analytical jacobian
+  const real_t p_C[3] = {0.1, 0.2, 1.0};
+  const real_t x[2] = {p_C[0] / p_C[2], p_C[1] / p_C[2]};
+  real_t J_params[2 * 4] = {0};
+  pinhole_params_jacobian(params, x, J_params);
+
+  // Numerical differentiation
+  real_t z[2] = {0};
+  pinhole_project(params, p_C, z);
+
+  const real_t h = 1e-8;
+  const real_t tol = 1e-4;
+  real_t J_numdiff[2 * 4] = {0};
+
+  for (size_t i = 0; i < 4; i++) {
+    real_t z_fd[2] = {0};
+    real_t params_fd[4] = {params[0], params[1], params[2], params[3]};
+    params_fd[i] += h;
+    pinhole_project(params_fd, p_C, z_fd);
+
+    J_numdiff[i + 0] = (z_fd[0] - z[0]) / h;
+    J_numdiff[i + 4] = (z_fd[1] - z[1]) / h;
+  }
+
+  // Assert
+  MU_ASSERT(check_jacobian("J_params", J_numdiff, J_params, 2, 4, tol, 0) == 0);
+
+  return 0;
+}
+
+
 int test_radtan4_distort(void) {
   const real_t params[4] = {0.01, 0.001, 0.001, 0.001};
   const real_t p[2] = {0.1, 0.2};
@@ -3039,173 +3207,6 @@ int test_equi4_params_jacobian(void) {
   // print_matrix("J_param", J_param, 2, 4);
   // print_matrix("J_numdiff", J_numdiff, 2, 4);
   MU_ASSERT(check_jacobian("J", J_numdiff, J_param, 2, 4, tol, 0) == 0);
-
-  return 0;
-}
-
-int test_pinhole_focal(void) {
-  const real_t focal = pinhole_focal(640, 90.0);
-  MU_ASSERT(fltcmp(focal, 320.0) == 0);
-  return 0;
-}
-
-int test_pinhole_K(void) {
-  const real_t params[4] = {1.0, 2.0, 3.0, 4.0};
-  real_t K[3 * 3] = {0};
-  pinhole_K(params, K);
-
-  MU_ASSERT(fltcmp(K[0], 1.0) == 0);
-  MU_ASSERT(fltcmp(K[1], 0.0) == 0);
-  MU_ASSERT(fltcmp(K[2], 3.0) == 0);
-
-  MU_ASSERT(fltcmp(K[3], 0.0) == 0);
-  MU_ASSERT(fltcmp(K[4], 2.0) == 0);
-  MU_ASSERT(fltcmp(K[5], 4.0) == 0);
-
-  MU_ASSERT(fltcmp(K[6], 0.0) == 0);
-  MU_ASSERT(fltcmp(K[7], 0.0) == 0);
-  MU_ASSERT(fltcmp(K[8], 1.0) == 0);
-
-  return 0;
-}
-
-int test_pinhole_projection_matrix(void) {
-  // Camera parameters
-  const int img_w = 640;
-  const int img_h = 320;
-  const real_t fx = pinhole_focal(img_w, 90.0);
-  const real_t fy = pinhole_focal(img_w, 90.0);
-  const real_t cx = img_w / 2.0;
-  const real_t cy = img_h / 2.0;
-  const real_t params[4] = {fx, fy, cx, cy};
-
-  // Camera pose
-  const real_t ypr_WC0[3] = {-M_PI / 2.0, 0, -M_PI / 2.0};
-  const real_t r_WC0[3] = {0.0, 0.0, 0.0};
-  real_t T_WC0[4 * 4] = {0};
-  tf_euler_set(T_WC0, ypr_WC0);
-  tf_trans_set(T_WC0, r_WC0);
-
-  // Camera projection matrix
-  real_t P[3 * 4] = {0};
-  pinhole_projection_matrix(params, T_WC0, P);
-
-  // Project point using projection matrix
-  const real_t p_W[3] = {1.0, 0.1, 0.2};
-  const real_t hp_W[4] = {p_W[0], p_W[1], p_W[2], 1.0};
-  real_t hp[3] = {0};
-  dot(P, 3, 4, hp_W, 4, 1, hp);
-  real_t z[2] = {hp[0], hp[1]};
-
-  // Project point by inverting T_WC0 and projecting the point
-  real_t p_C[3] = {0};
-  real_t T_C0W[4 * 4] = {0};
-  real_t z_gnd[2] = {0};
-  tf_inv(T_WC0, T_C0W);
-  tf_point(T_C0W, p_W, p_C);
-  pinhole_project(params, p_C, z_gnd);
-
-  // Assert
-  MU_ASSERT(fltcmp(z_gnd[0], z[0]) == 0);
-  MU_ASSERT(fltcmp(z_gnd[1], z[1]) == 0);
-
-  return 0;
-}
-
-int test_pinhole_project(void) {
-  const real_t img_w = 640;
-  const real_t img_h = 480;
-  const real_t fx = pinhole_focal(img_w, 90.0);
-  const real_t fy = pinhole_focal(img_w, 90.0);
-  const real_t cx = img_w / 2.0;
-  const real_t cy = img_h / 2.0;
-  const real_t params[4] = {fx, fy, cx, cy};
-  const real_t p_C[3] = {0.0, 0.0, 1.0};
-  real_t z[2] = {0.0, 0.0};
-  pinhole_project(params, p_C, z);
-
-  // print_vector("p_C", p_C, 3);
-  // print_vector("z", z, 2);
-  MU_ASSERT(fltcmp(z[0], 320.0) == 0);
-  MU_ASSERT(fltcmp(z[1], 240.0) == 0);
-
-  return 0;
-}
-
-int test_pinhole_point_jacobian(void) {
-  // Camera parameters
-  const int img_w = 640;
-  const int img_h = 320;
-  const real_t fx = pinhole_focal(img_w, 90.0);
-  const real_t fy = pinhole_focal(img_w, 90.0);
-  const real_t cx = img_w / 2.0;
-  const real_t cy = img_h / 2.0;
-  const real_t params[4] = {fx, fy, cx, cy};
-
-  // Calculate analytical jacobian
-  real_t J_point[2 * 2] = {0};
-  pinhole_point_jacobian(params, J_point);
-
-  // Numerical differentiation
-  const real_t p_C[3] = {0.1, 0.2, 1.0};
-  real_t z[2] = {0};
-  pinhole_project(params, p_C, z);
-
-  const real_t h = 1e-8;
-  const real_t tol = 1e-4;
-  real_t J_numdiff[2 * 2] = {0};
-
-  for (size_t i = 0; i < 2; i++) {
-    real_t z_fd[2] = {0};
-    real_t p_C_fd[3] = {p_C[0], p_C[1], p_C[2]};
-    p_C_fd[i] += h;
-    pinhole_project(params, p_C_fd, z_fd);
-    J_numdiff[i] = (z_fd[0] - z[0]) / h;
-    J_numdiff[i + 2] = (z_fd[1] - z[1]) / h;
-  }
-
-  // Assert
-  MU_ASSERT(check_jacobian("J_point", J_numdiff, J_point, 2, 2, tol, 0) == 0);
-
-  return 0;
-}
-
-int test_pinhole_params_jacobian(void) {
-  // Camera parameters
-  const int img_w = 640;
-  const int img_h = 320;
-  const real_t fx = pinhole_focal(img_w, 90.0);
-  const real_t fy = pinhole_focal(img_w, 90.0);
-  const real_t cx = img_w / 2.0;
-  const real_t cy = img_h / 2.0;
-  const real_t params[4] = {fx, fy, cx, cy};
-
-  // Calculate analytical jacobian
-  const real_t p_C[3] = {0.1, 0.2, 1.0};
-  const real_t x[2] = {p_C[0] / p_C[2], p_C[1] / p_C[2]};
-  real_t J_params[2 * 4] = {0};
-  pinhole_params_jacobian(params, x, J_params);
-
-  // Numerical differentiation
-  real_t z[2] = {0};
-  pinhole_project(params, p_C, z);
-
-  const real_t h = 1e-8;
-  const real_t tol = 1e-4;
-  real_t J_numdiff[2 * 4] = {0};
-
-  for (size_t i = 0; i < 4; i++) {
-    real_t z_fd[2] = {0};
-    real_t params_fd[4] = {params[0], params[1], params[2], params[3]};
-    params_fd[i] += h;
-    pinhole_project(params_fd, p_C, z_fd);
-
-    J_numdiff[i + 0] = (z_fd[0] - z[0]) / h;
-    J_numdiff[i + 4] = (z_fd[1] - z[1]) / h;
-  }
-
-  // Assert
-  MU_ASSERT(check_jacobian("J_params", J_numdiff, J_params, 2, 4, tol, 0) == 0);
 
   return 0;
 }
@@ -3441,8 +3442,167 @@ int test_pinhole_equi4_params_jacobian(void) {
   // print_matrix("J_params", J_params, 2, 8);
   MU_ASSERT(check_jacobian("J_params", J_numdiff, J_params, 2, 8, tol, 0) == 0);
 
+  // Assert
+  // print_matrix("J_numdiff", J_numdiff, 2, 8);
+  // print_matrix("J_params", J_params, 2, 8);
+  MU_ASSERT(check_jacobian("J_params", J_numdiff, J_params, 2, 8, tol, 0) == 0);
+
   return 0;
 }
+
+int test_rodrigues(void) {
+  // Rotation about the x-axis by 45 degrees
+  const real_t th = M_PI / 4.0;
+  const real_t w[3] = {th, 0.0, 0.0};
+  real_t R[9] = {0};
+  rodrigues(w, R);
+
+  // clang-format off
+  const real_t R_expected[9] = {
+    1.0, 0.0, 0.0,
+    0.0, cos(th), -sin(th),
+    0.0, sin(th), cos(th)
+  };
+  // clang-format on
+  MU_ASSERT(mat_equals(R, R_expected, 3, 3, 1e-6));
+
+  // Rotation matrices are orthonormal: R^T * R = I
+  real_t Rt[9] = {0};
+  real_t RtR[9] = {0};
+  real_t I[9] = {0};
+  mat_transpose(R, 3, 3, Rt);
+  dot(Rt, 3, 3, R, 3, 3, RtR);
+  eye(I, 3, 3);
+  MU_ASSERT(mat_equals(RtR, I, 3, 3, 1e-8));
+
+  // Zero rotation returns identity
+  const real_t w0[3] = {0.0, 0.0, 0.0};
+  real_t R0[9] = {0};
+  rodrigues(w0, R0);
+  MU_ASSERT(mat_equals(R0, I, 3, 3, 1e-8));
+
+  return 0;
+}
+
+int test_decompose_essential_matrix(void) {
+  // Ground-truth pose
+  // clang-format off
+  const real_t R_gt[9] = {
+    1.0, 0.0, 0.0,
+    0.0, cos(M_PI / 4.0), -sin(M_PI / 4.0),
+    0.0, sin(M_PI / 4.0), cos(M_PI / 4.0)
+  };
+  // clang-format on
+  const real_t t_gt[3] = {1.0 / sqrt(14.0),
+                          2.0 / sqrt(14.0),
+                          3.0 / sqrt(14.0)};
+
+  // Form essential matrix E = [t]_x * R
+  real_t t_skew[9] = {0};
+  real_t E[9] = {0};
+  hat(t_gt, t_skew);
+  dot(t_skew, 3, 3, R_gt, 3, 3, E);
+
+  // Decompose
+  real_t R[4][9] = {0};
+  real_t t[4][3] = {0};
+  decompose_essential_matrix(E, R, t);
+
+  // Every hypothesis must be a proper rotation: det(R) == 1
+  for (int i = 0; i < 4; i++) {
+    const real_t det = R[i][0] * (R[i][4] * R[i][8] - R[i][5] * R[i][7]) -
+                       R[i][1] * (R[i][3] * R[i][8] - R[i][5] * R[i][6]) +
+                       R[i][2] * (R[i][3] * R[i][7] - R[i][4] * R[i][6]);
+    MU_ASSERT(fltcmp(det, 1.0) == 0);
+  }
+
+  // Ground-truth pose must appear among the 4 hypotheses (with t up to sign)
+  int found = 0;
+  for (int i = 0; i < 4; i++) {
+    if (mat_equals(R[i], R_gt, 3, 3, 1e-8)) {
+      real_t t_neg[3] = {-t_gt[0], -t_gt[1], -t_gt[2]};
+      real_t diff_plus[3] = {0};
+      real_t diff_minus[3] = {0};
+      vec_sub(t[i], t_gt, diff_plus, 3);
+      vec_sub(t[i], t_neg, diff_minus, 3);
+      const real_t d_plus = vec_norm(diff_plus, 3);
+      const real_t d_minus = vec_norm(diff_minus, 3);
+      if (d_plus < 1e-8 || d_minus < 1e-8) {
+        found = 1;
+        break;
+      }
+    }
+  }
+  MU_ASSERT(found == 1);
+
+  return 0;
+}
+
+int test_sampson_distance(void) {
+  // Ground-truth pose
+  // clang-format off
+  const real_t R_gt[9] = {
+    1.0, 0.0, 0.0,
+    0.0, cos(M_PI / 4.0), -sin(M_PI / 4.0),
+    0.0, sin(M_PI / 4.0), cos(M_PI / 4.0)
+  };
+  // clang-format on
+  const real_t t_gt[3] = {1.0 / sqrt(14.0),
+                          2.0 / sqrt(14.0),
+                          3.0 / sqrt(14.0)};
+
+  // Form essential matrix [t]_x * R
+  real_t t_skew[9] = {0};
+  real_t E[9] = {0};
+  hat(t_gt, t_skew);
+  dot(t_skew, 3, 3, R_gt, 3, 3, E);
+
+  // Perfect correspondances: point in camera0 frame, its observation in
+  // camera1 frame is [R | t] of the point, normalised by depth.
+  const int num_points = 6;
+  // clang-format off
+  const real_t p_C0[6 * 3] = {
+     4.0, 0.5, -0.3,
+     3.0, 0.2, 0.7,
+     5.0, -0.6, 0.1,
+     2.5, 0.9, -0.4,
+     4.5, -0.2, 0.8,
+     3.5, 0.7, -0.1,
+  };
+  // clang-format on
+  real_t pts1[6 * 2] = {0};
+  real_t pts2[6 * 2] = {0};
+  for (int i = 0; i < num_points; i++) {
+    const real_t x = p_C0[i * 3 + 0];
+    const real_t y = p_C0[i * 3 + 1];
+    const real_t z = p_C0[i * 3 + 2];
+
+    // Normalised image coordinates in view 1
+    pts1[i * 2 + 0] = x / z;
+    pts1[i * 2 + 1] = y / z;
+
+    // Transform to view 2 and normalise
+    const real_t p_C1[3] = {R_gt[0] * x + R_gt[1] * y + R_gt[2] * z + t_gt[0],
+                            R_gt[3] * x + R_gt[4] * y + R_gt[5] * z + t_gt[1],
+                            R_gt[6] * x + R_gt[7] * y + R_gt[8] * z + t_gt[2]};
+    pts2[i * 2 + 0] = p_C1[0] / p_C1[2];
+    pts2[i * 2 + 1] = p_C1[1] / p_C1[2];
+  }
+
+  // Perfect correspondences lie exactly on the epipolar lines, so the
+  // Sampson distance must be (near) zero.
+  const real_t sd = sampson_distance(E, pts1, pts2, num_points);
+  MU_ASSERT(fabs(sd) < 1e-8);
+
+  // Perturb one point; the distance must increase above zero
+  pts2[0] += 0.01;
+  pts2[1] -= 0.02;
+  const real_t sd_noisy = sampson_distance(E, pts1, pts2, num_points);
+  MU_ASSERT(sd_noisy > 1e-6);
+
+  return 0;
+}
+
 
 int test_linear_triangulation(void) {
   // Setup camera
@@ -7363,30 +7523,40 @@ void test_suite(void) {
   MU_ADD_TEST(test_mav_waypoints);
 
   // COMPUTER-VISION
+  // -- Image
   MU_ADD_TEST(test_image_setup);
   MU_ADD_TEST(test_image_load);
   MU_ADD_TEST(test_image_print_properties);
   MU_ADD_TEST(test_image_free);
-  MU_ADD_TEST(test_radtan4_distort);
-  MU_ADD_TEST(test_radtan4_undistort);
-  MU_ADD_TEST(test_radtan4_point_jacobian);
-  MU_ADD_TEST(test_radtan4_params_jacobian);
-  MU_ADD_TEST(test_equi4_distort);
-  MU_ADD_TEST(test_equi4_undistort);
-  MU_ADD_TEST(test_equi4_point_jacobian);
-  MU_ADD_TEST(test_equi4_params_jacobian);
+  // -- Pinhole
   MU_ADD_TEST(test_pinhole_focal);
   MU_ADD_TEST(test_pinhole_K);
   MU_ADD_TEST(test_pinhole_projection_matrix);
   MU_ADD_TEST(test_pinhole_project);
   MU_ADD_TEST(test_pinhole_point_jacobian);
   MU_ADD_TEST(test_pinhole_params_jacobian);
+  // -- Radtan4
+  MU_ADD_TEST(test_radtan4_distort);
+  MU_ADD_TEST(test_radtan4_undistort);
+  MU_ADD_TEST(test_radtan4_point_jacobian);
+  MU_ADD_TEST(test_radtan4_params_jacobian);
+  // -- Equi4
+  MU_ADD_TEST(test_equi4_distort);
+  MU_ADD_TEST(test_equi4_undistort);
+  MU_ADD_TEST(test_equi4_point_jacobian);
+  MU_ADD_TEST(test_equi4_params_jacobian);
+  // -- Pinhole-Radtan4
   MU_ADD_TEST(test_pinhole_radtan4_project);
   MU_ADD_TEST(test_pinhole_radtan4_project_jacobian);
   MU_ADD_TEST(test_pinhole_radtan4_params_jacobian);
+  // -- Pinhole-Equi4
   MU_ADD_TEST(test_pinhole_equi4_project);
   MU_ADD_TEST(test_pinhole_equi4_project_jacobian);
   MU_ADD_TEST(test_pinhole_equi4_params_jacobian);
+  // -- Geometry
+  MU_ADD_TEST(test_rodrigues);
+  MU_ADD_TEST(test_decompose_essential_matrix);
+  MU_ADD_TEST(test_sampson_distance);
   MU_ADD_TEST(test_linear_triangulation);
   MU_ADD_TEST(test_homography_find);
   MU_ADD_TEST(test_homography_pose);
