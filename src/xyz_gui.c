@@ -87,6 +87,10 @@ char *load_file(const char *fp) {
   return buf;
 }
 
+/**
+ * Query and report all pending OpenGL errors, identifying the call
+ * site by file and line.
+ */
 gl_enum_t gl_check_error(const char *file, const int line) {
   gl_enum_t error_code;
 
@@ -120,10 +124,20 @@ gl_float_t gl_randf(const gl_float_t a, const gl_float_t b) {
   return a + r;
 }
 
+/**
+ * Convert angle `d` in degrees to radians.
+ */
 gl_float_t gl_deg2rad(const gl_float_t d) { return d * M_PI / 180.0f; }
 
+/**
+ * Convert angle `r` in radians to degrees.
+ */
 gl_float_t gl_rad2deg(const gl_float_t r) { return r * 180.0f / M_PI; }
 
+/**
+ * Print the `length`-dimensional vector `x` to stdout prefixed by
+ * `prefix`.
+ */
 void gl_print_vector(const char *prefix,
                      const gl_float_t *x,
                      const int length) {
@@ -137,6 +151,10 @@ void gl_print_vector(const char *prefix,
   printf("]\n");
 }
 
+/**
+ * Print the num_rows x num_cols matrix `A` (column-major) to stdout
+ * prefixed by `prefix`.
+ */
 void gl_print_matrix(const char *prefix,
                      const gl_float_t *A,
                      const int num_rows,
@@ -154,18 +172,27 @@ void gl_print_matrix(const char *prefix,
   printf("\n");
 }
 
+/**
+ * Set every element of the num_rows x num_cols matrix `A` to zero.
+ */
 void gl_zeros(gl_float_t *A, const int num_rows, const int num_cols) {
   for (int i = 0; i < (num_rows * num_cols); i++) {
     A[i] = 0.0f;
   }
 }
 
+/**
+ * Set every element of the num_rows x num_cols matrix `A` to one.
+ */
 void gl_ones(gl_float_t *A, const int num_rows, const int num_cols) {
   for (int i = 0; i < (num_rows * num_cols); i++) {
     A[i] = 1.0f;
   }
 }
 
+/**
+ * Set the num_rows x num_cols matrix `A` to the identity matrix.
+ */
 void gl_eye(gl_float_t *A, const int num_rows, const int num_cols) {
   int idx = 0;
   for (int j = 0; j < num_cols; j++) {
@@ -175,11 +202,17 @@ void gl_eye(gl_float_t *A, const int num_rows, const int num_cols) {
   }
 }
 
+/**
+ * Populate the 2D vector `v` with x and y.
+ */
 void gl_vec2(gl_float_t *v, const gl_float_t x, const gl_float_t y) {
   v[0] = x;
   v[1] = y;
 }
 
+/**
+ * Populate the 3D vector `v` with x, y and z.
+ */
 void gl_vec3(gl_float_t *v,
              const gl_float_t x,
              const gl_float_t y,
@@ -189,6 +222,9 @@ void gl_vec3(gl_float_t *v,
   v[2] = z;
 }
 
+/**
+ * Populate the 4D vector `v` with x, y, z and w.
+ */
 void gl_vec4(gl_float_t *v,
              const gl_float_t x,
              const gl_float_t y,
@@ -200,6 +236,11 @@ void gl_vec4(gl_float_t *v,
   v[3] = w;
 }
 
+/**
+ * Compare the num_rows x num_cols matrices `A` and `B` within
+ * tolerance `tol`.
+ * @returns 1 if equal, 0 otherwise
+ */
 int gl_equals(const gl_float_t *A,
               const gl_float_t *B,
               const int num_rows,
@@ -214,6 +255,10 @@ int gl_equals(const gl_float_t *A,
   return 1;
 }
 
+/**
+ * Set the (i, j) element of the m x n matrix `A` (column-major) to
+ * `val`.
+ */
 void gl_mat_set(gl_float_t *A,
                 const int m,
                 const int n,
@@ -224,6 +269,10 @@ void gl_mat_set(gl_float_t *A,
   A[i + (j * m)] = val;
 }
 
+/**
+ * Get the (i, j) element of the m x n matrix `A` (column-major).
+ * @returns the matrix element at (i, j)
+ */
 gl_float_t gl_mat_val(const gl_float_t *A,
                       const int m,
                       const int n,
@@ -233,6 +282,9 @@ gl_float_t gl_mat_val(const gl_float_t *A,
   return A[i + (j * m)];
 }
 
+/**
+ * Copy the m x n matrix `src` into `dest`.
+ */
 void gl_copy(const gl_float_t *src,
              const int m,
              const int n,
@@ -242,6 +294,9 @@ void gl_copy(const gl_float_t *src,
   }
 }
 
+/**
+ * Transpose the m x n matrix `A` into `A_t`.
+ */
 void gl_transpose(const gl_float_t *A, size_t m, size_t n, gl_float_t *A_t) {
   assert(A != NULL && A != A_t);
   assert(m > 0 && n > 0);
@@ -254,6 +309,9 @@ void gl_transpose(const gl_float_t *A, size_t m, size_t n, gl_float_t *A_t) {
   }
 }
 
+/**
+ * Compute the cross product n = u x v of two 3D vectors.
+ */
 void gl_vec3_cross(const gl_float_t u[3],
                    const gl_float_t v[3],
                    gl_float_t n[3]) {
@@ -266,6 +324,9 @@ void gl_vec3_cross(const gl_float_t u[3],
   n[2] = u[0] * v[1] - u[1] * v[0];
 }
 
+/**
+ * Set C = A + B for the num_rows x num_cols matrices A, B, C.
+ */
 void gl_add(const gl_float_t *A,
             const gl_float_t *B,
             const int num_rows,
@@ -276,6 +337,9 @@ void gl_add(const gl_float_t *A,
   }
 }
 
+/**
+ * Set C = A - B for the num_rows x num_cols matrices A, B, C.
+ */
 void gl_sub(const gl_float_t *A,
             const gl_float_t *B,
             const int num_rows,
@@ -286,6 +350,10 @@ void gl_sub(const gl_float_t *A,
   }
 }
 
+/**
+ * Multiply the A_m x A_n matrix `A` by the B_m x B_n matrix `B` into
+ * `C` (requires A_n == B_m).
+ */
 void gl_dot(const gl_float_t *A,
             const int A_m,
             const int A_n,
@@ -308,6 +376,10 @@ void gl_dot(const gl_float_t *A,
   }
 }
 
+/**
+ * Scale every element of the num_rows x num_cols matrix `A` by
+ * `factor`.
+ */
 void gl_scale(gl_float_t factor,
               gl_float_t *A,
               const int num_rows,
@@ -317,6 +389,10 @@ void gl_scale(gl_float_t factor,
   }
 }
 
+/**
+ * Compute the Euclidean norm of the `size`-dimensional vector `x`.
+ * @returns the vector norm
+ */
 gl_float_t gl_norm(const gl_float_t *x, const int size) {
   gl_float_t sum_sq = 0.0f;
   for (int i = 0; i < size; i++) {
@@ -326,6 +402,10 @@ gl_float_t gl_norm(const gl_float_t *x, const int size) {
   return sqrt(sum_sq);
 }
 
+/**
+ * Normalize the `size`-dimensional vector `x` in place to unit
+ * length.
+ */
 void gl_normalize(gl_float_t *x, const int size) {
   const gl_float_t n = gl_norm(x, size);
   for (int i = 0; i < size; i++) {
@@ -333,6 +413,10 @@ void gl_normalize(gl_float_t *x, const int size) {
   }
 }
 
+/**
+ * Form the 4x4 perspective projection matrix `P` from the vertical
+ * field of view `fov`, `aspect` ratio and near/far clip planes.
+ */
 void gl_perspective(const gl_float_t fov,
                     const gl_float_t aspect,
                     const gl_float_t near,
@@ -362,6 +446,10 @@ void gl_perspective(const gl_float_t fov,
   P[15] = 0.0f;
 }
 
+/**
+ * Form the 4x4 orthographic projection matrix `P` for a window of
+ * width `w` and height `h`.
+ */
 void gl_ortho(const gl_float_t w, const gl_float_t h, gl_float_t P[4 * 4]) {
   const gl_float_t left = 0.0f;
   const gl_float_t right = w;
@@ -392,6 +480,10 @@ void gl_ortho(const gl_float_t w, const gl_float_t h, gl_float_t P[4 * 4]) {
   P[15] = 1.0f;
 }
 
+/**
+ * Form the 4x4 look-at view matrix `V` from the eye position, target
+ * point and up vector.
+ */
 void gl_lookat(const gl_float_t eye[3],
                const gl_float_t at[3],
                const gl_float_t up[3],
@@ -689,6 +781,10 @@ void gl_tf_er(const gl_float_t euler[3],
   gl_tf_cr(C, r, T);
 }
 
+/**
+ * Convert the 4x4 homogeneous transform `T_flu` from a forward-
+ * left-up (FLU) frame to a right-up-back (RUB) frame.
+ */
 void gl_flu2rub(const gl_float_t T_flu[4 * 4], gl_float_t *T_rub) {
   // T_rub = T * T_flu * T'
   //
@@ -717,6 +813,10 @@ void gl_flu2rub(const gl_float_t T_flu[4 * 4], gl_float_t *T_rub) {
   gl_dot(tmp, 4, 4, T_, 4, 4, T_rub);
 }
 
+/**
+ * Extract the position and orientation quaternion of the 4x4
+ * homogeneous transform `T` into `pose`.
+ */
 void gl_tf2pose(const gl_float_t T[4 * 4], gl_pose_t *pose) {
   pose->pos.x = T[12];
   pose->pos.y = T[13];
@@ -731,6 +831,10 @@ void gl_tf2pose(const gl_float_t T[4 * 4], gl_pose_t *pose) {
   // clang-format on
 }
 
+/**
+ * Form the 4x4 homogeneous transform `T` from the position and
+ * orientation quaternion of `pose`.
+ */
 void gl_pose2tf(const gl_pose_t *pose, gl_float_t T[4 * 4]) {
   gl_float_t C[3 * 3] = {0};
   gl_quat2rot(&pose->quat, C);
@@ -743,6 +847,11 @@ void gl_pose2tf(const gl_pose_t *pose, gl_float_t T[4 * 4]) {
   // clang-format on
 }
 
+/**
+ * Read the current OpenGL framebuffer and save it as a PNG image to
+ * `fp`.
+ * @returns 0 on success
+ */
 int gl_save_frame_buffer(const int width, const int height, const char *fp) {
   // Malloc pixels
   const int num_channels = 3;
@@ -768,6 +877,10 @@ int gl_save_frame_buffer(const int width, const int height, const char *fp) {
   return 0;
 }
 
+/**
+ * Map the scalar `value` in [0, 1] to RGB components of a jet
+ * colormap.
+ */
 void gl_jet_colormap(const gl_float_t value,
                      gl_float_t *r,
                      gl_float_t *g,
@@ -819,6 +932,10 @@ void gl_jet_colormap(const gl_float_t value,
 //   }
 // }
 
+/**
+ * Compile `src` as a shader of the given `type`.
+ * @returns the shader object ID on success, GL_FALSE on failure
+ */
 gl_uint_t gl_compile(const char *src, const int type) {
   if (src == NULL) {
     LOG_ERROR("Shader source is NULL!");
@@ -842,6 +959,9 @@ gl_uint_t gl_compile(const char *src, const int type) {
   return shader;
 }
 
+/**
+ * Print the compile/link status of `shader` to stdout.
+ */
 void gl_shader_status(gl_uint_t shader) {
   gl_int_t success = 0;
   GLchar infoLog[1024];
@@ -865,6 +985,11 @@ void gl_shader_status(gl_uint_t shader) {
   }
 }
 
+/**
+ * Attach vertex, fragment and optional geometry shaders to a program
+ * and link it.
+ * @returns the program ID on success, GL_FALSE on failure
+ */
 gl_uint_t gl_link(const gl_uint_t vs, const gl_uint_t fs, const gl_uint_t gs) {
   // Attach shaders to link
   gl_uint_t program = glCreateProgram();
@@ -895,6 +1020,11 @@ gl_uint_t gl_link(const gl_uint_t vs, const gl_uint_t fs, const gl_uint_t gs) {
   return program;
 }
 
+/**
+ * Compile and link a full shader program from the given vertex and
+ * fragment sources and optional geometry source.
+ * @returns the program ID, or GL_FALSE on failure
+ */
 gl_uint_t gl_shader(const char *vs_src,
                     const char *fs_src,
                     const char *gs_src) {
@@ -918,6 +1048,10 @@ gl_uint_t gl_shader(const char *vs_src,
   return program_id;
 }
 
+/**
+ * Set the vec3 uniform `k` in program `id` to the color `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_color(const gl_int_t id, const char *k, const gl_color_t v) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -928,6 +1062,10 @@ int gl_set_color(const gl_int_t id, const char *k, const gl_color_t v) {
   return 0;
 }
 
+/**
+ * Set the int uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_int(const gl_int_t id, const char *k, const gl_int_t v) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -938,6 +1076,10 @@ int gl_set_int(const gl_int_t id, const char *k, const gl_int_t v) {
   return 0;
 }
 
+/**
+ * Set the float uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_float(const gl_int_t id, const char *k, const gl_float_t v) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -948,6 +1090,10 @@ int gl_set_float(const gl_int_t id, const char *k, const gl_float_t v) {
   return 0;
 }
 
+/**
+ * Set the ivec2 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_vec2i(const gl_int_t id, const char *k, const gl_int_t v[2]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -958,6 +1104,10 @@ int gl_set_vec2i(const gl_int_t id, const char *k, const gl_int_t v[2]) {
   return 0;
 }
 
+/**
+ * Set the ivec3 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_vec3i(const gl_int_t id, const char *k, const gl_int_t v[3]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -968,6 +1118,10 @@ int gl_set_vec3i(const gl_int_t id, const char *k, const gl_int_t v[3]) {
   return 0;
 }
 
+/**
+ * Set the ivec4 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_vec4i(const gl_int_t id, const char *k, const gl_int_t v[4]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -978,6 +1132,10 @@ int gl_set_vec4i(const gl_int_t id, const char *k, const gl_int_t v[4]) {
   return 0;
 }
 
+/**
+ * Set the vec2 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_vec2(const gl_int_t id, const char *k, const gl_float_t v[2]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -988,6 +1146,10 @@ int gl_set_vec2(const gl_int_t id, const char *k, const gl_float_t v[2]) {
   return 0;
 }
 
+/**
+ * Set the vec3 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_vec3(const gl_int_t id, const char *k, const gl_float_t v[3]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -998,6 +1160,10 @@ int gl_set_vec3(const gl_int_t id, const char *k, const gl_float_t v[3]) {
   return 0;
 }
 
+/**
+ * Set the vec4 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_vec4(const gl_int_t id, const char *k, const gl_float_t v[4]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -1008,6 +1174,10 @@ int gl_set_vec4(const gl_int_t id, const char *k, const gl_float_t v[4]) {
   return 0;
 }
 
+/**
+ * Set the mat2 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_mat2(const gl_int_t id, const char *k, const gl_float_t v[2 * 2]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -1018,6 +1188,10 @@ int gl_set_mat2(const gl_int_t id, const char *k, const gl_float_t v[2 * 2]) {
   return 0;
 }
 
+/**
+ * Set the mat3 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_mat3(const gl_int_t id, const char *k, const gl_float_t v[3 * 3]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -1028,6 +1202,10 @@ int gl_set_mat3(const gl_int_t id, const char *k, const gl_float_t v[3 * 3]) {
   return 0;
 }
 
+/**
+ * Set the mat4 uniform `k` in program `id` to `v`.
+ * @returns 0 on success, -1 if the uniform is not found
+ */
 int gl_set_mat4(const gl_int_t id, const char *k, const gl_float_t v[4 * 4]) {
   const gl_int_t location = glGetUniformLocation(id, k);
   if (location == -1) {
@@ -1042,6 +1220,10 @@ int gl_set_mat4(const gl_int_t id, const char *k, const gl_float_t v[4 * 4]) {
  * GL-CAMERA
  *****************************************************************************/
 
+/**
+ * Initialize `camera` with default state and window dimensions and
+ * build its initial view/projection matrices.
+ */
 void gl_camera_setup(gl_camera_t *camera,
                      int *window_width,
                      int *window_height) {
@@ -1070,6 +1252,10 @@ void gl_camera_setup(gl_camera_t *camera,
   gl_camera_update(camera);
 }
 
+/**
+ * Recompute the camera basis vectors (front, right, up) and update
+ * the view and projection matrices for the active view mode.
+ */
 void gl_camera_update(gl_camera_t *camera) {
   assert(camera);
 
@@ -1122,6 +1308,9 @@ void gl_camera_update(gl_camera_t *camera) {
   }
 }
 
+/**
+ * Rotate the camera yaw and pitch by (dx, dy) scaled by `factor`.
+ */
 void gl_camera_rotate(gl_camera_t *camera,
                       const float factor,
                       const float dx,
@@ -1154,6 +1343,10 @@ void gl_camera_rotate(gl_camera_t *camera,
   camera->front[2] = direction[2];
 }
 
+/**
+ * Pan the camera focal point along its front/right axes by (dx, dy)
+ * scaled by `factor`.
+ */
 void gl_camera_pan(gl_camera_t *camera,
                    const float factor,
                    const float dx,
@@ -1175,6 +1368,10 @@ void gl_camera_pan(gl_camera_t *camera,
   camera->focal[1] = (camera->focal[1] < 0) ? 0 : camera->focal[1];
 }
 
+/**
+ * Zoom the camera by moving its field of view by `dy` (clamped to
+ * fov_min/fov_max).
+ */
 void gl_camera_zoom(gl_camera_t *camera,
                     const float factor,
                     const float dx,
@@ -1193,6 +1390,10 @@ void gl_camera_zoom(gl_camera_t *camera,
  * GUI
  *****************************************************************************/
 
+/**
+ * GLFW window-size callback that maintains a 16:9 aspect-ratio
+ * viewport centred in the window.
+ */
 void window_callback(GLFWwindow *window, int width, int height) {
   assert(window);
   assert(width > 0);
@@ -1219,6 +1420,10 @@ void window_callback(GLFWwindow *window, int width, int height) {
   glViewport(x_offset, y_offset, new_width, new_height);
 }
 
+/**
+ * Poll keyboard and mouse state for `window` and update the camera
+ * and motion flags accordingly.
+ */
 void gui_process_input(GLFWwindow *window) {
   assert(window);
 
@@ -1337,6 +1542,11 @@ void gui_process_input(GLFWwindow *window) {
   gl_camera_update(&_camera);
 }
 
+/**
+ * Create and initialize the GUI window with the given title and
+ * dimensions, setting up GLFW, GLAD, OpenGL state and the camera.
+ * @returns the allocated gui_t window, or NULL on failure
+ */
 gui_t *gui_malloc(const char *window_title,
                   const int window_width,
                   const int window_height) {
@@ -1431,18 +1641,30 @@ gui_t *gui_malloc(const char *window_title,
   return gui;
 }
 
+/**
+ * Terminate GLFW and free the `gui` window.
+ */
 void gui_free(gui_t *gui) {
   assert(gui);
   glfwTerminate();
   free(gui);
 }
 
+/**
+ * Get the current wall-clock time in seconds.
+ * @returns the current time in seconds
+ */
 double gui_time(void) {
   struct timespec time;
   clock_gettime(CLOCK_REALTIME, &time);
   return time.tv_sec + time.tv_nsec * 1e-9;
 }
 
+/**
+ * Poll window events, process input and clear the color and depth
+ * buffers for the next frame.
+ * @returns the window loop flag
+ */
 int gui_poll(gui_t *gui) {
   assert(gui);
 
@@ -1458,6 +1680,9 @@ int gui_poll(gui_t *gui) {
   return _window_loop;
 }
 
+/**
+ * Swap the framebuffers of `gui` and update the frame delta-time.
+ */
 void gui_update(gui_t *gui) {
   assert(gui);
   glfwSwapBuffers(gui->window);
@@ -1499,6 +1724,11 @@ void gui_update(gui_t *gui) {
   "  frag_color = vec4(color, 1.0f);\n"                                        \
   "}\n"
 
+/**
+ * Allocate a 2D rectangle render object with the given bounds and
+ * color.
+ * @returns the allocated gl_rect_t
+ */
 gl_rect_t *gl_rect_malloc(const gl_bounds_t bounds, const gl_color_t color) {
   gl_rect_t *rect = malloc(sizeof(gl_rect_t));
   rect->program_id = 0;
@@ -1560,6 +1790,9 @@ gl_rect_t *gl_rect_malloc(const gl_bounds_t bounds, const gl_color_t color) {
   return rect;
 }
 
+/**
+ * Free the GL buffers and memory of `rect`.
+ */
 void gl_rect_free(gl_rect_t *rect) {
   if (rect == NULL) {
     return;
@@ -1570,6 +1803,9 @@ void gl_rect_free(gl_rect_t *rect) {
   free(rect);
 }
 
+/**
+ * Draw the 2D rectangle using an orthographic projection.
+ */
 void draw_rect(gl_rect_t *rect) {
   assert(rect);
 
@@ -1618,6 +1854,11 @@ void draw_rect(gl_rect_t *rect) {
 
 #define GL_POINTS3D_MAX_POINTS 1000000
 
+/**
+ * Allocate a 3D point-cloud render object for `num_points` points of
+ * `point_size` pixels.
+ * @returns the allocated gl_points3d_t
+ */
 gl_points3d_t *gl_points3d_malloc(gl_float_t *points_data,
                                   const size_t num_points,
                                   const gl_float_t point_size) {
@@ -1665,6 +1906,9 @@ gl_points3d_t *gl_points3d_malloc(gl_float_t *points_data,
   return points;
 }
 
+/**
+ * Free the GL buffers and memory of `points`.
+ */
 void gl_points3d_free(gl_points3d_t *points) {
   if (points == NULL) {
     return;
@@ -1674,6 +1918,9 @@ void gl_points3d_free(gl_points3d_t *points) {
   free(points);
 }
 
+/**
+ * Upload new point data and point size to the GPU.
+ */
 void gl_points3d_update(gl_points3d_t *points,
                         gl_float_t *points_data,
                         size_t num_points,
@@ -1693,6 +1940,9 @@ void gl_points3d_update(gl_points3d_t *points,
   glBindBuffer(GL_ARRAY_BUFFER, 0); // Unbind VBO
 }
 
+/**
+ * Draw the 3D point cloud using the active camera.
+ */
 void draw_points3d(gl_points3d_t *points) {
   assert(points);
   if (points->num_points == 0) {
@@ -1792,6 +2042,10 @@ void draw_points3d(gl_points3d_t *points) {
   "  frag_color = vec4(color, alpha);\n"                                       \
   "}\n"
 
+/**
+ * Transform the world point `p_world` into clip space using the
+ * projection and view matrices.
+ */
 void world2clip(const gl_float_t p_world[3],
                 const gl_float_t proj[4 * 4],
                 const gl_float_t view[4 * 4],
@@ -1805,6 +2059,10 @@ void world2clip(const gl_float_t p_world[3],
   gl_dot(proj_view, 4, 4, hp_world, 4, 1, hp_clip);
 }
 
+/**
+ * Transform the world point `p_world` into screen coordinates using
+ * the projection/view matrices and the viewport size.
+ */
 void world2screen(const gl_float_t p_world[3],
                   const gl_float_t proj[4 * 4],
                   const gl_float_t view[4 * 4],
@@ -1826,6 +2084,10 @@ void world2screen(const gl_float_t p_world[3],
   p_screen[1] = 0.5 * (p_ndc[1] + 1.0) * h;
 }
 
+/**
+ * Write the four corners of a thick screen-space line segment (from
+ * p1 to p2) into `data` at `offset`.
+ */
 void line_vertex(const gl_float_t p1[2],
                  const gl_float_t p2[2],
                  const gl_float_t thickness,
@@ -1849,6 +2111,10 @@ void line_vertex(const gl_float_t p1[2],
   // clang-format on
 }
 
+/**
+ * Initialize `line3d` state, compile its shader and create the
+ * VAO/VBO.
+ */
 void gl_line3d_setup(gl_line3d_t *line3d,
                      const gl_color_t color,
                      const gl_float_t lw) {
@@ -1888,12 +2154,20 @@ void gl_line3d_setup(gl_line3d_t *line3d,
   glBindVertexArray(0);             // Unbind VAO
 }
 
+/**
+ * Allocate a 3D line render object with `lw` width and color `color`.
+ * @returns the allocated gl_line3d_t
+ */
 gl_line3d_t *gl_line3d_malloc(const gl_color_t color, const gl_float_t lw) {
   gl_line3d_t *line3d = malloc(sizeof(gl_line3d_t));
   gl_line3d_setup(line3d, color, lw);
   return line3d;
 }
 
+/**
+ * Upload `num_verts` vertices of `data` into the line VBO at
+ * `offset`.
+ */
 void gl_line3d_update(gl_line3d_t *line3d,
                       const size_t offset,
                       const gl_float_t *data,
@@ -1905,6 +2179,9 @@ void gl_line3d_update(gl_line3d_t *line3d,
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+/**
+ * Free the GL buffers and memory of `line`.
+ */
 void gl_line3d_free(gl_line3d_t *line) {
   if (line == NULL) {
     return;
@@ -1914,6 +2191,9 @@ void gl_line3d_free(gl_line3d_t *line) {
   free(line);
 }
 
+/**
+ * Draw the 3D line strip using the active camera.
+ */
 void draw_line3d(gl_line3d_t *line3d) {
   // Get viewport
   GLint viewport[4];
@@ -1992,6 +2272,11 @@ void draw_line3d(gl_line3d_t *line3d) {
   "  frag_color = vec4(result, 1.0f);\n"                                       \
   "}\n"
 
+/**
+ * Allocate a unit cube render object with position and normal
+ * attributes.
+ * @returns the allocated gl_cube3d_t
+ */
 gl_cube3d_t *gl_cube3d_malloc(void) {
   gl_cube3d_t *cube = malloc(sizeof(gl_cube3d_t));
   cube->program_id = 0;
@@ -2076,6 +2361,9 @@ gl_cube3d_t *gl_cube3d_malloc(void) {
   return cube;
 }
 
+/**
+ * Free the GL buffers and memory of `cube`.
+ */
 void gl_cube3d_free(gl_cube3d_t *cube) {
   if (cube == NULL) {
     return;
@@ -2085,6 +2373,10 @@ void gl_cube3d_free(gl_cube3d_t *cube) {
   free(cube);
 }
 
+/**
+ * Draw the cube at pose `T` with the given size and color using
+ * ambient/diffuse/specular lighting.
+ */
 void draw_cube(gl_cube3d_t *cube,
                const gl_float_t T[4 * 4],
                const gl_float_t size,
@@ -2146,6 +2438,11 @@ void draw_cube(gl_cube3d_t *cube,
   "  frag_color = vec4(1.0f, 1.0f, 1.0f, 1.0f);\n"                             \
   "}\n"
 
+/**
+ * Allocate a view-frustum render object from the horizontal fov, aspect
+ * and near/far planes, pose `T`, size and width.
+ * @returns the allocated gl_frustum_t
+ */
 gl_frustum_t *gl_frustum_malloc(const gl_float_t hfov,
                                 const gl_float_t aspect,
                                 const gl_float_t znear,
@@ -2233,6 +2530,9 @@ gl_frustum_t *gl_frustum_malloc(const gl_float_t hfov,
   return frustum;
 }
 
+/**
+ * Free the GL buffers and memory of `frustum`.
+ */
 void gl_frustum_free(gl_frustum_t *frustum) {
   if (frustum == NULL) {
     return;
@@ -2242,6 +2542,9 @@ void gl_frustum_free(gl_frustum_t *frustum) {
   free(frustum);
 }
 
+/**
+ * Draw the view frustum as lines using the active camera.
+ */
 void draw_frustum(gl_frustum_t *frustum) {
   assert(frustum);
 
@@ -2271,6 +2574,11 @@ void draw_frustum(gl_frustum_t *frustum) {
 
 // AXES 3D ///////////////////////////////////////////////////////////////////
 
+/**
+ * Allocate an XYZ axes render object with the given size and line
+ * width.
+ * @returns the allocated gl_axes3d_t
+ */
 gl_axes3d_t *gl_axes3d_malloc(const gl_float_t T[4 * 4],
                               const gl_float_t size,
                               const gl_float_t lw) {
@@ -2303,6 +2611,9 @@ gl_axes3d_t *gl_axes3d_malloc(const gl_float_t T[4 * 4],
   return axes;
 }
 
+/**
+ * Free the memory of `axes`.
+ */
 void gl_axes3d_free(gl_axes3d_t *axes) {
   if (axes == NULL) {
     return;
@@ -2310,6 +2621,9 @@ void gl_axes3d_free(gl_axes3d_t *axes) {
   free(axes);
 }
 
+/**
+ * Draw the x (red), y (green) and z (blue) axes.
+ */
 void draw_axes3d(gl_axes3d_t *axes) {
   assert(axes);
   draw_line3d(&axes->x_axis);
@@ -2336,6 +2650,12 @@ void draw_axes3d(gl_axes3d_t *axes) {
   "  frag_color = vec4(0.8f, 0.8f, 0.8f, 1.0f);\n"                             \
   "}\n"
 
+/**
+ * Generate line vertices for a grid on the xz-plane of the given
+ * size.
+ * @returns the vertex array; `count` is set to the number of
+ * vertices
+ */
 float *generate_grid_vertices(int width, int depth, float size, int *count) {
   *count = (width + 1 + depth + 1) * 2;
   float *v = malloc(*count * 3 * sizeof(float));
@@ -2366,6 +2686,11 @@ float *generate_grid_vertices(int width, int depth, float size, int *count) {
   return v;
 }
 
+/**
+ * Allocate a 3D grid render object spanning a num_rows x num_cols
+ * grid of `grid_size`.
+ * @returns the allocated gl_grid3d_t
+ */
 gl_grid3d_t *gl_grid3d_malloc(const gl_int_t num_rows,
                               const gl_int_t num_cols,
                               const gl_float_t grid_size,
@@ -2423,6 +2748,9 @@ gl_grid3d_t *gl_grid3d_malloc(const gl_int_t num_rows,
   return grid;
 }
 
+/**
+ * Free the GL buffers and memory of `grid`.
+ */
 void gl_grid3d_free(gl_grid3d_t *grid) {
   if (grid == NULL) {
     return;
@@ -2445,6 +2773,9 @@ void gl_grid3d_free(gl_grid3d_t *grid) {
   free(grid);
 }
 
+/**
+ * Draw all row and column lines of the grid.
+ */
 void draw_grid3d(gl_grid3d_t *grid) {
   assert(grid);
 
@@ -2484,6 +2815,11 @@ void draw_grid3d(gl_grid3d_t *grid) {
   "  frag_color = texture(texture1, tex_coord);\n"                             \
   "}\n"
 
+/**
+ * Allocate a 2D image render object from raw pixel data, loading it
+ * into a texture.
+ * @returns the allocated gl_image_t
+ */
 gl_image_t *gl_image_malloc(const int x,
                             const int y,
                             const uint8_t *data,
@@ -2587,6 +2923,9 @@ gl_image_t *gl_image_malloc(const int x,
   return image;
 }
 
+/**
+ * Free the GL buffers and memory of `image`.
+ */
 void gl_image_free(gl_image_t *image) {
   if (image == NULL) {
     return;
@@ -2597,6 +2936,9 @@ void gl_image_free(gl_image_t *image) {
   free(image);
 }
 
+/**
+ * Draw the image as a textured quad at its stored position.
+ */
 void draw_image(gl_image_t *image) {
   assert(image);
 
@@ -2639,6 +2981,10 @@ void draw_image(gl_image_t *image) {
   "  frag_color = vec4(text_color, alpha);\n"                                  \
   "}\n"
 
+/**
+ * Print the texture id and metrics of the character glyph `ch` to
+ * stdout.
+ */
 void gl_char_print(const gl_char_t *ch) {
   assert(ch);
   printf("texture_id: %d\n", ch->texture_id);
@@ -2650,6 +2996,11 @@ void gl_char_print(const gl_char_t *ch) {
   printf("\n");
 }
 
+/**
+ * Initialize FreeType and pre-render the ASCII glyph set at the
+ * requested size.
+ * @returns the allocated gl_text_t
+ */
 gl_text_t *gl_text_malloc(const int text_size) {
   gl_text_t *text = malloc(sizeof(gl_text_t));
 
@@ -2743,6 +3094,9 @@ gl_text_t *gl_text_malloc(const int text_size) {
   return text;
 }
 
+/**
+ * Free the GL buffers and memory of `text`.
+ */
 void gl_text_free(gl_text_t *text) {
   if (text == NULL) {
     return;
@@ -2753,6 +3107,9 @@ void gl_text_free(gl_text_t *text) {
   free(text);
 }
 
+/**
+ * Measure the on-screen width and height of the string `s`.
+ */
 void text_width_height(gl_text_t *text,
                        const char *s,
                        gl_float_t *w,
@@ -2774,6 +3131,9 @@ void text_width_height(gl_text_t *text,
   *h = (hch->bearing[1] - ch->bearing[1]) + ch->size[1];
 }
 
+/**
+ * Draw the string `s` at pixel position (x, y) with color `c`.
+ */
 void draw_text(gl_text_t *text,
                const char *s,
                const float x,
@@ -2842,6 +3202,10 @@ void draw_text(gl_text_t *text,
 
 // MESH //////////////////////////////////////////////////////////////////////
 
+/**
+ * Upload mesh vertices, indices and textures to the GPU and
+ * configure its attribute layout.
+ */
 void gl_mesh_setup(gl_mesh_t *mesh,
                    gl_vertex_t *vertices,
                    const int num_vertices,
@@ -2913,6 +3277,9 @@ void gl_mesh_setup(gl_mesh_t *mesh,
   glBindVertexArray(0);
 }
 
+/**
+ * Draw the mesh with the given `shader`, binding its textures first.
+ */
 void gl_mesh_draw(const gl_mesh_t *mesh, const gl_uint_t shader) {
   assert(mesh);
 
@@ -2981,6 +3348,10 @@ void gl_mesh_draw(const gl_mesh_t *mesh, const gl_uint_t shader) {
   "  frag_color = texture(texture_diffuse1, tex_coords);\n"                    \
   "}\n"
 
+/**
+ * Load a 2D texture from an image in `model_dir`.
+ * @returns the texture ID, or -1 on failure
+ */
 static unsigned int gl_texture_load(const char *model_dir,
                                     const char *texture_fname) {
   assert(model_dir);
@@ -3038,6 +3409,10 @@ static unsigned int gl_texture_load(const char *model_dir,
   return texture_id;
 }
 
+/**
+ * Load all textures of the given `type` from `material` into the
+ * `textures` array, growing `textures_length`.
+ */
 static void assimp_load_textures(const struct aiMaterial *material,
                                  const enum aiTextureType type,
                                  const char *model_dir,
@@ -3110,6 +3485,10 @@ static void assimp_load_textures(const struct aiMaterial *material,
   }
 }
 
+/**
+ * Convert the assimp `mesh` with `material` into the next available
+ * gl_mesh_t of `model`.
+ */
 static void assimp_load_mesh(const struct aiMesh *mesh,
                              const struct aiMaterial *material,
                              gl_model_t *model) {
@@ -3233,6 +3612,10 @@ static void assimp_load_mesh(const struct aiMesh *mesh,
   model->num_meshes++;
 }
 
+/**
+ * Recursively walk the assimp scene graph from `node`, converting;
+ * every mesh into `model`.
+ */
 static void assimp_load_model(const struct aiScene *scene,
                               const struct aiNode *node,
                               gl_model_t *model) {
@@ -3253,6 +3636,10 @@ static void assimp_load_model(const struct aiScene *scene,
   }
 }
 
+/**
+ * Count the total number of meshes in the assimp node tree.
+ * @returns the number of meshes
+ */
 static int assimp_num_meshes(const struct aiNode *node) {
   assert(node);
   int num_meshes = node->mNumMeshes;
@@ -3262,6 +3649,10 @@ static int assimp_num_meshes(const struct aiNode *node) {
   return num_meshes;
 }
 
+/**
+ * Load a 3D model (and its textures) from `model_path` via assimp.
+ * @returns the allocated gl_model_t, or NULL on failure
+ */
 gl_model_t *gl_model_load(const char *model_path) {
   assert(model_path);
 
@@ -3318,6 +3709,9 @@ gl_model_t *gl_model_load(const char *model_path) {
   return model;
 }
 
+/**
+ * Free all mesh data and the model memory.
+ */
 void gl_model_free(gl_model_t *model) {
   if (model == NULL) {
     return;
@@ -3333,6 +3727,9 @@ void gl_model_free(gl_model_t *model) {
   model = NULL;
 }
 
+/**
+ * Draw the model with the given camera using a simple lit shader.
+ */
 void gl_model_draw(const gl_model_t *model, const gl_camera_t *camera) {
   glUseProgram(model->program_id);
   gl_set_mat4(model->program_id, "projection", _camera.P);

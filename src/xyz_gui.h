@@ -18,6 +18,9 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include <stb_image.h>
+#include <stb_image_write.h>
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
