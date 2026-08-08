@@ -5,6 +5,11 @@
 #include "stb_image.h"
 #endif
 
+#ifndef STB_IMAGE_WRITE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+#endif
+
 /*******************************************************************************
  * SYSTEM
  ******************************************************************************/
@@ -642,17 +647,31 @@ void path_dir_name(const char *path, char *dir_name) {
 char *path_join(const char *x, const char *y) {
   assert(x != NULL && y != NULL);
 
-  char *retval = NULL;
-  if (x[strlen(x) - 1] == '/') {
-    retval = malloc(sizeof(char) * (strlen(x) + strlen(y)) + 1);
-    string_copy(retval, x);
-    string_copy(retval + strlen(retval), (y[0] == '/') ? y + 1 : y);
-  } else {
-    retval = malloc(sizeof(char) * (strlen(x) + strlen(y)) + 2);
-    string_copy(retval, x);
-    string_cat(retval + strlen(retval), "/");
-    string_copy(retval + strlen(retval), (y[0] == '/') ? y + 1 : y);
+  const size_t x_len = strlen(x);
+
+  // Strip leading slashes from y so a trailing slash on x never yields two.
+  const char *y_begin = y;
+  while (x_len > 0 && x[x_len - 1] == '/' && *y_begin == '/') {
+    y_begin++;
   }
+  const size_t y_used = strlen(y_begin);
+
+  // Separator only needed when x is non-empty and doesn't end in '/'.
+  const size_t sep = (x_len > 0 && x[x_len - 1] != '/') ? 1 : 0;
+
+  char *retval = malloc(x_len + sep + y_used + 1);
+  if (retval == NULL) {
+    return NULL;
+  }
+
+  char *p = retval;
+  memcpy(p, x, x_len);
+  p += x_len;
+  if (sep) {
+    *p++ = '/';
+  }
+  memcpy(p, y_begin, y_used);
+  p[y_used] = '\0';
 
   return retval;
 }
@@ -7675,6 +7694,149 @@ void image_free(image_t *img) {
   free(img);
 }
 
+/////////////
+// PINHOLE //
+/////////////
+
+/**
+ * Estimate pinhole focal length. The focal length is estimated using
+ * `image_width` [pixels], and `fov` (Field of view of the camera) [rad].
+ */
+real_t pinhole_focal(const int image_width, const real_t fov) {
+  return ((image_width / 2.0) / tan(deg2rad(fov) / 2.0));
+}
+
+/**
+ * From 3x3 camera matrix K using pinhole camera parameters.
+ *
+ *   K = [fx,  0,  cx,
+ *         0  fy,  cy,
+ *         0   0,   1];
+ *
+ * where `params` is assumed to contain the fx, fy, cx, cy in that order.
+ */
+void pinhole_K(const real_t params[4], real_t K[3 * 3]) {
+  K[0] = params[0];
+  K[1] = 0.0;
+  K[2] = params[2];
+
+  K[3] = 0.0;
+  K[4] = params[1];
+  K[5] = params[3];
+
+  K[6] = 0.0;
+  K[7] = 0.0;
+  K[8] = 1.0;
+}
+
+/**
+ * Form 3x4 pinhole projection matrix `P`:
+ *
+ *   P = K * [-C | -C * r];
+ *
+ * Where K is the pinhole camera matrix formed using the camera parameters
+ * `params` (fx, fy, cx, cy), C and r is the rotation and translation
+ * component of the camera pose represented as a 4x4 homogenous transform `T`.
+ */
+void pinhole_projection_matrix(const real_t params[4],
+                               const real_t T[4 * 4],
+                               real_t P[3 * 4]) {
+  assert(params != NULL);
+  assert(T != NULL);
+  assert(P != NULL);
+
+  // Form K matrix
+  real_t K[3 * 3] = {0};
+  pinhole_K(params, K);
+
+  // Invert camera pose
+  real_t T_inv[4 * 4] = {0};
+  tf_inv(T, T_inv);
+
+  // Extract rotation and translation component
+  real_t C[3 * 3] = {0};
+  real_t r[3] = {0};
+  tf_rot_get(T_inv, C);
+  tf_trans_get(T_inv, r);
+
+  // Form [C | r] matrix
+  real_t Cr[3 * 4] = {0};
+  Cr[0] = C[0];
+  Cr[1] = C[1];
+  Cr[2] = C[2];
+  Cr[3] = r[0];
+
+  Cr[4] = C[3];
+  Cr[5] = C[4];
+  Cr[6] = C[5];
+  Cr[7] = r[1];
+
+  Cr[8] = C[6];
+  Cr[9] = C[7];
+  Cr[10] = C[8];
+  Cr[11] = r[2];
+
+  // Form projection matrix P = K * [C | r]
+  dot(K, 3, 3, Cr, 3, 4, P);
+}
+
+/**
+ * Project 3D point `p_C` observed from the camera to the image plane `z`
+ * using pinhole parameters `params` (fx, fy, cx, cy).
+ */
+void pinhole_project(const real_t params[4], const real_t p_C[3], real_t z[2]) {
+  assert(params != NULL);
+  assert(p_C != NULL);
+  assert(z != NULL);
+
+  const real_t fx = params[0];
+  const real_t fy = params[1];
+  const real_t cx = params[2];
+  const real_t cy = params[3];
+
+  const real_t px = p_C[0] / p_C[2];
+  const real_t py = p_C[1] / p_C[2];
+
+  z[0] = px * fx + cx;
+  z[1] = py * fy + cy;
+}
+
+/**
+ * Form Pinhole point jacobian `J` using pinhole parameters `params`.
+ */
+void pinhole_point_jacobian(const real_t params[4], real_t J[2 * 2]) {
+  assert(params != NULL);
+  assert(J != NULL);
+
+  J[0] = params[0];
+  J[1] = 0.0;
+  J[2] = 0.0;
+  J[3] = params[1];
+}
+
+/**
+ * Form Pinhole parameter jacobian `J` using pinhole parameters `params` and
+ * 2x1 image point `x`.
+ */
+void pinhole_params_jacobian(const real_t params[4],
+                             const real_t x[2],
+                             real_t J[2 * 4]) {
+  assert(params != NULL);
+  assert(x != NULL);
+  assert(J != NULL);
+  UNUSED(params);
+
+  J[0] = x[0];
+  J[1] = 0.0;
+  J[2] = 1.0;
+  J[3] = 0.0;
+
+  J[4] = 0.0;
+  J[5] = x[1];
+  J[6] = 0.0;
+  J[7] = 1.0;
+}
+
 ////////////
 // RADTAN //
 ////////////
@@ -7977,149 +8139,6 @@ void equi4_params_jacobian(const real_t params[4],
   J_param[5] = y * th5 / r;
   J_param[6] = y * th7 / r;
   J_param[7] = y * th9 / r;
-}
-
-/////////////
-// PINHOLE //
-/////////////
-
-/**
- * Estimate pinhole focal length. The focal length is estimated using
- * `image_width` [pixels], and `fov` (Field of view of the camera) [rad].
- */
-real_t pinhole_focal(const int image_width, const real_t fov) {
-  return ((image_width / 2.0) / tan(deg2rad(fov) / 2.0));
-}
-
-/**
- * From 3x3 camera matrix K using pinhole camera parameters.
- *
- *   K = [fx,  0,  cx,
- *         0  fy,  cy,
- *         0   0,   1];
- *
- * where `params` is assumed to contain the fx, fy, cx, cy in that order.
- */
-void pinhole_K(const real_t params[4], real_t K[3 * 3]) {
-  K[0] = params[0];
-  K[1] = 0.0;
-  K[2] = params[2];
-
-  K[3] = 0.0;
-  K[4] = params[1];
-  K[5] = params[3];
-
-  K[6] = 0.0;
-  K[7] = 0.0;
-  K[8] = 1.0;
-}
-
-/**
- * Form 3x4 pinhole projection matrix `P`:
- *
- *   P = K * [-C | -C * r];
- *
- * Where K is the pinhole camera matrix formed using the camera parameters
- * `params` (fx, fy, cx, cy), C and r is the rotation and translation
- * component of the camera pose represented as a 4x4 homogenous transform `T`.
- */
-void pinhole_projection_matrix(const real_t params[4],
-                               const real_t T[4 * 4],
-                               real_t P[3 * 4]) {
-  assert(params != NULL);
-  assert(T != NULL);
-  assert(P != NULL);
-
-  // Form K matrix
-  real_t K[3 * 3] = {0};
-  pinhole_K(params, K);
-
-  // Invert camera pose
-  real_t T_inv[4 * 4] = {0};
-  tf_inv(T, T_inv);
-
-  // Extract rotation and translation component
-  real_t C[3 * 3] = {0};
-  real_t r[3] = {0};
-  tf_rot_get(T_inv, C);
-  tf_trans_get(T_inv, r);
-
-  // Form [C | r] matrix
-  real_t Cr[3 * 4] = {0};
-  Cr[0] = C[0];
-  Cr[1] = C[1];
-  Cr[2] = C[2];
-  Cr[3] = r[0];
-
-  Cr[4] = C[3];
-  Cr[5] = C[4];
-  Cr[6] = C[5];
-  Cr[7] = r[1];
-
-  Cr[8] = C[6];
-  Cr[9] = C[7];
-  Cr[10] = C[8];
-  Cr[11] = r[2];
-
-  // Form projection matrix P = K * [C | r]
-  dot(K, 3, 3, Cr, 3, 4, P);
-}
-
-/**
- * Project 3D point `p_C` observed from the camera to the image plane `z`
- * using pinhole parameters `params` (fx, fy, cx, cy).
- */
-void pinhole_project(const real_t params[4], const real_t p_C[3], real_t z[2]) {
-  assert(params != NULL);
-  assert(p_C != NULL);
-  assert(z != NULL);
-
-  const real_t fx = params[0];
-  const real_t fy = params[1];
-  const real_t cx = params[2];
-  const real_t cy = params[3];
-
-  const real_t px = p_C[0] / p_C[2];
-  const real_t py = p_C[1] / p_C[2];
-
-  z[0] = px * fx + cx;
-  z[1] = py * fy + cy;
-}
-
-/**
- * Form Pinhole point jacobian `J` using pinhole parameters `params`.
- */
-void pinhole_point_jacobian(const real_t params[4], real_t J[2 * 2]) {
-  assert(params != NULL);
-  assert(J != NULL);
-
-  J[0] = params[0];
-  J[1] = 0.0;
-  J[2] = 0.0;
-  J[3] = params[1];
-}
-
-/**
- * Form Pinhole parameter jacobian `J` using pinhole parameters `params` and
- * 2x1 image point `x`.
- */
-void pinhole_params_jacobian(const real_t params[4],
-                             const real_t x[2],
-                             real_t J[2 * 4]) {
-  assert(params != NULL);
-  assert(x != NULL);
-  assert(J != NULL);
-  UNUSED(params);
-
-  J[0] = x[0];
-  J[1] = 0.0;
-  J[2] = 1.0;
-  J[3] = 0.0;
-
-  J[4] = 0.0;
-  J[5] = x[1];
-  J[6] = 0.0;
-  J[7] = 1.0;
 }
 
 /////////////////////
@@ -8510,6 +8529,170 @@ void pinhole_equi4_params_jacobian(const real_t params[8],
 //////////////
 // GEOMETRY //
 //////////////
+
+/**
+ * Exponential map from lie algebra so(3) vector to SO(3) rotation matrix.
+ */
+void rodrigues(const real_t w[3], real_t R[3 * 3]) {
+  assert(w != NULL);
+  assert(R != NULL);
+
+  const real_t theta = vec3_norm(w);
+  if (theta < 1e-8) {
+    eye(R, 3, 3);
+    return;
+  }
+
+  const real_t k[3] = {w[0] / theta, w[1] / theta, w[2] / theta};
+  real_t K[3 * 3] = {0};
+  hat(k, K);
+
+  real_t K2[3 * 3] = {0};
+  dot(K, 3, 3, K, 3, 3, K2);
+
+  // R = I + sin(theta) * K + (1 - cos(theta)) * K^2
+  // R = I + A + B
+  // where:
+  //   A = sin(theta) * K
+  //   B = (1 - cos(theta)) * K^2
+  real_t A[3 * 3] = {0};
+  real_t B[3 * 3] = {0};
+  mat_copy(K, 3, 3, A);
+  mat_scale(A, 3, 3, sin(theta));
+  mat_copy(K2, 3, 3, B);
+  mat_scale(B, 3, 3, 1.0 - cos(theta));
+
+  eye(R, 3, 3);
+  mat_add(R, A, R, 3, 3);
+  mat_add(R, B, R, 3, 3);
+}
+
+/**
+ * Decompose essential matrix `E` into the 4 possible (R, t) pose hypotheses.
+ *
+ * Factorises `E` with SVD (E = U * S * V^T), enforces proper rotation frames
+ * det(U) > 0 and det(V) > 0, then forms
+ *
+ *   R1 = U * W * V^T,  R2 = U * W^T * V^T,  t1 = U.col(2),  t2 = -t1
+ *
+ * where W = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]. The 4 hypotheses are written
+ * to `R` and `t` as (R1, t1), (R1, t2), (R2, t1), (R2, t2).
+ */
+void decompose_essential_matrix(const real_t E[3 * 3],
+                                real_t R[4][3 * 3],
+                                real_t t[4][3]) {
+  assert(E != NULL);
+  assert(R != NULL);
+  assert(t != NULL);
+
+  // SVD: E = U * S * V^T
+  real_t U[3 * 3] = {0};
+  real_t s[3] = {0};
+  real_t V[3 * 3] = {0};
+  int retval = svd(E, 3, 3, U, s, V);
+  assert(retval == 0);
+
+  // Enforce proper rotation frames det(U) > 0 and det(V) > 0. Since U and V
+  // are orthogonal |det| = 1, only the sign needs checking.
+  const real_t det_u = U[0] * (U[4] * U[8] - U[5] * U[7]) -
+                       U[1] * (U[3] * U[8] - U[5] * U[6]) +
+                       U[2] * (U[3] * U[7] - U[4] * U[6]);
+  if (det_u < 0) {
+    mat_scale(U, 3, 3, -1.0);
+  }
+
+  const real_t det_v = V[0] * (V[4] * V[8] - V[5] * V[7]) -
+                       V[1] * (V[3] * V[8] - V[5] * V[6]) +
+                       V[2] * (V[3] * V[7] - V[4] * V[6]);
+  if (det_v < 0) {
+    mat_scale(V, 3, 3, -1.0);
+  }
+
+  // W and W^T
+  const real_t W[3 * 3] = {0.0, -1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+  const real_t Wt[3 * 3] = {0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 1.0};
+
+  real_t Vt[3 * 3] = {0};
+  mat_transpose(V, 3, 3, Vt);
+
+  // R1 = U * W * V^T, R2 = U * W^T * V^T
+  real_t R1[3 * 3] = {0};
+  real_t R2[3 * 3] = {0};
+  real_t UW[3 * 3] = {0};
+  dot(U, 3, 3, W, 3, 3, UW);
+  dot(UW, 3, 3, Vt, 3, 3, R1);
+
+  real_t UWt[3 * 3] = {0};
+  dot(U, 3, 3, Wt, 3, 3, UWt);
+  dot(UWt, 3, 3, Vt, 3, 3, R2);
+
+  // t1 = U[:, 2], t2 = -U[:, 2]
+  const real_t t1[3] = {U[2], U[5], U[8]};
+  const real_t t2[3] = {-U[2], -U[5], -U[8]};
+
+  // (R1, t1), (R1, t2), (R2, t1), (R2, t2)
+  mat_copy(R1, 3, 3, R[0]);
+  mat_copy(R1, 3, 3, R[1]);
+  mat_copy(R2, 3, 3, R[2]);
+  mat_copy(R2, 3, 3, R[3]);
+  memcpy(t[0], t1, sizeof(t1));
+  memcpy(t[1], t2, sizeof(t2));
+  memcpy(t[2], t1, sizeof(t1));
+  memcpy(t[3], t2, sizeof(t2));
+}
+
+/**
+ * Symmetric epipolar distance (Sampson) between the point pairs `pts1` and
+ * `pts2` given the essential matrix `E`, summed over all pairs.
+ *
+ * Each point in `pts1` and `pts2` is a 2D homogeneous-like coordinate, where
+ * `pts1` is `num_points` pairs layed out as `[x, y]` (row-major) and `pts2`
+ * the same.
+ *
+ * @returns
+ * - Sum of Sampson distances
+ */
+real_t sampson_distance(const real_t E[3 * 3],
+                        const real_t *pts1,
+                        const real_t *pts2,
+                        const int num_points) {
+  assert(E != NULL);
+  assert(pts1 != NULL);
+  assert(pts2 != NULL);
+  assert(num_points > 0);
+
+  real_t total = 0.0;
+  for (int i = 0; i < num_points; i++) {
+    const real_t x1 = pts1[i * 2 + 0];
+    const real_t y1 = pts1[i * 2 + 1];
+    const real_t x2 = pts2[i * 2 + 0];
+    const real_t y2 = pts2[i * 2 + 1];
+
+    // Ex1 = E * [x1, y1, 1]
+    const real_t Ex1[3] = {
+        E[0] * x1 + E[1] * y1 + E[2],
+        E[3] * x1 + E[4] * y1 + E[5],
+        E[6] * x1 + E[7] * y1 + E[8],
+    };
+    // Etx2 = E^T * [x2, y2, 1]
+    const real_t Etx2[3] = {
+        E[0] * x2 + E[3] * y2 + E[6],
+        E[1] * x2 + E[4] * y2 + E[7],
+        E[2] * x2 + E[5] * y2 + E[8],
+    };
+
+    // (pts2_h . (E * pts1_h))^2 / (Ex1_0^2 + Ex1_1^2 + Etx2_0^2 + Etx2_1^2)
+    const real_t numerator = x2 * Ex1[0] + y2 * Ex1[1] + Ex1[2];
+    const real_t denominator = Ex1[0] * Ex1[0] + Ex1[1] * Ex1[1] +
+                               Etx2[0] * Etx2[0] + Etx2[1] * Etx2[1];
+
+    if (denominator > 1e-12) {
+      total += (numerator * numerator) / denominator;
+    }
+  }
+
+  return total;
+}
 
 /**
  * Triangulate a single 3D point `p` observed by two different camera frames

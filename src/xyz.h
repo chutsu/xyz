@@ -29,6 +29,7 @@
 
 #include <yaml.h>
 #include <stb_image.h>
+#include <stb_image_write.h>
 #include <cblas.h>
 #include <suitesparse/cholmod.h>
 
@@ -1411,6 +1412,35 @@ image_t *image_load(const char *file_path);
 void image_print(const image_t *img);
 void image_free(image_t *img);
 
+
+/////////////
+// PINHOLE //
+/////////////
+
+typedef void (*project_func_t)(const real_t *params,
+                               const real_t p_C[3],
+                               real_t z_out[2]);
+
+typedef void (*back_project_func_t)(const real_t *params,
+                                    const real_t z[2],
+                                    real_t bearing[3]);
+
+typedef void (*undistort_func_t)(const real_t *params,
+                                 const real_t z_in[2],
+                                 real_t z_out[2]);
+
+real_t pinhole_focal(const int image_width, const real_t fov);
+void pinhole_K(const real_t params[4], real_t K[3 * 3]);
+void pinhole_projection_matrix(const real_t params[4],
+                               const real_t T[4 * 4],
+                               real_t P[3 * 4]);
+void pinhole_project(const real_t params[4], const real_t p_C[3], real_t z[2]);
+void pinhole_point_jacobian(const real_t params[4], real_t J_point[2 * 2]);
+void pinhole_params_jacobian(const real_t params[4],
+                             const real_t x[2],
+                             real_t J[2 * 4]);
+
+
 ////////////
 // RADTAN //
 ////////////
@@ -1444,33 +1474,6 @@ void equi4_point_jacobian(const real_t params[4],
 void equi4_params_jacobian(const real_t params[4],
                            const real_t p[2],
                            real_t J_param[2 * 4]);
-
-/////////////
-// PINHOLE //
-/////////////
-
-typedef void (*project_func_t)(const real_t *params,
-                               const real_t p_C[3],
-                               real_t z_out[2]);
-
-typedef void (*back_project_func_t)(const real_t *params,
-                                    const real_t z[2],
-                                    real_t bearing[3]);
-
-typedef void (*undistort_func_t)(const real_t *params,
-                                 const real_t z_in[2],
-                                 real_t z_out[2]);
-
-real_t pinhole_focal(const int image_width, const real_t fov);
-void pinhole_K(const real_t params[4], real_t K[3 * 3]);
-void pinhole_projection_matrix(const real_t params[4],
-                               const real_t T[4 * 4],
-                               real_t P[3 * 4]);
-void pinhole_project(const real_t params[4], const real_t p_C[3], real_t z[2]);
-void pinhole_point_jacobian(const real_t params[4], real_t J_point[2 * 2]);
-void pinhole_params_jacobian(const real_t params[4],
-                             const real_t x[2],
-                             real_t J[2 * 4]);
 
 /////////////////////
 // PINHOLE-RADTAN4 //
@@ -1516,6 +1519,17 @@ void pinhole_equi4_params_jacobian(const real_t params[8],
 // GEOMETRY //
 //////////////
 
+void rodrigues(const real_t w[3], real_t R[3 * 3]);
+
+void decompose_essential_matrix(const real_t E[3 * 3],
+                                real_t R[4][3 * 3],
+                                real_t t[4][3]);
+
+real_t sampson_distance(const real_t E[3 * 3],
+                        const real_t *pts1,
+                        const real_t *pts2,
+                        const int num_points);
+
 void linear_triangulation(const real_t P_i[3 * 4],
                           const real_t P_j[3 * 4],
                           const real_t z_i[2],
@@ -1538,6 +1552,14 @@ int solvepnp(const real_t proj_params[4],
              const real_t *obj_pts,
              const int N,
              real_t T_CO[4 * 4]);
+
+int hedborg_essential_matrix(const real_t *pts_i,
+                             const real_t *pts_j,
+                             const int num_points,
+                             const int max_iters,
+                             const real_t tol,
+                             const real_t *R_init,
+                             const real_t *t_init);
 
 /*******************************************************************************
  * APRILGRID

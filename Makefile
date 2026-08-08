@@ -103,7 +103,7 @@ tools:
 ci: ## Run CI tests
 	@make tests CI_MODE=1 --no-print-directory
 
-cppcheck: ## Run cppcheck on xyz.c
+cppcheck: ## Run cppcheck
 	@cppcheck src/xyz.c src/xyz.h
 	@cppcheck src/xyz_gui.c src/xyz_gui.h
 
