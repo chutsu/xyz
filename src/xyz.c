@@ -1864,6 +1864,7 @@ rbt_node_t *rbt_node_delete_min(rbt_node_t *n) {
   }
 
   if (n->child[0] == NULL) {
+    free(n);
     return NULL;
   }
 
@@ -1876,10 +1877,12 @@ rbt_node_t *rbt_node_delete_min(rbt_node_t *n) {
 }
 
 rbt_node_t *rbt_node_delete_max(rbt_node_t *n) {
-  if (n->child[0] == NULL) {
+  if (rbt_node_is_red(n->child[0])) {
     n = rbt_node_rotate(n, 1);
   }
   if (n->child[1] == NULL) {
+    // FIX: n is the max node being removed; free it to avoid a leak.
+    free(n);
     return NULL;
   }
   if (!rbt_node_is_red(n->child[1]) &&
@@ -1939,14 +1942,14 @@ rbt_node_t *rbt_node_delete(rbt_node_t *n,
       if (cmp_func(key, n->key) == 0) {
         // Case 2: Found the node and it has a right child
         rbt_node_t *tmp = rbt_node_min(n->child[1]);
+        void *tmp_key = tmp->key;
+        void *tmp_value = tmp->value;
         if (kfree_func) {
           free(n->key);
         }
-        n->key = tmp->key;
-        n->value = tmp->value;
+        n->key = tmp_key;
+        n->value = tmp_value;
         n->child[1] = rbt_node_delete_min(n->child[1]);
-        free(tmp);
-
       } else {
         // Case 3: Still traversing down the right subtree
         n->child[1] = rbt_node_delete(n->child[1], key, cmp_func, kfree_func);
@@ -2004,25 +2007,39 @@ void rbt_free(rbt_t *rbt) {
 
 void rbt_insert(rbt_t *rbt, void *key, void *value) {
   assert(rbt);
+  const size_t size_before = rbt_node_size(rbt->root);
   void *k = (rbt->kcopy) ? rbt->kcopy(key) : key;
   rbt->root = rbt_node_insert(rbt->root, k, value, rbt->cmp);
   rbt->root->color = RB_BLACK;
-  rbt->size++;
+  if (rbt_node_size(rbt->root) > size_before) {
+    rbt->size++; // A new node was actually inserted
+  } else if (rbt->kcopy) {
+    // Duplicate key: `k` was not stored in the tree, release the copy
+    if (rbt->kfree) {
+      rbt->kfree(k);
+    } else {
+      free(k);
+    }
+  }
 }
 
 void rbt_delete(rbt_t *rbt, void *key) {
   assert(rbt);
-  if (rbt->size == 0) {
+  if (rbt->root == NULL) {
     return;
   }
 
+  const size_t size_before = rbt_node_size(rbt->root);
   rbt_node_t *n = rbt_node_delete(rbt->root, key, rbt->cmp, rbt->kfree);
-  rbt->size--;
+
+  if (rbt_node_size(n) < size_before) {
+    rbt->size--; // The key was present and removed
+  }
+
   if (n) {
     rbt->root = n;
     rbt->root->color = RB_BLACK;
-  }
-  if (rbt->size == 0) {
+  } else {
     rbt->root = NULL;
   }
 }
@@ -2039,12 +2056,12 @@ bool rbt_contains(const rbt_t *rbt, const void *key) {
 
 rbt_node_t *rbt_min(const rbt_t *rbt) {
   assert(rbt);
-  return rbt_node_min(rbt->root);
+  return (rbt->root != NULL) ? rbt_node_min(rbt->root) : NULL;
 }
 
 rbt_node_t *rbt_max(const rbt_t *rbt) {
   assert(rbt);
-  return rbt_node_max(rbt->root);
+  return (rbt->root != NULL) ? rbt_node_max(rbt->root) : NULL;
 }
 
 size_t rbt_height(const rbt_t *rbt) {
@@ -2059,6 +2076,10 @@ size_t rbt_size(const rbt_t *rbt) {
 
 void rbt_keys(const rbt_t *rbt, arr_t *keys) {
   assert(rbt);
+  if (rbt->root == NULL) {
+    return;
+  }
+
   const rbt_node_t *lo = rbt_node_min(rbt->root);
   const rbt_node_t *hi = rbt_node_max(rbt->root);
   rbt_node_keys(rbt->root, lo->key, hi->key, keys, rbt->cmp);
@@ -2066,6 +2087,10 @@ void rbt_keys(const rbt_t *rbt, arr_t *keys) {
 
 void rbt_keys_values(const rbt_t *rbt, arr_t *keys, arr_t *values) {
   assert(rbt);
+  if (rbt->root == NULL) {
+    return;
+  }
+
   const rbt_node_t *lo = rbt_node_min(rbt->root);
   const rbt_node_t *hi = rbt_node_max(rbt->root);
   rbt_node_keys_values(rbt->root, lo->key, hi->key, keys, values, rbt->cmp);
