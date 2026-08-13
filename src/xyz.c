@@ -1112,6 +1112,11 @@ int darray_push(darray_t *array, void *el) {
 void *darray_pop(darray_t *array) {
   assert(array != NULL);
 
+  // Return NULL if empty
+  if (array->end == 0) {
+    return NULL;
+  }
+
   // pop
   void *el = darray_remove(array, array->end - 1);
   array->end--;
@@ -1155,23 +1160,24 @@ darray_t *darray_copy(darray_t *array) {
 
   // Copy first element
   darray_t *array_copy = darray_new(array->element_size, (size_t) array->max);
-  void *el = darray_get(array, 0);
+  if (array_copy == NULL) {
+    return NULL;
+  }
+  void *el = NULL;
   void *el_copy = NULL;
 
-  if (el != NULL) {
-    el_copy = darray_new_element(array_copy);
-    memcpy(el_copy, el, array->element_size);
-    darray_set(array_copy, 0, el_copy);
-  }
-
   // Copy the rest of the elements
-  for (int i = 1; i < array->end; i++) {
+  for (int i = 0; i < array->end; i++) {
     el = darray_get(array, i);
-    // el_copy = NULL;
 
     if (el != NULL) {
+      el_copy = darray_new_element(array_copy);
+      if (el_copy == NULL) {
+        darray_clear_destroy(array_copy);
+        return NULL;
+      }
       memcpy(el_copy, el, array->element_size);
-      darray_set(array_copy, i, el);
+      darray_set(array_copy, i, el_copy);
     }
   }
 
@@ -1191,6 +1197,9 @@ void *darray_first(darray_t *array) {
 
 void *darray_last(darray_t *array) {
   assert(array != NULL);
+  if (array->end == 0) {
+    return NULL;
+  }
   return array->contents[array->end - 1];
 }
 
@@ -1202,8 +1211,8 @@ void darray_set(darray_t *array, int i, void *el) {
   array->contents[i] = el;
 
   // Update end
-  if (i > array->end) {
-    array->end = i;
+  if (i >= array->end) {
+    array->end = i + 1;
   }
 }
 
@@ -1235,16 +1244,14 @@ void *darray_remove(darray_t *array, int i) {
 static inline int darray_resize(darray_t *array, size_t new_max) {
   assert(array != NULL);
 
-  // Calculate new max and size
-  int old_max = (int) array->max;
-  array->max = (int) new_max;
-
   // Reallocate new memory
+  int old_max = (int) array->max;
   void *contents = realloc(array->contents, new_max * sizeof(void *));
   if (contents == NULL) {
     return -1;
   }
   array->contents = contents;
+  array->max = (int) new_max;
 
   // Initialize new memory to NULL
   for (int i = old_max; i < (int) new_max; i++) {
@@ -1258,15 +1265,8 @@ int darray_expand(darray_t *array) {
   assert(array != NULL);
   assert(array->max > 0);
 
-  size_t old_max = (size_t) array->max;
   size_t new_max = (size_t) array->max + array->expand_rate;
-  int res = darray_resize(array, new_max);
-  if (res != 0) {
-    return -1;
-  }
-  memset(array->contents + old_max, 0, array->expand_rate + 1);
-
-  return 0;
+  return darray_resize(array, new_max);
 }
 
 int darray_contract(darray_t *array) {
@@ -1383,6 +1383,7 @@ void *list_pop(list_t *list) {
     list->last = NULL;
     list->first = NULL;
   } else {
+    before_last->next = NULL;
     list->last = before_last;
   }
   list->length--;
@@ -1400,9 +1401,11 @@ void *list_pop_front(list_t *list) {
   list_node_t *next_node = first_node->next;
 
   if (next_node != NULL) {
+    next_node->prev = NULL;
     list->first = next_node;
   } else {
     list->first = NULL;
+    list->last = NULL;
   }
   list->length--;
 
@@ -1414,12 +1417,19 @@ void *list_pop_front(list_t *list) {
 
 void *list_shift(list_t *list) {
   assert(list != NULL);
+  assert(list->first != NULL);
 
   list_node_t *first = list->first;
   void *value = first->value;
   list_node_t *second = list->first->next;
 
-  list->first = second;
+  if (second != NULL) {
+    second->prev = NULL;
+    list->first = second;
+  } else {
+    list->first = NULL;
+    list->last = NULL;
+  }
   list->length--;
   free(first);
 
@@ -1499,8 +1509,11 @@ int list_remove_destroy(list_t *list,
                         int (*cmp)(const void *, const void *),
                         void (*free_func)(void *)) {
   assert(list != NULL);
+  assert(free_func != NULL);
   void *result = list_remove(list, value, cmp);
-  free_func(result);
+  if (result != NULL) {
+    free_func(result);
+  }
   return 0;
 }
 
@@ -2149,7 +2162,7 @@ size_t hm_float_hash(const void *key) {
 
 size_t hm_double_hash(const void *key) {
   assert(key);
-  return hm_default_hash(key, sizeof(float));
+  return hm_default_hash(key, sizeof(double));
 }
 
 size_t hm_string_hash(const void *key) {
@@ -2162,9 +2175,17 @@ hm_t *hm_malloc(const size_t capacity,
                 int (*cmp)(const void *, const void *)) {
   assert(hash);
   assert(cmp);
+  assert(capacity > 0);
 
   hm_t *hm = malloc(sizeof(hm_t));
+  if (hm == NULL) {
+    return NULL;
+  }
   hm->entries = calloc(capacity, sizeof(hm_entry_t));
+  if (hm->entries == NULL) {
+    free(hm);
+    return NULL;
+  }
   hm->length = 0;
   hm->capacity = capacity;
   hm->hash = hash;
@@ -2215,7 +2236,6 @@ void *hm_get(const hm_t *hm, const void *key) {
 int hm_expand(hm_t *hm) {
   assert(hm);
   assert(hm->hash);
-  printf("expand!\n");
 
   // Allocate new hashmap array.
   const size_t new_capacity = hm->capacity * 2;
@@ -10395,6 +10415,7 @@ void umeyama(const float *X,
  * VOXEL
  ******************************************************************************/
 
+/** Initialize voxel with key `key` and zero out all points. */
 void voxel_setup(voxel_t *voxel, const int32_t key[3]) {
   assert(voxel);
   assert(key);
@@ -10412,6 +10433,7 @@ void voxel_setup(voxel_t *voxel, const int32_t key[3]) {
   voxel->length = 0;
 }
 
+/** Allocate heap memory for a voxel with key `key`. */
 voxel_t *voxel_malloc(const int32_t key[3]) {
   voxel_t *voxel = malloc(sizeof(voxel_t));
   voxel->points = calloc(VOXEL_MAX_POINTS * 3, sizeof(float));
@@ -10419,12 +10441,14 @@ voxel_t *voxel_malloc(const int32_t key[3]) {
   return voxel;
 }
 
+/** Free heap memory allocated for voxel. */
 void voxel_free(voxel_t *voxel) {
   assert(voxel);
   free(voxel->points);
   free(voxel);
 }
 
+/** Print voxel key and points to stdout. */
 void voxel_print(voxel_t *voxel) {
   assert(voxel);
 
@@ -10438,6 +10462,7 @@ void voxel_print(voxel_t *voxel) {
   }
 }
 
+/** Reset voxel to default state: key set to `-1` and all points zeroed. */
 void voxel_reset(voxel_t *voxel) {
   assert(voxel);
   assert(voxel->points != NULL);
@@ -10455,6 +10480,7 @@ void voxel_reset(voxel_t *voxel) {
   voxel->length = 0;
 }
 
+/** Copy voxel contents from `src` into `dst`. */
 void voxel_copy(const voxel_t *src, voxel_t *dst) {
   assert(src && dst);
   assert(src->points != NULL);
@@ -10469,6 +10495,7 @@ void voxel_copy(const voxel_t *src, voxel_t *dst) {
   dst->length = src->length;
 }
 
+/** Add point `p` to voxel if it has capacity remaining. */
 void voxel_add(voxel_t *voxel, const float p[3]) {
   if (voxel->length >= VOXEL_MAX_POINTS) {
     return;
@@ -10484,6 +10511,16 @@ typedef struct {
   uint32_t value;
 } voxel_kv_t;
 
+/**
+ * Radix sort `arr` of `n` key-value pairs in ascending key order using a
+ * least-significant-digit (LSD) radix sort. Each pass processes 8 bits of the
+ * 32-bit key (i.e. a radix of 256), so it requires at most 4 passes. The sort
+ * is stable, which is required by `voxel_grid_downsample()` since the original
+ * point indices stored in `voxel_kv_t.value` must be preserved.
+ *
+ * @param[in,out] arr Array of `n` key-value pairs to sort in place
+ * @param[in]     n   Number of elements in `arr`
+ */
 void voxel_radix_sort(voxel_kv_t *arr, const int n) {
   if (n <= 1)
     return;
@@ -10546,6 +10583,21 @@ void voxel_radix_sort(voxel_kv_t *arr, const int n) {
   free(temp);
 }
 
+/**
+ * Downsample a point cloud by grouping points into cubic voxels of edge
+ * length `voxel_size` and replacing each group with its centroid. Points are
+ * binned by hashing their voxel coordinates into a flattened 3D index, sorted
+ * with `voxel_radix_sort()`, and consecutive runs of identical indices are
+ * averaged into a single output point. Returns NULL if `voxel_size` is so
+ * small that the voxel grid index overflows 32 bits.
+ *
+ * @param[in]  points       Interleaved [x, y, z] array of `num_points` points
+ * @param[in]  num_points   Number of input points
+ * @param[in]  voxel_size   Edge length of each cubic voxel
+ * @param[out] output_count Number of output centroids
+ * @returns Heap-allocated interleaved [x, y, z] centroids, one per voxel
+ *          containing at least one point, or NULL on failure.
+ */
 float *voxel_grid_downsample(const float *points,
                              const int num_points,
                              const float voxel_size,

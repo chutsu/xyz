@@ -106,19 +106,53 @@ int test_darray_contains(void) {
 int test_darray_copy(void) {
   darray_t *test_darray = darray_new(sizeof(int), 100);
 
-  // set element in array
-  int *val = darray_new_element(test_darray);
-  *val = 99;
-  darray_set(test_darray, 0, val);
+  // Push elements into array
+  int *v[3];
+  for (int i = 0; i < 3; i++) {
+    v[i] = darray_new_element(test_darray);
+    *v[i] = (i + 1) * 100;
+    darray_push(test_darray, v[i]);
+  }
 
-  // test copy
+  // Copy array
   darray_t *array_copy = darray_copy(test_darray);
-  int *val_copy = darray_get(array_copy, 0);
-  MU_ASSERT(val != val_copy);
-  MU_ASSERT(intcmp2(val, val_copy) == 0);
+  MU_ASSERT(array_copy->end == 3);
+
+  // Every element must be deep-copied (distinct pointer, equal value)
+  for (int i = 0; i < 3; i++) {
+    int *val_copy = darray_get(array_copy, i);
+    MU_ASSERT(val_copy != NULL);
+    MU_ASSERT(val_copy != v[i]);
+    MU_ASSERT(intcmp2(v[i], val_copy) == 0);
+  }
 
   darray_clear_destroy(test_darray);
   darray_clear_destroy(array_copy);
+  return 0;
+}
+
+int test_darray_pop_empty(void) {
+  darray_t *array = darray_new(sizeof(int), 100);
+  MU_ASSERT(darray_pop(array) == NULL);
+  darray_clear_destroy(array);
+  return 0;
+}
+
+int test_darray_last_empty(void) {
+  darray_t *array = darray_new(sizeof(int), 100);
+  MU_ASSERT(darray_last(array) == NULL);
+  darray_clear_destroy(array);
+  return 0;
+}
+
+int test_darray_set_advances_end(void) {
+  darray_t *array = darray_new(sizeof(int), 100);
+  int *val = darray_new_element(array);
+  *val = 42;
+  darray_set(array, 0, val);
+  MU_ASSERT(array->end == 1);
+  MU_ASSERT(darray_get(array, 0) == val);
+  darray_clear_destroy(array);
   return 0;
 }
 
@@ -264,6 +298,7 @@ int test_list_push_pop(void) {
   MU_ASSERT(val == t2);
   MU_ASSERT(list->first->value == t1);
   MU_ASSERT(list->last->value == t1);
+  MU_ASSERT(list->first->next == NULL);
   MU_ASSERT(list->length == 1);
   free(val);
 
@@ -297,6 +332,36 @@ int test_list_shift(void) {
   val = list_shift(list);
   MU_ASSERT(val == t2);
   MU_ASSERT(list->length == 0);
+  MU_ASSERT(list->first == NULL);
+  MU_ASSERT(list->last == NULL);
+  free(val);
+
+  list_clear_free(list);
+  return 0;
+}
+
+int test_list_pop_front(void) {
+  // Setup
+  list_t *list = list_malloc();
+  char *t1 = string_malloc("test1 data");
+  char *t2 = string_malloc("test2 data");
+  list_push(list, t1);
+  list_push(list, t2);
+
+  // Pop front
+  char *val = list_pop_front(list);
+  MU_ASSERT(val == t1);
+  MU_ASSERT(list->length == 1);
+  MU_ASSERT(list->first == list->last);
+  MU_ASSERT(strcmp(list->last->value, t2) == 0);
+  free(val);
+
+  // Pop front last element
+  val = list_pop_front(list);
+  MU_ASSERT(val == t2);
+  MU_ASSERT(list->length == 0);
+  MU_ASSERT(list->first == NULL);
+  MU_ASSERT(list->last == NULL);
   free(val);
 
   list_clear_free(list);
@@ -393,6 +458,37 @@ int test_list_remove_destroy(void) {
   MU_ASSERT(strcmp(list->first->value, t1) == 0);
   list_clear_free(list);
 
+  return 0;
+}
+
+static int free_called_with_null = 0;
+
+static void free_assert_not_null(void *ptr) {
+  if (ptr == NULL) {
+    free_called_with_null = 1;
+  } else {
+    free(ptr);
+  }
+}
+
+int test_list_remove_destroy_not_found(void) {
+  // Setup
+  list_t *list = list_malloc();
+  char *t1 = string_malloc("test1 data");
+  list_push(list, t1);
+
+  char *missing = string_malloc("missing data");
+
+  // Try to remove a value that is not in the list
+  free_called_with_null = 0;
+  int result = list_remove_destroy(list, missing, strcmp2, free_assert_not_null);
+  MU_ASSERT(result == 0);
+  MU_ASSERT(free_called_with_null == 0);
+  MU_ASSERT(list->length == 1);
+  MU_ASSERT(strcmp(list->first->value, t1) == 0);
+
+  free(missing);
+  list_clear_free(list);
   return 0;
 }
 
@@ -1152,6 +1248,68 @@ int test_hm_set_and_get(void) {
     hm_free(hm, NULL, NULL);
   }
 
+  return 0;
+}
+
+int test_hm_double_hash(void) {
+  // Distinct doubles must hash to distinct values
+  double d1 = 1.0;
+  double d2 = 1.5;
+  double d3 = 2.0;
+  MU_ASSERT(hm_double_hash(&d1) != hm_double_hash(&d2));
+  MU_ASSERT(hm_double_hash(&d1) != hm_double_hash(&d3));
+  MU_ASSERT(hm_double_hash(&d2) != hm_double_hash(&d3));
+
+  // Full set/get round trip with doubles
+  const size_t hm_capacity = 10000;
+  hm_t *hm = hm_malloc(hm_capacity, hm_double_hash, double_cmp);
+
+  double keys[10];
+  int values[10];
+  for (int i = 0; i < 10; i++) {
+    keys[i] = (double) i + 0.5;
+    values[i] = i * 7;
+    hm_set(hm, &keys[i], &values[i]);
+  }
+  MU_ASSERT(hm->length == 10);
+
+  for (int i = 0; i < 10; i++) {
+    MU_ASSERT(*(int *) hm_get(hm, &keys[i]) == values[i]);
+  }
+
+  hm_free(hm, NULL, NULL);
+  return 0;
+}
+
+int test_hm_expand(void) {
+  const size_t hm_capacity = 4;
+  hm_t *hm = hm_malloc(hm_capacity, hm_int_hash, int_cmp);
+  MU_ASSERT(hm->capacity == hm_capacity);
+
+  // Insert enough entries to trigger expansion
+  int keys[32];
+  int values[32];
+  for (int i = 0; i < 32; i++) {
+    keys[i] = i;
+    values[i] = i * i;
+    hm_set(hm, &keys[i], &values[i]);
+  }
+
+  MU_ASSERT(hm->length == 32);
+  MU_ASSERT(hm->capacity > hm_capacity);
+
+  // All entries must be retrievable after expansion
+  for (int i = 0; i < 32; i++) {
+    MU_ASSERT(*(int *) hm_get(hm, &keys[i]) == values[i]);
+  }
+
+  // Overwriting an existing key must not grow the map
+  int overwritten_value = -1;
+  hm_set(hm, &keys[0], &overwritten_value);
+  MU_ASSERT(hm->length == 32);
+  MU_ASSERT(*(int *) hm_get(hm, &keys[0]) == -1);
+
+  hm_free(hm, NULL, NULL);
   return 0;
 }
 
@@ -7383,14 +7541,19 @@ void test_suite(void) {
   MU_ADD_TEST(test_darray_update);
   MU_ADD_TEST(test_darray_remove);
   MU_ADD_TEST(test_darray_expand_and_contract);
+  MU_ADD_TEST(test_darray_pop_empty);
+  MU_ADD_TEST(test_darray_last_empty);
+  MU_ADD_TEST(test_darray_set_advances_end);
 
   // LIST
   MU_ADD_TEST(test_list_malloc_and_free);
   MU_ADD_TEST(test_list_push_pop);
   MU_ADD_TEST(test_list_shift);
+  MU_ADD_TEST(test_list_pop_front);
   MU_ADD_TEST(test_list_unshift);
   MU_ADD_TEST(test_list_remove);
   MU_ADD_TEST(test_list_remove_destroy);
+  MU_ADD_TEST(test_list_remove_destroy_not_found);
 
   // RED-BLACK-TREE
   MU_ADD_TEST(test_rbt_node_malloc_and_free);
@@ -7417,6 +7580,8 @@ void test_suite(void) {
   // HASHMAP
   MU_ADD_TEST(test_hm_malloc_and_free);
   MU_ADD_TEST(test_hm_set_and_get);
+  MU_ADD_TEST(test_hm_double_hash);
+  MU_ADD_TEST(test_hm_expand);
 
   // NETWORK
   MU_ADD_TEST(test_tcp_server_setup);
