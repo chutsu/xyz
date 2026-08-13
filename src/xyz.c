@@ -1585,6 +1585,15 @@ void rbt_node_free(rbt_node_t *n) {
   free(n);
 }
 
+static void rbt_node_free_keys(rbt_node_t *n, free_func_t kfree) {
+  if (n == NULL) {
+    return;
+  }
+  rbt_node_free_keys(n->child[0], kfree);
+  rbt_node_free_keys(n->child[1], kfree);
+  kfree(n->key);
+}
+
 bool rbt_node_is_red(const rbt_node_t *n) {
   if (n == NULL) {
     return false;
@@ -1608,7 +1617,7 @@ rbt_node_t *rbt_node_max(rbt_node_t *n) {
 
 size_t rbt_node_height(const rbt_node_t *n) {
   if (n == NULL) {
-    return -1;
+    return 0;
   }
   return 1 + MAX(rbt_node_height(n->child[0]), rbt_node_height(n->child[1]));
 }
@@ -1721,7 +1730,7 @@ rbt_node_t *rbt_node_rotate(rbt_node_t *n, const bool dir) {
 rbt_node_t *rbt_node_move_red_left(rbt_node_t *n) {
   assert(n);
   rbt_node_flip_colors(n);
-  if (n && rbt_node_is_red(n->child[1]->child[0])) {
+  if (n->child[1] != NULL && rbt_node_is_red(n->child[1]->child[0])) {
     n->child[1] = rbt_node_rotate(n->child[1], 1);
     n = rbt_node_rotate(n, 0);
     rbt_node_flip_colors(n);
@@ -1732,7 +1741,7 @@ rbt_node_t *rbt_node_move_red_left(rbt_node_t *n) {
 rbt_node_t *rbt_node_move_red_right(rbt_node_t *n) {
   assert(n);
   rbt_node_flip_colors(n);
-  if (n && rbt_node_is_red(n->child[0]->child[0])) {
+  if (n->child[0] != NULL && rbt_node_is_red(n->child[0]->child[0])) {
     n = rbt_node_rotate(n, 1);
     rbt_node_flip_colors(n);
   }
@@ -2001,6 +2010,9 @@ rbt_t *rbt_malloc(cmp_t cmp) {
 }
 
 void rbt_free(rbt_t *rbt) {
+  if (rbt->kfree) {
+    rbt_node_free_keys(rbt->root, rbt->kfree);
+  }
   rbt_node_free(rbt->root);
   free(rbt);
 }

@@ -461,7 +461,7 @@ int test_rbt_node_height_size(void) {
   //     1   4
   //    / \
   //   0   2
-  MU_ASSERT(rbt_node_height(root) == 2);
+  MU_ASSERT(rbt_node_height(root) == 3);
   MU_ASSERT(rbt_node_size(root) == 5);
   rbt_node_free(root);
 
@@ -1008,9 +1008,6 @@ int test_rbt_sandbox(void) {
   arr_t *keys = arr_malloc(n);
   arr_t *vals = arr_malloc(n);
   rbt_keys_values(rbt, keys, vals);
-  for (size_t i = 0; i < n; ++i) {
-    free(keys->data[i]);
-  }
 
   // Clean up
   rbt_free(rbt);
@@ -5762,7 +5759,6 @@ void bundle_adjuster_free(bundle_adjuster_t *ba) {
   arr_t *vals = arr_malloc(n);
   rbt_keys_values(ba->points, keys, vals);
   for (int i = 0; i < n; ++i) {
-    free(keys->data[i]);
     free(vals->data[i]);
   }
   arr_free(keys);
