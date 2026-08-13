@@ -4006,8 +4006,10 @@ void vec_normalize(real_t *x, const size_t n) {
   assert(n > 0);
 
   const real_t norm = vec_norm(x, n);
-  for (size_t i = 0; i < n; i++) {
-    x[i] = x[i] / norm;
+  if (norm > 1e-12) {
+    for (size_t i = 0; i < n; i++) {
+      x[i] = x[i] / norm;
+    }
   }
 }
 
@@ -4081,9 +4083,11 @@ real_t vec3_norm(const real_t x[3]) {
  */
 void vec3_normalize(real_t x[3]) {
   const real_t n = vec3_norm(x);
-  x[0] = x[0] / n;
-  x[1] = x[1] / n;
-  x[2] = x[2] / n;
+  if (n > 1e-12) {
+    x[0] = x[0] / n;
+    x[1] = x[1] / n;
+    x[2] = x[2] / n;
+  }
 }
 
 /**
@@ -4204,7 +4208,7 @@ void dot3(const real_t *A,
           real_t *D) {
   real_t *AB = malloc(sizeof(real_t) * A_m * B_n);
   dot(A, A_m, A_n, B, B_m, B_n, AB);
-  dot(AB, A_m, B_m, C, C_m, C_n, D);
+  dot(AB, A_m, B_n, C, C_m, C_n, D);
   free(AB);
 }
 
@@ -4222,13 +4226,14 @@ void dot_XtAX(const real_t *X,
   assert(A != NULL);
   assert(Y != NULL);
   assert(X_m == A_m);
+  assert(A_n == X_m);
 
-  real_t *XtA = malloc(sizeof(real_t) * (X_m * A_m));
-  real_t *Xt = malloc(sizeof(real_t) * (X_m * X_n));
+  real_t *Xt = malloc(sizeof(real_t) * (X_n * X_m));
+  real_t *XtA = malloc(sizeof(real_t) * (X_n * A_n));
 
   mat_transpose(X, X_m, X_n, Xt);
   dot(Xt, X_n, X_m, A, A_m, A_n, XtA);
-  dot(XtA, X_m, A_m, Xt, X_n, X_m, Y);
+  dot(XtA, X_n, A_n, X, X_m, X_n, Y);
 
   free(Xt);
   free(XtA);
@@ -6540,14 +6545,14 @@ void rot2quat(const real_t C[3 * 3], real_t q[4]) {
     qx = (C21 - C12) / S;
     qy = (C02 - C20) / S;
     qz = (C10 - C01) / S;
-  } else if ((C00 > C11) && (C[0] > C22)) {
-    S = sqrt(1.0 + C[0] - C11 - C22) * 2; // S=4*qx
+  } else if ((C00 > C11) && (C00 > C22)) {
+    S = sqrt(1.0 + C00 - C11 - C22) * 2; // S=4*qx
     qw = (C21 - C12) / S;
     qx = 0.25 * S;
     qy = (C01 + C10) / S;
     qz = (C02 + C20) / S;
   } else if (C11 > C22) {
-    S = sqrt(1.0 + C11 - C[0] - C22) * 2; // S=4*qy
+    S = sqrt(1.0 + C11 - C00 - C22) * 2; // S=4*qy
     qw = (C02 - C20) / S;
     qx = (C01 + C10) / S;
     qy = 0.25 * S;
@@ -6774,15 +6779,19 @@ void quat_rmul(const real_t p[4], const real_t q[4], real_t r[4]) {
   assert(q != NULL);
   assert(r != NULL);
 
+  const real_t pw = p[0];
+  const real_t px = p[1];
+  const real_t py = p[2];
+  const real_t pz = p[3];
   const real_t qw = q[0];
   const real_t qx = q[1];
   const real_t qy = q[2];
   const real_t qz = q[3];
 
-  r[0] = qw * q[0] - qx * q[1] - qy * q[2] - qz * q[3];
-  r[1] = qx * q[0] + qw * q[1] + qz * q[2] - qy * q[3];
-  r[2] = qy * q[0] - qz * q[1] + qw * q[2] + qx * q[3];
-  r[3] = qz * q[0] + qy * q[1] - qx * q[2] + qw * q[3];
+  r[0] = pw * qw - px * qx - py * qy - pz * qz;
+  r[1] = pw * qx + px * qw + py * qz - pz * qy;
+  r[2] = pw * qy - px * qz + py * qw + pz * qx;
+  r[3] = pw * qz + px * qy - py * qx + pz * qw;
 }
 
 /**
