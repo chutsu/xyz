@@ -926,12 +926,6 @@ void gl_jet_colormap(const gl_float_t value,
  * GL-SHADER
  *****************************************************************************/
 
-// void gl_shader_cleanup(gl_shader_t *shader) {
-//   if (glIsProgram(shader->program_id) == GL_TRUE) {
-//     glDeleteProgram(shader->program_id);
-//   }
-// }
-
 /**
  * Compile `src` as a shader of the given `type`.
  * @returns the shader object ID on success, GL_FALSE on failure

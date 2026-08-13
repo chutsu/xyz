@@ -5206,65 +5206,31 @@ void __lapack_qr(real_t *A, int m, int n, real_t *R) {
   work = malloc(sizeof(real_t) * lwork);
 
   // Compute QR
+  info = 0;
 #if PRECISION == 1
   sgeqrf_(&m, &n, At, &lda, tau, work, &lwork, &info);
 #else
   dgeqrf_(&m, &n, At, &lda, tau, work, &lwork, &info);
 #endif
+  if (info != 0) {
+    free(At);
+    free(work);
+    free(tau);
+    FATAL("geqrf failed with info=%d", info);
+  }
   // mat_transpose(At, m, n, R);
 
   // Transpose result and zero lower triangular
-  for (size_t i = 0; i < m; i++) {
-    for (size_t j = 0; j < m; j++) {
+  const int k = (m < n) ? m : n;
+  for (size_t i = 0; i < (size_t) k; i++) {
+    for (size_t j = 0; j < (size_t) n; j++) {
       if (i <= j) {
-        R[(i * m) + j] = At[(j * m) + i];
+        R[(i * n) + j] = At[(j * m) + i];
       } else {
-        R[(i * m) + j] = 0;
+        R[(i * n) + j] = 0;
       }
     }
   }
-
-  // Recover matrix Q
-  // From the LAPACK documentation:
-  //
-  // The matrix Q is represented as a product of elementary reflectors
-  //
-  //   Q = H(1) H(2) . . . H(k), where k = min(m, n).
-  //
-  // Each H(i) has the form
-  //
-  //   H(i) = I - tau * v * v**T
-  //
-  // where tau is a real scalar, and v is a real vector with v(1:i-1) = 0 and
-  // v(i) = 1; v(i+1:m) is stored on exit in A(i+1:m,i), and tau in (i).
-  //
-  // Q = eye(6); % Initial
-  // v = [ 0 0 0 0 0 0];
-  // m = 6;
-  // for i = 1:4
-  //   v(1:i-1) = 0;
-  //   v(i) = 1;
-  //   v(i+1:m) = A(i+1:m,i);
-  //   A(i+1:m,i)
-  //   Q = Q*(eye(6) - tau(i)*v'*v);
-  // end
-  // real_t *Q = calloc(m * m, sizeof(real_t));
-  // real_t *v = calloc(m, sizeof(real_t));
-  // for (int i = 0; i < n; i++) {
-  //   for (int ii = 0; ii < i; i++) {
-  //     v[ii] = 0.0;
-  //   }
-  //   v[i] = 1.0;
-  //   for (int ii = i+1; ii < m; ii++) {
-  //     v[ii] = At[(i + 1) * m + i];
-  //   }
-
-  // }
-  // free(Q);
-  // free(v);
-
-  // print_matrix("R", R, m, n);
-  // print_vector("tau", tau, m);
 
   // Clean up
   free(At);
@@ -8598,10 +8564,23 @@ void rodrigues(const real_t w[3], real_t R[3 * 3]) {
  * Factorises `E` with SVD (E = U * S * V^T), enforces proper rotation frames
  * det(U) > 0 and det(V) > 0, then forms
  *
- *   R1 = U * W * V^T,  R2 = U * W^T * V^T,  t1 = U.col(2),  t2 = -t1
+ *   R1 = U * W * V^T,
+ *   R2 = U * W^T * V^T,
+ *   t1 = U.col(2),
+ *   t2 = -t1
  *
- * where W = [[0, -1, 0], [1, 0, 0], [0, 0, 1]]. The 4 hypotheses are written
- * to `R` and `t` as (R1, t1), (R1, t2), (R2, t1), (R2, t2).
+ * where
+ *
+ *   W = [[0, -1, 0],
+ *        [1, 0, 0],
+ *        [0, 0, 1]].
+ *
+ * The 4 hypotheses are written to `R` and `t` as
+ *
+ *   (R1, t1),
+ *   (R1, t2),
+ *   (R2, t1),
+ *   (R2, t2).
  */
 void decompose_essential_matrix(const real_t E[3 * 3],
                                 real_t R[4][3 * 3],

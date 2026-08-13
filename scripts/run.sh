@@ -39,7 +39,7 @@ run_script() {
 }
 
 # run_script note-fundamental_matrix.py
-run_script note-essential_matrix.py
+# run_script note-essential_matrix.py
 
 ###############################################################################
 # C
