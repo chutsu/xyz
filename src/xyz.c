@@ -9499,6 +9499,45 @@ int solvepnp(const real_t proj_params[4],
   return 0;
 }
 
+/**
+ * Epipolar distance:
+ *
+ *   r_i = (x'^T E x) / sqrt((E x)_0^2 + (E x)_1^2)
+ *
+ * Distance from point `x'` (hpts2) to the epipolar line `l' = E x` induced by
+ * point `x` (hpts1), given the essential matrix `E`. Each point in `hpts1` and
+ * `hpts2` is a homogeneous coordinate `[x, y, w]` stored row-major over `n`
+ * points.
+ */
+void epipolar_distance(const real_t E[3 * 3],
+                       const real_t *hpts1,
+                       const real_t *hpts2,
+                       const size_t n,
+                       real_t *dist) {
+  for (size_t i = 0; i < n; i++) {
+    const real_t x1 = hpts1[i * 3 + 0];
+    const real_t y1 = hpts1[i * 3 + 1];
+    const real_t w1 = hpts1[i * 3 + 2];
+    const real_t x2 = hpts2[i * 3 + 0];
+    const real_t y2 = hpts2[i * 3 + 1];
+    const real_t w2 = hpts2[i * 3 + 2];
+
+    // Ex1 = E * [x1, y1, w1]
+    const real_t Ex1[3] = {
+        E[0] * x1 + E[1] * y1 + E[2] * w1,
+        E[3] * x1 + E[4] * y1 + E[5] * w1,
+        E[6] * x1 + E[7] * y1 + E[8] * w1,
+    };
+
+    // numerator = x'^T (E x), denominator = ||l'|| over the first two coords
+    const real_t numerator = x2 * Ex1[0] + y2 * Ex1[1] + w2 * Ex1[2];
+    const real_t denominator = sqrt(Ex1[0] * Ex1[0] + Ex1[1] * Ex1[1]);
+
+    dist[i] = (denominator > 1e-12) ? numerator / denominator : 0.0;
+  }
+}
+
+
 /*******************************************************************************
  * APRILGRID
  ******************************************************************************/

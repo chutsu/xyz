@@ -1538,6 +1538,12 @@ real_t sampson_distance(const real_t E[3 * 3],
                         const real_t *pts2,
                         const int num_points);
 
+void epipolar_distance(const real_t E[3 * 3],
+                       const real_t *hpts1,
+                       const real_t *hpts2,
+                       const size_t n,
+                       real_t *dist);
+
 void linear_triangulation(const real_t P_i[3 * 4],
                           const real_t P_j[3 * 4],
                           const real_t z_i[2],
