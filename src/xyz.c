@@ -3002,6 +3002,11 @@ void zeros(real_t *A, const size_t m, const size_t n) {
 
 /**
  * Create skew-symmetric matrix `A` from a 3x1 vector `x`.
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section II-C2, Example II-C2, eq (10)]
  */
 void hat(const real_t x[3], real_t A[3 * 3]) {
   assert(x != NULL);
@@ -3025,6 +3030,11 @@ void hat(const real_t x[3], real_t A[3 * 3]) {
 
 /**
  * Opposite of the skew-symmetric matrix
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section II-C2, Example II-C2, eq (11)]
  */
 void vee(const real_t A[3 * 3], real_t x[3]) {
   assert(A != NULL);
@@ -6926,6 +6936,11 @@ void quat_transform(const real_t q[4], const real_t x[3], real_t y[3]) {
  *
  * where theta = ||phi||. This is the inverse of so3_log(). For theta ~ 0 a
  * second-order Taylor approximation is used to avoid cancellation.
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section II-D, Example II-D, eq (134)]
  */
 void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
   assert(phi != NULL);
@@ -6978,6 +6993,11 @@ void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
  * The special cases theta ~ 0 (where the limit is rvec = 1/2 * vee(C - C'))
  * and theta ~ pi (where sin(theta) ~ 0 and the axis is recovered from the
  * symmetric part, since C + I = 2 n n') are handled explicitly.
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section II-D, Example II-D, eq (135)]
  */
 void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
   assert(C != NULL);
@@ -7019,8 +7039,12 @@ void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
   // off-diagonals, which is well-conditioned here.
   const real_t d[3] = {0.5 * (C00 + 1.0), 0.5 * (C11 + 1.0), 0.5 * (C22 + 1.0)};
   int idx = 0;
-  if (d[1] > d[idx]) idx = 1;
-  if (d[2] > d[idx]) idx = 2;
+  if (d[1] > d[idx]) {
+    idx = 1;
+  }
+  if (d[2] > d[idx]) {
+    idx = 2;
+  }
 
   real_t n[3] = {0.0, 0.0, 0.0};
   n[idx] = sqrt(d[idx] > 0.0 ? d[idx] : 0.0);
@@ -7058,6 +7082,11 @@ void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
  *   so3_exp(phi + delta) ~= so3_exp(phi) * so3_exp(J_r(phi) * delta)
  *
  * for small `delta`. For theta ~ 0, J_r -> I.
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section B-C3, eq (143)]
  */
 void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]) {
   const real_t wx = phi[0];
@@ -7067,9 +7096,11 @@ void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]) {
 
   if (theta < 1e-6) {
     // Small angle: J_r ~= I - 1/2 * hat(phi)
-    J[0] = 1.0;       J[1] = 0.5 * wz;  J[2] = -0.5 * wy;
-    J[3] = -0.5 * wz; J[4] = 1.0;       J[5] = 0.5 * wx;
-    J[6] = 0.5 * wy;  J[7] = -0.5 * wx; J[8] = 1.0;
+    // clang-format off
+    J[0] =  1.0;      J[1] =  0.5 * wz;  J[2] = -0.5 * wy;
+    J[3] = -0.5 * wz; J[4] =  1.0;       J[5] = 0.5 * wx;
+    J[6] =  0.5 * wy; J[7] = -0.5 * wx;  J[8] = 1.0;
+    // clang-format on
     return;
   }
 
@@ -7096,6 +7127,11 @@ void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]) {
  *
  * Right-perturbs rotation matrix `C` by the Lie-algebra vector `alpha`,
  * i.e. composes `C` with the rotation `so3_exp(alpha)` on the right.
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section II-E, eq (25)]
  */
 void so3_box_plus(const real_t C[3 * 3],
                   const real_t alpha[3],
@@ -7113,6 +7149,11 @@ void so3_box_plus(const real_t C[3 * 3],
  * Returns the Lie-algebra vector `alpha` such that
  * `so3_box_plus(C_b, alpha) = C_a`, i.e. the perturbation that takes
  * rotation `C_b` to rotation `C_a`.
+ *
+ * Source:
+ * Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+ * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+ * [Section II-E, eq (26)]
  */
 void so3_box_minus(const real_t Ca[3 * 3],
                    const real_t Cb[3 * 3],
@@ -9537,6 +9578,15 @@ void epipolar_distance(const real_t E[3 * 3],
   }
 }
 
+int hedborg_essential_matrix(const real_t *pts_i,
+                             const real_t *pts_j,
+                             const int num_points,
+                             const int max_iters,
+                             const real_t tol,
+                             const real_t *R_init,
+                             const real_t *t_init) {
+  return 0;
+}
 
 /*******************************************************************************
  * APRILGRID

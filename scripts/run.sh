@@ -252,6 +252,7 @@ run_test() {
 # run_test test_xyz test_homography_pose
 # run_test test_xyz test_p3p_kneip
 # run_test test_xyz test_solvepnp
+run_test test_xyz test_hedborgh
 ## XYZ-APRILGRID
 # run_test test_xyz test_aprilgrid_malloc_and_free
 # run_test test_xyz test_aprilgrid_center

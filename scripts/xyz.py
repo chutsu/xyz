@@ -260,7 +260,14 @@ def full_rank(A):
 
 
 def hat(vec):
-  """Form skew-symmetric matrix from vector `vec`"""
+  """
+  Form skew-symmetric matrix from vector `vec`
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-C2, Example II-C2, eq (10)]
+  """
   assert vec.shape == (3,) or vec.shape == (3, 1)
 
   if vec.shape == (3,):
@@ -276,7 +283,14 @@ def hat(vec):
 
 
 def vee(A):
-  """Form skew symmetric matrix vector"""
+  """
+  Form skew symmetric matrix vector
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-C2, Example II-C2, eq (11)]
+  """
   assert A.shape == (3, 3)
   return np.array([A[2, 1], A[0, 2], A[1, 0]])
 
@@ -812,7 +826,14 @@ def fix_rotation_matrix(R):
 
 
 def Exp(phi):
-  """Exponential Map"""
+  """
+  Exponential Map
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-D, Example II-D, eq (134)]
+  """
   assert phi.shape == (3,) or phi.shape == (3, 1)
   if norm(phi) < 1e-3:
     C = eye(3) + hat(phi)
@@ -829,7 +850,14 @@ def Exp(phi):
 
 
 def Log(C):
-  """Logarithmic Map"""
+  """
+  Logarithmic Map
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-D, Example II-D, eq (135)]
+  """
   assert C.shape == (3, 3)
   # phi = acos((trace(C) - 1) / 2);
   # u = vee(C - C') / (2 * sin(phi));
@@ -889,7 +917,14 @@ def Jr(theta):
 
 
 def Jr_inv(theta):
-  """Inverse right jacobian"""
+  """
+  Inverse right jacobian
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section B-C3, eq (144)]
+  """
   theta_norm = norm(theta)
   theta_norm_sq = theta_norm * theta_norm
   theta_skew = hat(theta)
@@ -905,7 +940,14 @@ def Jr_inv(theta):
 
 
 def SO3_boxplus(C, alpha):
-  """Box plus"""
+  """
+  Box plus
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-E, eq (25)]
+  """
   assert C.shape == (3, 3)
   # C_updated = C [+] alpha
   C_updated = C @ Exp(alpha)
@@ -913,7 +955,14 @@ def SO3_boxplus(C, alpha):
 
 
 def SO3_boxminus(C_a, C_b):
-  """Box minus"""
+  """
+  Box minus
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-E, eq (26)]
+  """
   assert C_a.shape == (3, 3)
   assert C_b.shape == (3, 3)
   # alpha = C_a [-] C_b
@@ -922,7 +971,8 @@ def SO3_boxminus(C_a, C_b):
 
 
 def so3_exp(so3mat, tol=1e-6):
-  """Computes the matrix exponential of a matrix in so(3)
+  """
+  Computes the matrix exponential of a matrix in so(3)
 
   Example Input:
     so3mat = np.array([[ 0, -3,  2],
@@ -934,6 +984,11 @@ def so3_exp(so3mat, tol=1e-6):
     np.array([[-0.69492056,  0.71352099,  0.08929286],
               [-0.19200697, -0.30378504,  0.93319235],
               [ 0.69297817,  0.6313497 ,  0.34810748]])
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-D, Example II-D, eq (134)]
 
   """
   aa = vee(so3mat)
@@ -951,7 +1006,14 @@ def so3_exp(so3mat, tol=1e-6):
 
 
 def so3_Exp(w):
-  """Exponential Map R3 to so3"""
+  """
+  Exponential Map R3 to so3
+
+  Source:
+  Solà, Joan, Jeremie Deray, and Dinesh Atchuthan. "A micro Lie theory for
+  state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
+  [Section II-D, Example II-D, eq (134)]
+  """
   return so3_exp(hat(w))
 
 

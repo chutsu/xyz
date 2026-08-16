@@ -4088,6 +4088,11 @@ int test_solvepnp(void) {
   return 0;
 }
 
+int test_hedborg_essential_matrix(void) {
+
+  return 0;
+}
+
 /*******************************************************************************
  * APRILGRID
  ******************************************************************************/
@@ -7722,6 +7727,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_homography_find);
   MU_ADD_TEST(test_homography_pose);
   MU_ADD_TEST(test_solvepnp);
+  MU_ADD_TEST(test_hedborg_essential_matrix);
 
   // APRILGRID
   MU_ADD_TEST(test_aprilgrid_malloc_and_free);
