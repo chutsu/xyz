@@ -6920,7 +6920,7 @@ void quat_transform(const real_t q[4], const real_t x[3], real_t y[3]) {
 /**
  * Exponential Map
  */
-void lie_Exp(const real_t phi[3], real_t C[3 * 3]) {
+void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
   assert(phi != NULL);
   assert(C != NULL);
 
@@ -6932,9 +6932,13 @@ void lie_Exp(const real_t phi[3], real_t C[3 * 3]) {
   dot(phi_skew, 3, 3, phi_skew, 3, 3, phi_skew_sq);
 
   if (phi_norm < 1e-3) {
-    // C = eye(3) + hat(phi);
+    // C = eye(3) + hat(phi) + 1/2 * hat(phi)^2;
     eye(C, 3, 3);
     mat_add(C, phi_skew, C, 3, 3);
+    real_t A[3 * 3] = {0};
+    mat_copy(phi_skew_sq, 3, 3, A);
+    mat_scale(A, 3, 3, 0.5);
+    mat_add(C, A, C, 3, 3);
   } else {
     // C = eye(3);
     // C += (sin(phi_norm) / phi_norm) * phi_skew;
@@ -6956,60 +6960,222 @@ void lie_Exp(const real_t phi[3], real_t C[3 * 3]) {
 /**
  * Logarithmic Map
  */
-void lie_Log(const real_t C[3 * 3], real_t rvec[3]) {
+void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
   assert(C != NULL);
   assert(rvec != NULL);
 
   /**
-   * phi = acos((trace(C) - 1) / 2);
-   * vec = vee(C - C') / (2 * sin(phi));
-   * rvec = phi * vec;
+   * theta = acos((trace(C) - 1) / 2);
+   * rvec = theta * axis;
+   *
+   * The rotation axis is obtained from the skew-symmetric part
+   * vee(C - C') / (2 * sin(theta)). For theta ~ 0 the limit is
+   * rvec = 1/2 * vee(C - C'), and for theta ~ pi (where sin(theta) ~ 0)
+   * the axis is recovered from the symmetric part, since C + I = 2 n n'.
    */
-  const real_t tr = C[0] + C[4] + C[8];
-  const real_t phi = acos((tr - 1.0) / 2.0);
+  const real_t C00 = C[0];
+  const real_t C01 = C[1];
+  const real_t C02 = C[2];
+  const real_t C10 = C[3];
+  const real_t C11 = C[4];
+  const real_t C12 = C[5];
+  const real_t C20 = C[6];
+  const real_t C21 = C[7];
+  const real_t C22 = C[8];
 
-  real_t C_t[3 * 3] = {0};
-  real_t dC[3 * 3] = {0};
-  mat_transpose(C, 3, 3, C_t);
-  mat_sub(C, C_t, dC, 3, 3);
-  real_t u[3] = {0};
-  vee(dC, u);
-  const real_t s = 1.0 / (2 * sin(phi));
-  const real_t vec[3] = {s * u[0], s * u[1], s * u[2]};
+  real_t cos_theta = 0.5 * (C00 + C11 + C22 - 1.0);
+  cos_theta = cos_theta > 1.0 ? 1.0 : (cos_theta < -1.0 ? -1.0 : cos_theta);
+  const real_t theta = acos(cos_theta);
 
-  rvec[0] = phi * vec[0];
-  rvec[1] = phi * vec[1];
-  rvec[2] = phi * vec[2];
+  if (theta < 1e-6) {
+    // Small angle: rvec ~= 1/2 * vee(C - C')
+    rvec[0] = 0.5 * (C21 - C12);
+    rvec[1] = 0.5 * (C02 - C20);
+    rvec[2] = 0.5 * (C10 - C01);
+    return;
+  }
+
+  if (theta < M_PI - 1e-4) {
+    // rvec = theta / (2 * sin(theta)) * vee(C - C')
+    const real_t s = theta / (2.0 * sin(theta));
+    rvec[0] = s * (C21 - C12);
+    rvec[1] = s * (C02 - C20);
+    rvec[2] = s * (C10 - C01);
+    return;
+  }
+
+  // theta ~ pi: C + I = 2 n n' with n the rotation axis. Use the largest
+  // diagonal element to bootstrap the axis and recover the rest from the
+  // off-diagonals, which is well-conditioned here.
+  const real_t d[3] = {0.5 * (C00 + 1.0), 0.5 * (C11 + 1.0), 0.5 * (C22 + 1.0)};
+  int idx = 0;
+  if (d[1] > d[idx]) idx = 1;
+  if (d[2] > d[idx]) idx = 2;
+
+  real_t n[3] = {0.0, 0.0, 0.0};
+  n[idx] = sqrt(d[idx] > 0.0 ? d[idx] : 0.0);
+  if (idx == 0) {
+    n[1] = 0.25 * (C01 + C10) / n[0];
+    n[2] = 0.25 * (C02 + C20) / n[0];
+  } else if (idx == 1) {
+    n[0] = 0.25 * (C01 + C10) / n[1];
+    n[2] = 0.25 * (C12 + C21) / n[1];
+  } else {
+    n[0] = 0.25 * (C02 + C20) / n[2];
+    n[1] = 0.25 * (C12 + C21) / n[2];
+  }
+
+  const real_t n_norm = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+  if (n_norm > 1e-12) {
+    n[0] /= n_norm;
+    n[1] /= n_norm;
+    n[2] /= n_norm;
+  }
+
+  rvec[0] = theta * n[0];
+  rvec[1] = theta * n[1];
+  rvec[2] = theta * n[2];
 }
 
 /**
- * Box-plus operator:
+ * Right Jacobian of SO(3) at `phi`:
  *
- *   C_new = C [+] alpha
+ *   J_r(phi) = I - ((1 - cos(theta)) / theta^2) * hat(phi)
+ *                + ((theta - sin(theta)) / theta^3) * hat(phi)^2
  *
+ * where theta = ||phi||, used for right perturbations, i.e.
+ *
+ *   so3_exp(phi + delta) ~= so3_exp(phi) * so3_exp(J_r(phi) * delta)
+ *
+ * for small `delta`. For theta ~ 0, J_r -> I.
  */
-void box_plus(const real_t C[3 * 3],
-              const real_t alpha[3],
-              real_t C_new[3 * 3]) {
+void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]) {
+  const real_t wx = phi[0];
+  const real_t wy = phi[1];
+  const real_t wz = phi[2];
+  const real_t theta = sqrt(wx * wx + wy * wy + wz * wz);
+
+  if (theta < 1e-6) {
+    // Small angle: J_r ~= I - 1/2 * hat(phi)
+    J[0] = 1.0;       J[1] = 0.5 * wz;  J[2] = -0.5 * wy;
+    J[3] = -0.5 * wz; J[4] = 1.0;       J[5] = 0.5 * wx;
+    J[6] = 0.5 * wy;  J[7] = -0.5 * wx; J[8] = 1.0;
+    return;
+  }
+
+  const real_t a = (1.0 - cos(theta)) / (theta * theta);
+  const real_t b = (theta - sin(theta)) / (theta * theta * theta);
+  const real_t t2 = theta * theta;
+
+  // J = I - a * hat(phi) + b * hat(phi)^2
+  J[0] = 1.0 + b * (wx * wx - t2);
+  J[1] = a * wz + b * wx * wy;
+  J[2] = -a * wy + b * wx * wz;
+  J[3] = -a * wz + b * wx * wy;
+  J[4] = 1.0 + b * (wy * wy - t2);
+  J[5] = a * wx + b * wy * wz;
+  J[6] = a * wy + b * wx * wz;
+  J[7] = -a * wx + b * wy * wz;
+  J[8] = 1.0 + b * (wz * wz - t2);
+}
+
+/**
+ * Box-plus operator on SO(3):
+ *
+ *   C_new = C [+] alpha = C * so3_exp(alpha)
+ *
+ * Right-perturbs rotation matrix `C` by the Lie-algebra vector `alpha`,
+ * i.e. composes `C` with the rotation `so3_exp(alpha)` on the right.
+ */
+void so3_box_plus(const real_t C[3 * 3],
+                  const real_t alpha[3],
+                  real_t C_new[3 * 3]) {
   real_t dC[3 * 3] = {0};
-  lie_Exp(alpha, dC);
+  so3_exp(alpha, dC);
   dot(C, 3, 3, dC, 3, 3, C_new);
 }
 
 /**
- * Box-minus operator:
+ * Box-minus operator on SO(3):
  *
- *   alpha = C_a [-] C_b
+ *   alpha = C_a [-] C_b = so3_log(C_b' * C_a)
  *
+ * Returns the Lie-algebra vector `alpha` such that
+ * `so3_box_plus(C_b, alpha) = C_a`, i.e. the perturbation that takes
+ * rotation `C_b` to rotation `C_a`.
  */
-void box_minus(const real_t Ca[3 * 3],
-               const real_t Cb[3 * 3],
-               real_t alpha[3]) {
+void so3_box_minus(const real_t Ca[3 * 3],
+                   const real_t Cb[3 * 3],
+                   real_t alpha[3]) {
   real_t Cbt[3 * 3] = {0};
   real_t dC[3 * 3] = {0};
   mat_transpose(Cb, 3, 3, Cbt);
   dot(Cbt, 3, 3, Ca, 3, 3, dC);
-  lie_Log(dC, alpha);
+  so3_log(dC, alpha);
+}
+
+/** Build orthonormal basis [e1, e2] for the tangent space of S^2 at t. */
+void s2_tangent_basis(const real_t t[3], real_t e1[3], real_t e2[3]) {
+  // Form first basis vector e1
+  const real_t b[3] = {1.0, 0.0, 0.0};
+  vec3_cross(t, b, e1);
+  // -- Check if norm is too small
+  if (vec3_norm(e1) < 1e-8) {
+    const real_t b[3] = {0.0, 1.0, 0.0};
+    vec3_cross(t, b, e1);
+  }
+  // -- Normalize
+  vec3_normalize(e1);
+
+  // Form second basis vector e2
+  vec3_cross(t, e1, e2);
+  vec3_normalize(e2);
+}
+
+/** Exponential map on S^2 at t with tangent vector v (orthogonal to t). */
+void s2_exp_map(const real_t t[3], const real_t v[3], real_t out[3]) {
+  const real_t theta = vec3_norm(v);
+  if (theta < 1e-12) {
+    vec3_copy(t, out);
+    return;
+  }
+
+  // Exp_t(v) = cos(theta) * t + sin(theta) * (v / theta)
+  real_t tmp[3];
+  vec3_scale(v, sin(theta) / theta, tmp); // sin(theta) * (v / theta)
+  vec3_scale(t, cos(theta), out);         // cos(theta) * t
+  vec3_add(tmp, out, out);
+}
+
+/**
+ * Logarithmic map on S^2 at t: maps point p on the sphere to the tangent
+ * vector v at t such that s2_exp_map(t, v) = p.
+ */
+void s2_log_map(const real_t t[3], const real_t p[3], real_t v[3]) {
+  real_t cos_theta = vec3_dot(t, p);
+  cos_theta = cos_theta > 1.0 ? 1.0 : (cos_theta < -1.0 ? -1.0 : cos_theta);
+  const real_t theta = acos(cos_theta);
+
+  // Tangent plane projection: v = p - (t . p) * t
+  real_t tmp[3];
+  vec3_scale(t, cos_theta, tmp);
+  vec3_sub(p, tmp, v);
+
+  // theta ~ 0: the limit of theta / sin(theta) is 1, v is already correct.
+  if (theta < 1e-8) {
+    return;
+  }
+
+  // theta ~ pi (antipode): the geodesic direction is ambiguous, return zero.
+  if (theta > M_PI - 1e-8) {
+    v[0] = 0.0;
+    v[1] = 0.0;
+    v[2] = 0.0;
+    return;
+  }
+
+  // v = (theta / sin(theta)) * v
+  vec3_scale(v, theta / sin(theta), v);
 }
 
 /*******************************************************************************
@@ -13825,7 +13991,7 @@ void pcd_deskew(pcd_t *pcd,
   // w_WL = (Log(C_WL_km2' * C_WL_km1)) / dt
   real_t w_WL[3] = {0};
   DOT(C_WL_t_km2, 3, 3, C_WL_km1, 3, 3, dC);
-  lie_Log(dC, w_WL);
+  so3_log(dC, w_WL);
   vec_scale(w_WL, 3, 1.0 / dt);
 
   // Deskew point cloud
@@ -13842,7 +14008,7 @@ void pcd_deskew(pcd_t *pcd,
     const real_t w_WL_i[3] = {s_i * w_WL[0], s_i * w_WL[1], s_i * w_WL[2]};
 
     real_t dC[3 * 3] = {0};
-    lie_Exp(w_WL_i, dC);
+    so3_exp(w_WL_i, dC);
     DOT(dC, 3, 3, p, 3, 1, p_new);
     vec_add(p_new, v_WL_i, p, 3);
   }

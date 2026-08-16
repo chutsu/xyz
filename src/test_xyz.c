@@ -2641,13 +2641,13 @@ int test_quat2rot(void) {
  * LIE
  ******************************************************************************/
 
-int test_lie_Exp_Log(void) {
+int test_so3_exp_log(void) {
   const real_t phi[3] = {0.1, 0.2, 0.3};
   real_t C[3 * 3] = {0};
-  lie_Exp(phi, C);
+  so3_exp(phi, C);
 
   real_t rvec[3] = {0};
-  lie_Log(C, rvec);
+  so3_log(C, rvec);
 
   // print_vector("phi", phi, 3);
   // printf("\n");
@@ -7666,7 +7666,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_quat2rot);
 
   // LIE
-  MU_ADD_TEST(test_lie_Exp_Log);
+  MU_ADD_TEST(test_so3_exp_log);
 
   // GNUPLOT
 #if CI_MODE == 0

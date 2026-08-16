@@ -1201,12 +1201,20 @@ void quat_transform(const real_t q[4], const real_t x[3], real_t y[3]);
  * LIE
  ******************************************************************************/
 
-void lie_Exp(const real_t phi[3], real_t C[3 * 3]);
-void lie_Log(const real_t C[3 * 3], real_t rvec[3]);
-void box_plus(const real_t C[3 * 3],
-              const real_t alpha[3],
-              real_t C_new[3 * 3]);
-void box_minus(const real_t Ca[3 * 3], const real_t Cb[3 * 3], real_t alpha[3]);
+void so3_exp(const real_t phi[3], real_t C[3 * 3]);
+void so3_log(const real_t C[3 * 3], real_t rvec[3]);
+void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]);
+void so3_box_plus(const real_t C[3 * 3],
+                  const real_t alpha[3],
+                  real_t C_new[3 * 3]);
+void so3_box_minus(const real_t Ca[3 * 3],
+                   const real_t Cb[3 * 3],
+                   real_t alpha[3]);
+
+void s2_tangent_basis(const real_t t[3], real_t e1[3], real_t e2[3]);
+void s2_exp_map(const real_t t[3], const real_t v[3], real_t out[3]);
+void s2_log_map(const real_t t[3], const real_t p[3], real_t v[3]);
+
 
 /*******************************************************************************
  * GNUPLOT

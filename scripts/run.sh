@@ -211,7 +211,7 @@ run_test() {
 # run_test test_xyz test_quat2euler
 # run_test test_xyz test_quat2rot
 ## XYZ-LIE
-# run_test test_xyz test_lie_Exp_Log
+# run_test test_xyz test_so3_exp_log
 ## XYZ-GNUPLOT
 # run_test test_xyz test_gnuplot_xyplot
 # run_test test_xyz test_gnuplot_multiplot
