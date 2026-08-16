@@ -286,7 +286,9 @@ typedef struct gl_camera_t {
 void gl_camera_setup(gl_camera_t *camera,
                      int *screen_width,
                      int *screen_height);
-void gl_camera_update(gl_camera_t *camera);
+void gl_camera_update(gl_camera_t *camera,
+                      const int window_width,
+                      const int window_height);
 void gl_camera_rotate(gl_camera_t *camera,
                       const float factor,
                       const float dx,
@@ -306,19 +308,40 @@ void gl_camera_zoom(gl_camera_t *camera,
 
 typedef struct gui_t {
   GLFWwindow *window;
-  float fps_limit;
-  float last_time;
-  float last_frame;
 
-  int *key_q;
-  int *key_w;
-  int *key_a;
-  int *key_s;
-  int *key_d;
-  int *key_n;
-  int *key_esc;
-  int *key_equal;
-  int *key_minus;
+  char window_title[100];
+  int window_loop;
+  int window_width;
+  int window_height;
+
+  float fps_limit;
+  float frame_dt;
+  float frame_last;
+
+  gl_camera_t camera;
+  float camera_speed;
+
+  float mouse_sensitivity;
+  int mouse_button_left;
+  int mouse_button_right;
+  double cursor_x;
+  double cursor_y;
+  double cursor_dx;
+  double cursor_dy;
+  double cursor_last_x;
+  double cursor_last_y;
+  int cursor_is_dragging;
+  int ui_engaged;
+
+  int key_q;
+  int key_w;
+  int key_a;
+  int key_s;
+  int key_d;
+  int key_n;
+  int key_esc;
+  int key_equal;
+  int key_minus;
 } gui_t;
 
 gui_t *gui_malloc(const char *window_title,
@@ -343,7 +366,7 @@ typedef struct gl_rect_t {
 
 gl_rect_t *gl_rect_malloc(const gl_bounds_t bounds, const gl_color_t color);
 void gl_rect_free(gl_rect_t *rect);
-void draw_rect(gl_rect_t *rect);
+void draw_rect(gui_t *gui, gl_rect_t *rect);
 
 // POINTS 3D /////////////////////////////////////////////////////////////////
 
@@ -365,7 +388,7 @@ void gl_points3d_update(gl_points3d_t *points,
                         gl_float_t *points_data,
                         size_t num_points,
                         const gl_float_t point_size);
-void draw_points3d(gl_points3d_t *points);
+void draw_points3d(gui_t *gui, gl_points3d_t *points);
 
 // LINE 3D ///////////////////////////////////////////////////////////////////
 
@@ -388,7 +411,7 @@ void gl_line3d_update(gl_line3d_t *line3d,
                       const gl_float_t *data,
                       const size_t num_points);
 void gl_line3d_free(gl_line3d_t *line);
-void draw_line3d(gl_line3d_t *line);
+void draw_line3d(gui_t *gui, gl_line3d_t *line);
 
 // CUBE 3D ///////////////////////////////////////////////////////////////////
 
@@ -400,7 +423,8 @@ typedef struct gl_cube3d_t {
 
 gl_cube3d_t *gl_cube3d_malloc(void);
 void gl_cube3d_free(gl_cube3d_t *cube);
-void draw_cube(gl_cube3d_t *cube,
+void draw_cube(gui_t *gui,
+               gl_cube3d_t *cube,
                const gl_float_t T[4 * 4],
                const gl_float_t size,
                const gl_color_t color);
@@ -465,7 +489,7 @@ gl_frustum_t *gl_frustum_malloc(const gl_float_t hfov,
                                 const gl_color_t color,
                                 const gl_float_t lw);
 void gl_frustum_free(gl_frustum_t *frustum);
-void draw_frustum(gl_frustum_t *frustum);
+void draw_frustum(gui_t *gui, gl_frustum_t *frustum);
 
 // AXES 3D ///////////////////////////////////////////////////////////////////
 
@@ -483,7 +507,7 @@ gl_axes3d_t *gl_axes3d_malloc(const gl_float_t T[4 * 4],
                               const gl_float_t size,
                               const gl_float_t lw);
 void gl_axes3d_free(gl_axes3d_t *axes);
-void draw_axes3d(gl_axes3d_t *axes);
+void draw_axes3d(gui_t *gui, gl_axes3d_t *axes);
 
 // GRID 3D ///////////////////////////////////////////////////////////////////
 
@@ -503,7 +527,7 @@ gl_grid3d_t *gl_grid3d_malloc(const gl_int_t num_rows,
                               const gl_color_t color,
                               const gl_float_t lw);
 void gl_grid3d_free(gl_grid3d_t *grid);
-void draw_grid3d(gl_grid3d_t *grid);
+void draw_grid3d(gui_t *gui, gl_grid3d_t *grid);
 
 // IMAGE /////////////////////////////////////////////////////////////////////
 
@@ -530,7 +554,7 @@ gl_image_t *gl_image_malloc(const int x,
                             const int h,
                             const int c);
 void gl_image_free(gl_image_t *image);
-void draw_image(gl_image_t *image);
+void draw_image(gui_t *gui, gl_image_t *image);
 
 // TEXT //////////////////////////////////////////////////////////////////////
 
@@ -548,7 +572,8 @@ void text_width_height(gl_text_t *text,
                        const char *s,
                        gl_float_t *w,
                        gl_float_t *h);
-void draw_text(gl_text_t *text,
+void draw_text(gui_t *gui,
+               gl_text_t *text,
                const char *s,
                const float x,
                const float y,

@@ -530,7 +530,7 @@ int test_gl_rect(void) {
 
   // Render
   while (gui_poll(gui)) {
-    draw_rect(rect);
+    draw_rect(gui, rect);
     gui_update(gui);
   }
 
@@ -567,7 +567,7 @@ int test_gl_points3d(void) {
 
   // Render
   while (gui_poll(gui)) {
-    draw_points3d(points3d);
+    draw_points3d(gui, points3d);
     gui_update(gui);
   }
 
@@ -604,7 +604,7 @@ int test_gl_line3d(void) {
 
   // Draw
   while (gui_poll(gui)) {
-    draw_line3d(line3d);
+    draw_line3d(gui, line3d);
     gui_update(gui);
   }
 
@@ -636,7 +636,7 @@ int test_gl_cube3d(void) {
 
   // Render
   while (gui_poll(gui)) {
-    draw_cube(cube, cube_T, cube_size, cube_color);
+    draw_cube(gui, cube, cube_T, cube_size, cube_color);
     gui_update(gui);
   }
 
@@ -663,7 +663,7 @@ int test_gl_axes3d(void) {
 
   // Render
   while (gui_poll(gui)) {
-    draw_axes3d(axes);
+    draw_axes3d(gui, axes);
     gui_update(gui);
   }
 
@@ -691,7 +691,7 @@ int test_gl_grid3d(void) {
 
   // Render
   while (gui_poll(gui)) {
-    draw_grid3d(grid);
+    draw_grid3d(gui, grid);
     gui_update(gui);
   }
 
@@ -724,7 +724,7 @@ int test_gl_image(void) {
 
   // Render
   while (gui_poll(gui)) {
-    draw_image(image);
+    draw_image(gui, image);
     gui_update(gui);
   }
 
@@ -759,7 +759,7 @@ int test_gl_text(void) {
     // Center text and draw
     const int text_x = window_width / 2.0 - text_w / 2.0;
     const int text_y = window_height / 2.0 - text_h / 2.0;
-    draw_text(text, text_str, text_x, text_y, text_color);
+    draw_text(gui, text, text_str, text_x, text_y, text_color);
 
     gui_update(gui);
   }

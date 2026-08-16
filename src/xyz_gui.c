@@ -8,39 +8,6 @@
 #include "stb_image_write.h"
 #endif
 
-// GLOBAL VARIABLES
-char _window_title[100] = {0};
-int _window_loop = 1;
-int _window_width = 0;
-int _window_height = 0;
-float _frame_dt = 0.0f;
-float _frame_last = 0.0f;
-
-gl_camera_t _camera;
-float _camera_speed = 0.001f;
-
-float _mouse_sensitivity = 0.02f;
-int _mouse_button_left = 0;
-int _mouse_button_right = 0;
-double _cursor_x = 0.0;
-double _cursor_y = 0.0;
-double _cursor_dx = 0.0;
-double _cursor_dy = 0.0;
-double _cursor_last_x = 0.0;
-double _cursor_last_y = 0.0;
-int _cursor_is_dragging = 0;
-int _ui_engaged = 0;
-
-int _key_q = 0;
-int _key_w = 0;
-int _key_a = 0;
-int _key_s = 0;
-int _key_d = 0;
-int _key_n = 0;
-int _key_esc = 0;
-int _key_equal = 0;
-int _key_minus = 0;
-
 /******************************************************************************
  * OPENGL UTILS
  *****************************************************************************/
@@ -1243,14 +1210,16 @@ void gl_camera_setup(gl_camera_t *camera,
   camera->near = 0.01f;
   camera->far = 500.0f;
 
-  gl_camera_update(camera);
+  gl_camera_update(camera, *window_width, *window_height);
 }
 
 /**
  * Recompute the camera basis vectors (front, right, up) and update
  * the view and projection matrices for the active view mode.
  */
-void gl_camera_update(gl_camera_t *camera) {
+void gl_camera_update(gl_camera_t *camera,
+                      const int window_width,
+                      const int window_height) {
   assert(camera);
 
   // Front vector
@@ -1268,7 +1237,7 @@ void gl_camera_update(gl_camera_t *camera) {
   gl_normalize(camera->up, 3);
 
   // Projection matrix
-  const float aspect = (float) _window_width / _window_height;
+  const float aspect = (float) window_width / window_height;
   gl_perspective(camera->fov, aspect, camera->near, camera->far, camera->P);
 
   // View matrix (Orbit mode)
@@ -1347,8 +1316,8 @@ void gl_camera_pan(gl_camera_t *camera,
                    const float dy) {
   assert(camera);
 
-  // camera->focal -= (dy * _mouse_sensitivity) * camera->front;
-  // camera->focal += (dx * _mouse_sensitivity) * camera->right;
+  // camera->focal -= (dy * factor) * camera->front;
+  // camera->focal += (dx * factor) * camera->right;
   const gl_float_t dx_scaled = dx * factor;
   const gl_float_t dy_scaled = dy * factor;
   gl_float_t front[3] = {camera->front[0], camera->front[1], camera->front[2]};
@@ -1393,8 +1362,11 @@ void window_callback(GLFWwindow *window, int width, int height) {
   assert(width > 0);
   assert(height > 0);
 
-  _window_width = width;
-  _window_height = height;
+  gui_t *gui = glfwGetWindowUserPointer(window);
+  assert(gui);
+
+  gui->window_width = width;
+  gui->window_height = height;
 
   // Maintain aspect ratio
   const float aspect = 16.0f / 9.0f;
@@ -1418,122 +1390,132 @@ void window_callback(GLFWwindow *window, int width, int height) {
  * Poll keyboard and mouse state for `window` and update the camera
  * and motion flags accordingly.
  */
-void gui_process_input(GLFWwindow *window) {
-  assert(window);
+void gui_process_input(gui_t *gui) {
+  assert(gui);
+  GLFWwindow *window = gui->window;
 
   // Handle keyboard events
   // -- Key press
-  _key_esc = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
-  _key_q = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
-  _key_w = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
-  _key_a = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
-  _key_s = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
-  _key_d = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
-  _key_n = glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS;
-  _key_equal = glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS;
-  _key_minus = glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS;
-  if (_key_esc || _key_q) {
-    _window_loop = 0;
+  gui->key_esc = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+  gui->key_q = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
+  gui->key_w = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
+  gui->key_a = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
+  gui->key_s = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+  gui->key_d = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
+  gui->key_n = glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS;
+  gui->key_equal = glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS;
+  gui->key_minus = glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS;
+  if (gui->key_esc || gui->key_q) {
+    gui->window_loop = 0;
   }
 
   // -- FPS MODE
-  if (_camera.view_mode == FPS) {
-    if (_key_w) {
-      _camera.position[0] += _camera.front[0] * _camera_speed * _frame_dt;
-      _camera.position[1] += _camera.front[1] * _camera_speed * _frame_dt;
-      _camera.position[2] += _camera.front[2] * _camera_speed * _frame_dt;
-    } else if (_key_s) {
-      _camera.position[0] -= _camera.front[0] * _camera_speed * _frame_dt;
-      _camera.position[1] -= _camera.front[1] * _camera_speed * _frame_dt;
-      _camera.position[2] -= _camera.front[2] * _camera_speed * _frame_dt;
-    } else if (_key_a) {
+  if (gui->camera.view_mode == FPS) {
+    if (gui->key_w) {
+      gui->camera.position[0] +=
+          gui->camera.front[0] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[1] +=
+          gui->camera.front[1] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[2] +=
+          gui->camera.front[2] * gui->camera_speed * gui->frame_dt;
+    } else if (gui->key_s) {
+      gui->camera.position[0] -=
+          gui->camera.front[0] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[1] -=
+          gui->camera.front[1] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[2] -=
+          gui->camera.front[2] * gui->camera_speed * gui->frame_dt;
+    } else if (gui->key_a) {
       gl_float_t camera_left[3] = {0};
-      gl_vec3_cross(_camera.front, _camera.up, camera_left);
+      gl_vec3_cross(gui->camera.front, gui->camera.up, camera_left);
       gl_normalize(camera_left, 3);
-      _camera.position[0] -= camera_left[0] * _camera_speed * _frame_dt;
-      _camera.position[1] -= camera_left[1] * _camera_speed * _frame_dt;
-      _camera.position[2] -= camera_left[2] * _camera_speed * _frame_dt;
-    } else if (_key_d) {
+      gui->camera.position[0] -= camera_left[0] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[1] -= camera_left[1] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[2] -= camera_left[2] * gui->camera_speed * gui->frame_dt;
+    } else if (gui->key_d) {
       gl_float_t camera_left[3] = {0};
-      gl_vec3_cross(_camera.front, _camera.up, camera_left);
+      gl_vec3_cross(gui->camera.front, gui->camera.up, camera_left);
       gl_normalize(camera_left, 3);
-      _camera.position[0] += camera_left[0] * _camera_speed * _frame_dt;
-      _camera.position[1] += camera_left[1] * _camera_speed * _frame_dt;
-      _camera.position[2] += camera_left[2] * _camera_speed * _frame_dt;
-    } else if (_key_equal) {
-      gl_camera_zoom(&_camera, 1.0, 0, _camera_speed * _frame_dt);
-    } else if (_key_minus) {
-      gl_camera_zoom(&_camera, 1.0, 0, -_camera_speed * _frame_dt);
+      gui->camera.position[0] += camera_left[0] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[1] += camera_left[1] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[2] += camera_left[2] * gui->camera_speed * gui->frame_dt;
+    } else if (gui->key_equal) {
+      gl_camera_zoom(&gui->camera, 1.0, 0, gui->camera_speed * gui->frame_dt);
+    } else if (gui->key_minus) {
+      gl_camera_zoom(&gui->camera, 1.0, 0, -gui->camera_speed * gui->frame_dt);
     }
   }
 
   // -- ORBIT MODE
-  if (_camera.view_mode == ORBIT) {
-    if (_key_w) {
-      _camera.pitch += 0.01;
-      _camera.pitch = (_camera.pitch >= M_PI) ? M_PI : _camera.pitch;
-      _camera.pitch = (_camera.pitch <= 0.0f) ? 0.0f : _camera.pitch;
-    } else if (_key_s) {
-      _camera.pitch -= 0.01;
-      _camera.pitch = (_camera.pitch >= M_PI) ? M_PI : _camera.pitch;
-      _camera.pitch = (_camera.pitch <= 0.0f) ? 0.0f : _camera.pitch;
-    } else if (_key_a) {
-      _camera.yaw -= 0.01;
-      _camera.yaw = (_camera.yaw >= M_PI) ? M_PI : _camera.yaw;
-      _camera.yaw = (_camera.yaw <= -M_PI) ? -M_PI : _camera.yaw;
-    } else if (_key_d) {
-      _camera.yaw += 0.01;
-      _camera.yaw = (_camera.yaw >= M_PI) ? M_PI : _camera.yaw;
-      _camera.yaw = (_camera.yaw <= -M_PI) ? -M_PI : _camera.yaw;
-    } else if (_key_equal) {
-      _camera.radius += 0.1;
-      _camera.radius = (_camera.radius <= 0.01) ? 0.01 : _camera.radius;
-    } else if (_key_minus) {
-      _camera.radius -= 0.1;
-      _camera.radius = (_camera.radius <= 0.01) ? 0.01 : _camera.radius;
+  if (gui->camera.view_mode == ORBIT) {
+    if (gui->key_w) {
+      gui->camera.pitch += 0.01;
+      gui->camera.pitch = (gui->camera.pitch >= M_PI) ? M_PI : gui->camera.pitch;
+      gui->camera.pitch = (gui->camera.pitch <= 0.0f) ? 0.0f : gui->camera.pitch;
+    } else if (gui->key_s) {
+      gui->camera.pitch -= 0.01;
+      gui->camera.pitch = (gui->camera.pitch >= M_PI) ? M_PI : gui->camera.pitch;
+      gui->camera.pitch = (gui->camera.pitch <= 0.0f) ? 0.0f : gui->camera.pitch;
+    } else if (gui->key_a) {
+      gui->camera.yaw -= 0.01;
+      gui->camera.yaw = (gui->camera.yaw >= M_PI) ? M_PI : gui->camera.yaw;
+      gui->camera.yaw = (gui->camera.yaw <= -M_PI) ? -M_PI : gui->camera.yaw;
+    } else if (gui->key_d) {
+      gui->camera.yaw += 0.01;
+      gui->camera.yaw = (gui->camera.yaw >= M_PI) ? M_PI : gui->camera.yaw;
+      gui->camera.yaw = (gui->camera.yaw <= -M_PI) ? -M_PI : gui->camera.yaw;
+    } else if (gui->key_equal) {
+      gui->camera.radius += 0.1;
+      gui->camera.radius = (gui->camera.radius <= 0.01) ? 0.01 : gui->camera.radius;
+    } else if (gui->key_minus) {
+      gui->camera.radius -= 0.1;
+      gui->camera.radius = (gui->camera.radius <= 0.01) ? 0.01 : gui->camera.radius;
     }
   }
 
   // Handle mouse events
   // -- Mouse button press
-  _mouse_button_left = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-  _mouse_button_right = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT);
-  if (_mouse_button_left == GLFW_PRESS || _mouse_button_right == GLFW_PRESS) {
-    _cursor_is_dragging = 1;
+  gui->mouse_button_left = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+  gui->mouse_button_right = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT);
+  if (gui->mouse_button_left == GLFW_PRESS ||
+      gui->mouse_button_right == GLFW_PRESS) {
+    gui->cursor_is_dragging = 1;
   } else {
-    _cursor_is_dragging = 0;
-    _ui_engaged = 0;
+    gui->cursor_is_dragging = 0;
+    gui->ui_engaged = 0;
   }
 
   // -- Mouse cursor position
-  glfwGetCursorPos(window, &_cursor_x, &_cursor_y);
-  if (_cursor_is_dragging) {
-    _cursor_dx = _cursor_x - _cursor_last_x;
-    _cursor_dy = _cursor_y - _cursor_last_y;
-    _cursor_last_x = _cursor_x;
-    _cursor_last_y = _cursor_y;
+  glfwGetCursorPos(window, &gui->cursor_x, &gui->cursor_y);
+  if (gui->cursor_is_dragging) {
+    gui->cursor_dx = gui->cursor_x - gui->cursor_last_x;
+    gui->cursor_dy = gui->cursor_y - gui->cursor_last_y;
+    gui->cursor_last_x = gui->cursor_x;
+    gui->cursor_last_y = gui->cursor_y;
   } else {
-    _cursor_last_x = _cursor_x;
-    _cursor_last_y = _cursor_y;
+    gui->cursor_last_x = gui->cursor_x;
+    gui->cursor_last_y = gui->cursor_y;
   }
 
   // Check if UI element has been selected
-  if (_ui_engaged) {
+  if (gui->ui_engaged) {
     return;
   }
 
   // Rotate camera (left-click drag)
-  if (_mouse_button_left == GLFW_PRESS) {
-    gl_camera_rotate(&_camera, _mouse_sensitivity, _cursor_dx, _cursor_dy);
+  if (gui->mouse_button_left == GLFW_PRESS) {
+    gl_camera_rotate(&gui->camera, gui->mouse_sensitivity, gui->cursor_dx,
+                     gui->cursor_dy);
   }
 
   // Pan camera (right-click drag)
-  if (_mouse_button_right == GLFW_PRESS) {
-    gl_camera_pan(&_camera, _mouse_sensitivity, _cursor_dx, _cursor_dy);
+  if (gui->mouse_button_right == GLFW_PRESS) {
+    gl_camera_pan(&gui->camera, gui->mouse_sensitivity, gui->cursor_dx,
+                  gui->cursor_dy);
   }
 
   // Update camera
-  gl_camera_update(&_camera);
+  gl_camera_update(&gui->camera, gui->window_width, gui->window_height);
 }
 
 /**
@@ -1548,26 +1530,19 @@ gui_t *gui_malloc(const char *window_title,
   assert(window_width);
   assert(window_height);
 
-  _window_loop = 1;
   gui_t *gui = malloc(sizeof(gui_t));
   gui->window = NULL;
   gui->fps_limit = 1.0 / 60.0;
-  gui->last_time = 0;
-  gui->last_frame = 0;
+  gui->frame_dt = 0.0f;
+  gui->frame_last = 0.0f;
+  gui->camera_speed = 0.001f;
+  gui->mouse_sensitivity = 0.02f;
+  gui->ui_engaged = 0;
 
-  // gui->key_q = &_key_q;
-  // gui->key_w = &_key_w;
-  // gui->key_a = &_key_a;
-  // gui->key_s = &_key_s;
-  // gui->key_d = &_key_d;
-  gui->key_n = &_key_n;
-  // gui->key_esc = &_key_esc;
-  // gui->key_equal = &_key_equal;
-  // gui->key_minus = &_key_minus;
-
-  strcpy(_window_title, window_title);
-  _window_width = window_width;
-  _window_height = window_height;
+  strcpy(gui->window_title, window_title);
+  gui->window_width = window_width;
+  gui->window_height = window_height;
+  gui->window_loop = 1;
 
   // GLFW
   if (!glfwInit()) {
@@ -1580,9 +1555,9 @@ gui_t *gui_malloc(const char *window_title,
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  gui->window = glfwCreateWindow(_window_width,
-                                 _window_height,
-                                 _window_title,
+  gui->window = glfwCreateWindow(gui->window_width,
+                                 gui->window_height,
+                                 gui->window_title,
                                  NULL,
                                  NULL);
   if (!gui->window) {
@@ -1592,6 +1567,7 @@ gui_t *gui_malloc(const char *window_title,
   }
   glfwMakeContextCurrent(gui->window);
   glfwSetWindowSizeCallback(gui->window, window_callback);
+  glfwSetWindowUserPointer(gui->window, gui);
   glfwSetInputMode(gui->window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
   // GLAD
@@ -1617,16 +1593,16 @@ gui_t *gui_malloc(const char *window_title,
   assert(glIsEnabled(GL_BLEND));
 
   // Camera
-  gl_camera_setup(&_camera, &_window_width, &_window_height);
-  _camera.position[0] = 0.0f;
-  _camera.position[1] = 4.0f;
-  _camera.position[2] = 5.0f;
-  // _camera.position[1] = 200.0f;
-  // _camera.position[2] = 200.0f;
-  _mouse_sensitivity = 0.02f;
+  gl_camera_setup(&gui->camera, &gui->window_width, &gui->window_height);
+  gui->camera.position[0] = 0.0f;
+  gui->camera.position[1] = 4.0f;
+  gui->camera.position[2] = 5.0f;
+  // gui->camera.position[1] = 200.0f;
+  // gui->camera.position[2] = 200.0f;
+  gui->mouse_sensitivity = 0.02f;
 
   // UI event
-  _ui_engaged = 0;
+  gui->ui_engaged = 0;
 
   // GUI
   glfwMakeContextCurrent(gui->window);
@@ -1664,14 +1640,14 @@ int gui_poll(gui_t *gui) {
 
   // Process keyboard and mouse input
   glfwPollEvents();
-  gui_process_input(gui->window);
+  gui_process_input(gui);
 
   // Clear screen
   glClear(GL_DEPTH_BUFFER_BIT);
   glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  return _window_loop;
+  return gui->window_loop;
 }
 
 /**
@@ -1682,9 +1658,9 @@ void gui_update(gui_t *gui) {
   glfwSwapBuffers(gui->window);
 
   const double time_now = gui_time();
-  _frame_dt = time_now - _frame_last;
-  _frame_last = time_now;
-  // printf("fps: %f\n", 1.0 / _frame_dt);
+  gui->frame_dt = time_now - gui->frame_last;
+  gui->frame_last = time_now;
+  // printf("fps: %f\n", 1.0 / gui->frame_dt);
   // const double time_now = glfwGetTime();
   // const double dt = time_now - gui->last_frame;
   // if (dt >= gui->fps_limit) {
@@ -1800,12 +1776,13 @@ void gl_rect_free(gl_rect_t *rect) {
 /**
  * Draw the 2D rectangle using an orthographic projection.
  */
-void draw_rect(gl_rect_t *rect) {
+void draw_rect(gui_t *gui, gl_rect_t *rect) {
+  assert(gui);
   assert(rect);
 
   // Use shader
   gl_float_t ortho[16] = {0};
-  gl_ortho(_window_width, _window_height, ortho);
+  gl_ortho(gui->window_width, gui->window_height, ortho);
 
   // Draw
   glDepthMask(GL_FALSE);
@@ -1937,7 +1914,8 @@ void gl_points3d_update(gl_points3d_t *points,
 /**
  * Draw the 3D point cloud using the active camera.
  */
-void draw_points3d(gl_points3d_t *points) {
+void draw_points3d(gui_t *gui, gl_points3d_t *points) {
+  assert(gui);
   assert(points);
   if (points->num_points == 0) {
     return;
@@ -1945,8 +1923,8 @@ void draw_points3d(gl_points3d_t *points) {
 
   // Use shader program
   glUseProgram(points->program_id);
-  gl_set_mat4(points->program_id, "view", _camera.V);
-  gl_set_mat4(points->program_id, "projection", _camera.P);
+  gl_set_mat4(points->program_id, "view", gui->camera.V);
+  gl_set_mat4(points->program_id, "projection", gui->camera.P);
   gl_set_float(points->program_id, "point_size", points->point_size);
   gl_set_float(points->program_id, "alpha", 1.0f);
 
@@ -2188,7 +2166,10 @@ void gl_line3d_free(gl_line3d_t *line) {
 /**
  * Draw the 3D line strip using the active camera.
  */
-void draw_line3d(gl_line3d_t *line3d) {
+void draw_line3d(gui_t *gui, gl_line3d_t *line3d) {
+  assert(gui);
+  assert(line3d);
+
   // Get viewport
   GLint viewport[4];
   glGetIntegerv(GL_VIEWPORT, viewport);
@@ -2199,8 +2180,8 @@ void draw_line3d(gl_line3d_t *line3d) {
 
   // Use shader program
   glUseProgram(line3d->program_id);
-  gl_set_mat4(line3d->program_id, "projection", _camera.P);
-  gl_set_mat4(line3d->program_id, "view", _camera.V);
+  gl_set_mat4(line3d->program_id, "projection", gui->camera.P);
+  gl_set_mat4(line3d->program_id, "view", gui->camera.V);
   gl_set_vec2(line3d->program_id, "viewport_size", viewport_wh);
   gl_set_float(line3d->program_id, "linewidth", line3d->lw);
   gl_set_color(line3d->program_id, "color", line3d->color);
@@ -2371,10 +2352,12 @@ void gl_cube3d_free(gl_cube3d_t *cube) {
  * Draw the cube at pose `T` with the given size and color using
  * ambient/diffuse/specular lighting.
  */
-void draw_cube(gl_cube3d_t *cube,
+void draw_cube(gui_t *gui,
+               gl_cube3d_t *cube,
                const gl_float_t T[4 * 4],
                const gl_float_t size,
                const gl_color_t color) {
+  assert(gui);
   assert(cube);
 
   // Disable cull face
@@ -2388,12 +2371,12 @@ void draw_cube(gl_cube3d_t *cube,
   glUseProgram(cube->program_id);
 
   // Draw cube
-  gl_float_t *view_pos = _camera.position;
+  gl_float_t *view_pos = gui->camera.position;
   gl_float_t light_pos[3] = {0.0, 20.0, 2.0};
   gl_color_t light_color = (gl_color_t){1.0, 1.0, 1.0};
 
-  gl_set_mat4(cube->program_id, "projection", _camera.P);
-  gl_set_mat4(cube->program_id, "view", _camera.V);
+  gl_set_mat4(cube->program_id, "projection", gui->camera.P);
+  gl_set_mat4(cube->program_id, "view", gui->camera.V);
   gl_set_mat4(cube->program_id, "model", T);
   gl_set_float(cube->program_id, "size", size);
   gl_set_vec3(cube->program_id, "view_pos", view_pos);
@@ -2539,13 +2522,14 @@ void gl_frustum_free(gl_frustum_t *frustum) {
 /**
  * Draw the view frustum as lines using the active camera.
  */
-void draw_frustum(gl_frustum_t *frustum) {
+void draw_frustum(gui_t *gui, gl_frustum_t *frustum) {
+  assert(gui);
   assert(frustum);
 
   // Use shader program
   glUseProgram(frustum->program_id);
-  gl_set_mat4(frustum->program_id, "projection", _camera.P);
-  gl_set_mat4(frustum->program_id, "view", _camera.V);
+  gl_set_mat4(frustum->program_id, "projection", gui->camera.P);
+  gl_set_mat4(frustum->program_id, "view", gui->camera.V);
   gl_set_mat4(frustum->program_id, "model", frustum->T);
 
   // Store original line width
@@ -2618,11 +2602,12 @@ void gl_axes3d_free(gl_axes3d_t *axes) {
 /**
  * Draw the x (red), y (green) and z (blue) axes.
  */
-void draw_axes3d(gl_axes3d_t *axes) {
+void draw_axes3d(gui_t *gui, gl_axes3d_t *axes) {
+  assert(gui);
   assert(axes);
-  draw_line3d(&axes->x_axis);
-  draw_line3d(&axes->y_axis);
-  draw_line3d(&axes->z_axis);
+  draw_line3d(gui, &axes->x_axis);
+  draw_line3d(gui, &axes->y_axis);
+  draw_line3d(gui, &axes->z_axis);
 }
 
 // GRID 3D ///////////////////////////////////////////////////////////////////
@@ -2770,14 +2755,15 @@ void gl_grid3d_free(gl_grid3d_t *grid) {
 /**
  * Draw all row and column lines of the grid.
  */
-void draw_grid3d(gl_grid3d_t *grid) {
+void draw_grid3d(gui_t *gui, gl_grid3d_t *grid) {
+  assert(gui);
   assert(grid);
 
   for (int i = 0; i <= grid->num_rows; ++i) {
-    draw_line3d(&grid->row_lines[i]);
+    draw_line3d(gui, &grid->row_lines[i]);
   }
   for (int i = 0; i <= grid->num_cols; ++i) {
-    draw_line3d(&grid->col_lines[i]);
+    draw_line3d(gui, &grid->col_lines[i]);
   }
 }
 
@@ -2933,12 +2919,13 @@ void gl_image_free(gl_image_t *image) {
 /**
  * Draw the image as a textured quad at its stored position.
  */
-void draw_image(gl_image_t *image) {
+void draw_image(gui_t *gui, gl_image_t *image) {
+  assert(gui);
   assert(image);
 
   // Draw
   gl_float_t ortho[16] = {0};
-  gl_ortho(_window_width, _window_height, ortho);
+  gl_ortho(gui->window_width, gui->window_height, ortho);
 
   glUseProgram(image->program_id);
   gl_set_mat4(image->program_id, "ortho", ortho);
@@ -3128,17 +3115,19 @@ void text_width_height(gl_text_t *text,
 /**
  * Draw the string `s` at pixel position (x, y) with color `c`.
  */
-void draw_text(gl_text_t *text,
+void draw_text(gui_t *gui,
+               gl_text_t *text,
                const char *s,
                const float x,
                const float y,
                const gl_color_t c) {
+  assert(gui);
   assert(text);
   assert(s);
 
   // Setup projection matrix
   gl_float_t ortho[4 * 4];
-  gl_ortho(_window_width, _window_height, ortho);
+  gl_ortho(gui->window_width, gui->window_height, ortho);
 
   // Activate shader
   const gl_float_t scale = 1.0f;
@@ -3725,16 +3714,19 @@ void gl_model_free(gl_model_t *model) {
  * Draw the model with the given camera using a simple lit shader.
  */
 void gl_model_draw(const gl_model_t *model, const gl_camera_t *camera) {
+  assert(model);
+  assert(camera);
+
   glUseProgram(model->program_id);
-  gl_set_mat4(model->program_id, "projection", _camera.P);
-  gl_set_mat4(model->program_id, "view", _camera.V);
+  gl_set_mat4(model->program_id, "projection", camera->P);
+  gl_set_mat4(model->program_id, "view", camera->V);
   gl_set_mat4(model->program_id, "model", model->T);
 
   float light_pos[3] = {0, 10, 0};
   float light_color[3] = {1, 1, 1};
   float object_color[3] = {1, 1, 1};
   gl_set_vec3(model->program_id, "lightPos", light_pos);
-  gl_set_vec3(model->program_id, "viewPos", _camera.position);
+  gl_set_vec3(model->program_id, "viewPos", camera->position);
   gl_set_vec3(model->program_id, "lightColor", light_color);
   gl_set_vec3(model->program_id, "objectColor", object_color);
 
