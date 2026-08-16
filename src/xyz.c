@@ -6918,7 +6918,14 @@ void quat_transform(const real_t q[4], const real_t x[3], real_t y[3]) {
  ******************************************************************************/
 
 /**
- * Exponential Map
+ * Exponential map on SO(3): maps the Lie-algebra rotation vector `phi` to the
+ * corresponding rotation matrix `C` via the Rodrigues formula:
+ *
+ *   C = I + (sin(theta) / theta) * hat(phi)
+ *         + ((1 - cos(theta)) / theta^2) * hat(phi)^2
+ *
+ * where theta = ||phi||. This is the inverse of so3_log(). For theta ~ 0 a
+ * second-order Taylor approximation is used to avoid cancellation.
  */
 void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
   assert(phi != NULL);
@@ -6958,21 +6965,24 @@ void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
 }
 
 /**
- * Logarithmic Map
+ * Logarithmic map on SO(3): maps the rotation matrix `C` to the Lie-algebra
+ * rotation vector `rvec` such that so3_exp(rvec) = C. This is the inverse of
+ * so3_exp().
+ *
+ * The angle is recovered from the trace and the axis from the skew-symmetric
+ * part of `C`:
+ *
+ *   theta = acos((trace(C) - 1) / 2);
+ *   rvec = theta * axis;
+ *
+ * The special cases theta ~ 0 (where the limit is rvec = 1/2 * vee(C - C'))
+ * and theta ~ pi (where sin(theta) ~ 0 and the axis is recovered from the
+ * symmetric part, since C + I = 2 n n') are handled explicitly.
  */
 void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
   assert(C != NULL);
   assert(rvec != NULL);
 
-  /**
-   * theta = acos((trace(C) - 1) / 2);
-   * rvec = theta * axis;
-   *
-   * The rotation axis is obtained from the skew-symmetric part
-   * vee(C - C') / (2 * sin(theta)). For theta ~ 0 the limit is
-   * rvec = 1/2 * vee(C - C'), and for theta ~ pi (where sin(theta) ~ 0)
-   * the axis is recovered from the symmetric part, since C + I = 2 n n'.
-   */
   const real_t C00 = C[0];
   const real_t C01 = C[1];
   const real_t C02 = C[2];
