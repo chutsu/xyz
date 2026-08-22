@@ -1215,7 +1215,6 @@ void s2_tangent_basis(const real_t t[3], real_t e1[3], real_t e2[3]);
 void s2_exp_map(const real_t t[3], const real_t v[3], real_t out[3]);
 void s2_log_map(const real_t t[3], const real_t p[3], real_t v[3]);
 
-
 /*******************************************************************************
  * GNUPLOT
  ******************************************************************************/
@@ -1409,6 +1408,42 @@ int mav_waypoints_update(mav_waypoints_t *wps,
 // IMAGE U8 //
 //////////////
 
+typedef struct color_t {
+  uint8_t r;
+  uint8_t g;
+  uint8_t b;
+} color_t;
+
+#define COLOR_WHITE      ((color_t){255, 255, 255})
+#define COLOR_BLACK      ((color_t){0, 0, 0})
+#define COLOR_RED        ((color_t){255, 0, 0})
+#define COLOR_GREEN      ((color_t){0, 255, 0})
+#define COLOR_BLUE       ((color_t){0, 0, 255})
+#define COLOR_YELLOW     ((color_t){255, 255, 0})
+#define COLOR_CYAN       ((color_t){0, 255, 255})
+#define COLOR_MAGENTA    ((color_t){255, 0, 255})
+#define COLOR_ORANGE     ((color_t){255, 165, 0})
+#define COLOR_GRAY       ((color_t){128, 128, 128})
+#define COLOR_DARK_GRAY  ((color_t){64, 64, 64})
+#define COLOR_LIGHT_GRAY ((color_t){192, 192, 192})
+#define COLOR_BROWN      ((color_t){139, 69, 19})
+#define COLOR_PINK       ((color_t){255, 192, 203})
+#define COLOR_PURPLE     ((color_t){128, 0, 128})
+#define COLOR_MAROON     ((color_t){128, 0, 0})
+#define COLOR_OLIVE      ((color_t){128, 128, 0})
+#define COLOR_LIME       ((color_t){0, 255, 0})
+#define COLOR_TEAL       ((color_t){0, 128, 128})
+#define COLOR_NAVY       ((color_t){0, 0, 128})
+#define COLOR_AQUA       ((color_t){0, 255, 255})
+#define COLOR_SILVER     ((color_t){192, 192, 192})
+#define COLOR_CORAL      ((color_t){255, 127, 80})
+#define COLOR_SALMON     ((color_t){250, 128, 114})
+#define COLOR_GOLD       ((color_t){255, 215, 0})
+#define COLOR_VIOLET     ((color_t){238, 130, 238})
+#define COLOR_INDIGO     ((color_t){75, 0, 130})
+#define COLOR_TURQUOISE  ((color_t){64, 224, 208})
+#define COLOR_CRIMSON    ((color_t){220, 20, 60})
+
 typedef struct image_t {
   int width;
   int height;
@@ -1416,10 +1451,62 @@ typedef struct image_t {
   uint8_t *data;
 } image_t;
 
-image_t *image_load(const char *file_path);
-void image_print(const image_t *img);
+image_t *image_malloc(const int width, const int height, const int channels);
 void image_free(image_t *img);
-
+image_t *image_load(const char *file_path);
+void image_save_png(const image_t *img, const char *file_path);
+void image_print(const image_t *img);
+void image_fill(image_t *img, const color_t color);
+void image_set_pixel(image_t *img,
+                     const int x,
+                     const int y,
+                     const color_t color);
+void image_get_pixel(const image_t *img,
+                     const int x,
+                     const int y,
+                     color_t *color);
+void image_draw_line(image_t *img,
+                     const int x0,
+                     const int y0,
+                     const int x1,
+                     const int y1,
+                     const int thickness,
+                     const color_t color);
+void image_draw_rect(image_t *img,
+                     const int x,
+                     const int y,
+                     const int w,
+                     const int h,
+                     const color_t color);
+void image_draw_rect_fill(image_t *img,
+                          const int x,
+                          const int y,
+                          const int w,
+                          const int h,
+                          const color_t color);
+void image_draw_circle(image_t *img,
+                       const int cx,
+                       const int cy,
+                       const int radius,
+                       const int thickness,
+                       const color_t color);
+void image_draw_circle_fill(image_t *img,
+                            const int cx,
+                            const int cy,
+                            const int radius,
+                            const color_t color);
+void image_draw_char(image_t *img,
+                     const int x,
+                     const int y,
+                     const char c,
+                     const int scale,
+                     const color_t color);
+void image_draw_string(image_t *img,
+                       const int x,
+                       const int y,
+                       const char *str,
+                       const int scale,
+                       const color_t color);
 
 /////////////
 // PINHOLE //
@@ -1447,7 +1534,6 @@ void pinhole_point_jacobian(const real_t params[4], real_t J_point[2 * 2]);
 void pinhole_params_jacobian(const real_t params[4],
                              const real_t x[2],
                              real_t J[2 * 4]);
-
 
 ////////////
 // RADTAN //
@@ -1777,7 +1863,7 @@ void voxel_free(voxel_t *voxel);
 void voxel_reset(voxel_t *voxel);
 void voxel_print(voxel_t *voxel);
 void voxel_copy(const voxel_t *src, voxel_t *dst);
-void voxel_add(voxel_t *voxel, const float p[3]);
+void voxel_insert(voxel_t *voxel, const float p[3]);
 
 float *voxel_grid_downsample(const float *points,
                              const int num_points,
@@ -3363,7 +3449,7 @@ void kitti_calib_print(const kitti_calib_t *data);
 /////////////////
 
 typedef struct kitti_raw_t {
-   char seq_name[1024];
+  char seq_name[1024];
   kitti_camera_t *image_00;
   kitti_camera_t *image_01;
   kitti_camera_t *image_02;

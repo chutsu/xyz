@@ -1325,6 +1325,279 @@ int test_tcp_server_setup(void) {
   return 0;
 }
 
+/*******************************************************************************
+ * IMAGE
+ ******************************************************************************/
+
+int test_image_malloc(void) {
+  image_t *img = image_malloc(10, 20, 3);
+  MU_ASSERT(img != NULL);
+  MU_ASSERT(img->width == 10);
+  MU_ASSERT(img->height == 20);
+  MU_ASSERT(img->channels == 3);
+  MU_ASSERT(img->data != NULL);
+
+  // Verify zero-initialized
+  for (int i = 0; i < 10 * 20 * 3; i++) {
+    MU_ASSERT(img->data[i] == 0);
+  }
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_save_png(void) {
+  image_t *img = image_malloc(4, 4, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  const char *path = "/tmp/test_image.png";
+  image_save_png(img, path);
+
+  // Reload and verify
+  image_t *loaded = image_load(path);
+  MU_ASSERT(loaded != NULL);
+  MU_ASSERT(loaded->width == 4);
+  MU_ASSERT(loaded->height == 4);
+
+  color_t c;
+  image_get_pixel(loaded, 0, 0, &c);
+  MU_ASSERT(c.r == 255);
+  MU_ASSERT(c.g == 0);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  image_free(loaded);
+  remove(path);
+  return 0;
+}
+
+
+int test_image_fill(void) {
+  image_t *img = image_malloc(4, 4, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 4; x++) {
+      color_t c;
+      image_get_pixel(img, x, y, &c);
+      MU_ASSERT(c.r == 255);
+      MU_ASSERT(c.g == 0);
+      MU_ASSERT(c.b == 0);
+    }
+  }
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_set_get_pixel(void) {
+  image_t *img = image_malloc(8, 8, 3);
+  color_t green = COLOR_GREEN;
+  image_set_pixel(img, 3, 5, green);
+
+  color_t c;
+  image_get_pixel(img, 3, 5, &c);
+  MU_ASSERT(c.r == 0);
+  MU_ASSERT(c.g == 255);
+  MU_ASSERT(c.b == 0);
+
+  // Out of bounds returns black
+  color_t oob;
+  image_get_pixel(img, -1, 0, &oob);
+  MU_ASSERT(oob.r == 0);
+  MU_ASSERT(oob.g == 0);
+  MU_ASSERT(oob.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_line(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t white = COLOR_WHITE;
+  image_draw_line(img, 0, 0, 9, 0, 1, white);
+
+  // Top row should be white
+  for (int x = 0; x < 10; x++) {
+    color_t c;
+    image_get_pixel(img, x, 0, &c);
+    MU_ASSERT(c.r == 255);
+    MU_ASSERT(c.g == 255);
+    MU_ASSERT(c.b == 255);
+  }
+
+  // Row 1 should still be black
+  color_t c;
+  image_get_pixel(img, 0, 1, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_rect(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t blue = COLOR_BLUE;
+  image_draw_rect(img, 2, 2, 5, 5, blue);
+
+  // Corners should be blue
+  color_t c;
+  image_get_pixel(img, 2, 2, &c);
+  MU_ASSERT(c.b == 255);
+
+  image_get_pixel(img, 6, 2, &c);
+  MU_ASSERT(c.b == 255);
+
+  image_get_pixel(img, 6, 6, &c);
+  MU_ASSERT(c.b == 255);
+
+  image_get_pixel(img, 2, 6, &c);
+  MU_ASSERT(c.b == 255);
+
+  // Interior should be black
+  image_get_pixel(img, 4, 4, &c);
+  MU_ASSERT(c.r == 0);
+  MU_ASSERT(c.g == 0);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_rect_fill(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t red = COLOR_RED;
+  image_draw_rect_fill(img, 2, 2, 3, 3, red);
+
+  for (int y = 2; y < 5; y++) {
+    for (int x = 2; x < 5; x++) {
+      color_t c;
+      image_get_pixel(img, x, y, &c);
+      MU_ASSERT(c.r == 255);
+    }
+  }
+
+  // Outside should be black
+  color_t c;
+  image_get_pixel(img, 0, 0, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_circle(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t green = COLOR_GREEN;
+  image_draw_circle(img, 10, 10, 5, 1, green);
+
+  // Center of circle edge should be green
+  color_t c;
+  image_get_pixel(img, 10, 5, &c);
+  MU_ASSERT(c.g == 255);
+
+  // Center should be black (outline only)
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.r == 0);
+  MU_ASSERT(c.g == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_circle_fill(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t blue = COLOR_BLUE;
+  image_draw_circle_fill(img, 10, 10, 5, blue);
+
+  // Center should be blue
+  color_t c;
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.b == 255);
+
+  // Far corner should be black
+  image_get_pixel(img, 0, 0, &c);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_char(void) {
+  image_t *img = image_malloc(60, 20, 3);
+  color_t white = COLOR_WHITE;
+  image_draw_char(img, 2, 5, 'A', 2, white);
+
+  // 'A' at scale=2: the top center pixel (col=2, row=0) should be lit
+  color_t c;
+  image_get_pixel(img, 2 + 2 * 2, 5 + 0, &c);
+  MU_ASSERT(c.r == 255);
+
+  // Space character should not draw anything
+  image_draw_char(img, 20, 5, ' ', 2, white);
+  image_get_pixel(img, 22, 7, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_string(void) {
+  image_t *img = image_malloc(200, 30, 3);
+  color_t green = COLOR_GREEN;
+  image_draw_string(img, 5, 5, "HI", 2, green);
+
+  // 'H' top-left pixel
+  color_t c;
+  image_get_pixel(img, 5, 5, &c);
+  MU_ASSERT(c.g == 255);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_line_thickness(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t red = COLOR_RED;
+  image_draw_line(img, 0, 5, 9, 5, 3, red);
+
+  // Pixels on the line and neighbors should be red
+  color_t c;
+  image_get_pixel(img, 5, 4, &c);
+  MU_ASSERT(c.r == 255);
+  image_get_pixel(img, 5, 5, &c);
+  MU_ASSERT(c.r == 255);
+  image_get_pixel(img, 5, 6, &c);
+  MU_ASSERT(c.r == 255);
+
+  // 2 pixels away should be black
+  image_get_pixel(img, 5, 3, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_circle_thickness(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t blue = COLOR_BLUE;
+  image_draw_circle(img, 10, 10, 5, 2, blue);
+
+  // Edge should be blue
+  color_t c;
+  image_get_pixel(img, 10, 5, &c);
+  MU_ASSERT(c.b == 255);
+
+  // Center should be black (outline only)
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
 /******************************************************************************
  * MATH
  ******************************************************************************/
@@ -7590,6 +7863,21 @@ void test_suite(void) {
 
   // NETWORK
   MU_ADD_TEST(test_tcp_server_setup);
+
+  // IMAGE
+  MU_ADD_TEST(test_image_malloc);
+  MU_ADD_TEST(test_image_save_png);
+  MU_ADD_TEST(test_image_fill);
+  MU_ADD_TEST(test_image_set_get_pixel);
+  MU_ADD_TEST(test_image_draw_line);
+  MU_ADD_TEST(test_image_draw_rect);
+  MU_ADD_TEST(test_image_draw_rect_fill);
+  MU_ADD_TEST(test_image_draw_circle);
+  MU_ADD_TEST(test_image_draw_circle_fill);
+  MU_ADD_TEST(test_image_draw_char);
+  MU_ADD_TEST(test_image_draw_string);
+  MU_ADD_TEST(test_image_draw_line_thickness);
+  MU_ADD_TEST(test_image_draw_circle_thickness);
 
   // MATH
   MU_ADD_TEST(test_min);

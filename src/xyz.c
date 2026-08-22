@@ -7901,6 +7901,32 @@ int mav_waypoints_update(mav_waypoints_t *wps,
 ///////////
 
 /**
+ * Allocate a new blank image with given `width`, `height`, and number of
+ * `channels` (1, 3, or 4). Pixel data is zero-initialized.
+ */
+image_t *image_malloc(const int width, const int height, const int channels) {
+  assert(width > 0);
+  assert(height > 0);
+  assert(channels == 1 || channels == 3 || channels == 4);
+
+  image_t *img = malloc(sizeof(image_t));
+  img->width = width;
+  img->height = height;
+  img->channels = channels;
+  img->data = calloc(width * height * channels, sizeof(uint8_t));
+  return img;
+}
+
+/**
+ * Free image.
+ */
+void image_free(image_t *img) {
+  assert(img != NULL);
+  free(img->data);
+  free(img);
+}
+
+/**
  * Load image at `file_path`.
  * @returns Heap allocated image
  */
@@ -7925,6 +7951,22 @@ image_t *image_load(const char *file_path) {
 }
 
 /**
+ * Save `img` to a PNG file at `file_path`.
+ */
+void image_save_png(const image_t *img, const char *file_path) {
+  assert(img != NULL);
+  assert(file_path != NULL);
+
+  int stride = img->width * img->channels;
+  stbi_write_png(file_path,
+                 img->width,
+                 img->height,
+                 img->channels,
+                 img->data,
+                 stride);
+}
+
+/**
  * Print image properties.
  */
 void image_print(const image_t *img) {
@@ -7935,13 +7977,410 @@ void image_print(const image_t *img) {
 }
 
 /**
- * Free image.
+ * Fill every pixel in `img` with `color`.
  */
-void image_free(image_t *img) {
+void image_fill(image_t *img, const color_t color) {
   assert(img != NULL);
-  free(img->data);
-  free(img);
+
+  for (int y = 0; y < img->height; y++) {
+    for (int x = 0; x < img->width; x++) {
+      int idx = (y * img->width + x) * img->channels;
+      img->data[idx + 0] = color.r;
+      img->data[idx + 1] = color.g;
+      img->data[idx + 2] = color.b;
+    }
+  }
 }
+
+static inline int image_in_bounds(const image_t *img,
+                                  const int x,
+                                  const int y) {
+  return x >= 0 && x < img->width && y >= 0 && y < img->height;
+}
+
+/**
+ * Set the pixel at (`x`, `y`) to `color`. Silently ignored if the coordinate
+ * is out of bounds.
+ */
+void image_set_pixel(image_t *img,
+                     const int x,
+                     const int y,
+                     const color_t color) {
+  assert(img != NULL);
+
+  if (!image_in_bounds(img, x, y)) {
+    return;
+  }
+
+  int idx = (y * img->width + x) * img->channels;
+  img->data[idx + 0] = color.r;
+  img->data[idx + 1] = color.g;
+  img->data[idx + 2] = color.b;
+}
+
+/**
+ * Read the color of the pixel at (`x`, `y`) into `color`. Returns black if the
+ * coordinate is out of bounds.
+ */
+void image_get_pixel(const image_t *img,
+                     const int x,
+                     const int y,
+                     color_t *color) {
+  assert(img != NULL);
+  assert(color != NULL);
+
+  if (!image_in_bounds(img, x, y)) {
+    color->r = 0;
+    color->g = 0;
+    color->b = 0;
+    return;
+  }
+
+  int idx = (y * img->width + x) * img->channels;
+  color->r = img->data[idx + 0];
+  color->g = img->data[idx + 1];
+  color->b = img->data[idx + 2];
+}
+
+/**
+ * Draw a line from (`x0`, `y0`) to (`x1`, `y1`) using Bresenham's algorithm.
+ */
+void image_draw_line(image_t *img,
+                     const int x0,
+                     const int y0,
+                     const int x1,
+                     const int y1,
+                     const int thickness,
+                     const color_t color) {
+  assert(img != NULL);
+  assert(thickness > 0);
+
+  int dx = abs(x1 - x0);
+  int dy = -abs(y1 - y0);
+  int sx = x0 < x1 ? 1 : -1;
+  int sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+
+  int x = x0;
+  int y = y0;
+  int half = thickness / 2;
+
+  while (1) {
+    for (int ty = -half; ty <= half; ty++) {
+      for (int tx = -half; tx <= half; tx++) {
+        image_set_pixel(img, x + tx, y + ty, color);
+      }
+    }
+
+    if (x == x1 && y == y1) {
+      break;
+    }
+
+    int e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+}
+
+/**
+ * Draw the outline of a rectangle at (`x`, `y`) with size (`w`, `h`).
+ */
+void image_draw_rect(image_t *img,
+                     const int x,
+                     const int y,
+                     const int w,
+                     const int h,
+                     const color_t color) {
+  assert(img != NULL);
+
+  image_draw_line(img, x, y, x + w - 1, y, 1, color);
+  image_draw_line(img, x + w - 1, y, x + w - 1, y + h - 1, 1, color);
+  image_draw_line(img, x + w - 1, y + h - 1, x, y + h - 1, 1, color);
+  image_draw_line(img, x, y + h - 1, x, y, 1, color);
+}
+
+/**
+ * Draw a filled rectangle at (`x`, `y`) with size (`w`, `h`).
+ */
+void image_draw_rect_fill(image_t *img,
+                          const int x,
+                          const int y,
+                          const int w,
+                          const int h,
+                          const color_t color) {
+  assert(img != NULL);
+
+  for (int j = y; j < y + h; j++) {
+    for (int i = x; i < x + w; i++) {
+      image_set_pixel(img, i, j, color);
+    }
+  }
+}
+
+/**
+ * Draw the outline of a circle centered at (`cx`, `cy`) with the given
+ * `radius` using the midpoint circle algorithm.
+ */
+void image_draw_circle(image_t *img,
+                       const int cx,
+                       const int cy,
+                       const int radius,
+                       const int thickness,
+                       const color_t color) {
+  assert(img != NULL);
+  assert(thickness > 0);
+
+  int x = radius;
+  int y = 0;
+  int err = 0;
+  int half = thickness / 2;
+
+  while (x >= y) {
+    for (int t = -half; t <= half; t++) {
+      image_set_pixel(img, cx + x, cy + y + t, color);
+      image_set_pixel(img, cx + y + t, cy + x, color);
+      image_set_pixel(img, cx - y - t, cy + x, color);
+      image_set_pixel(img, cx - x, cy + y + t, color);
+      image_set_pixel(img, cx - x, cy - y - t, color);
+      image_set_pixel(img, cx - y - t, cy - x, color);
+      image_set_pixel(img, cx + y + t, cy - x, color);
+      image_set_pixel(img, cx + x, cy - y - t, color);
+
+      image_set_pixel(img, cx + x + t, cy + y, color);
+      image_set_pixel(img, cx + y, cy + x + t, color);
+      image_set_pixel(img, cx - y, cy + x + t, color);
+      image_set_pixel(img, cx - x - t, cy + y, color);
+      image_set_pixel(img, cx - x - t, cy - y, color);
+      image_set_pixel(img, cx - y, cy - x - t, color);
+      image_set_pixel(img, cx + y, cy - x - t, color);
+      image_set_pixel(img, cx + x + t, cy - y, color);
+    }
+
+    y++;
+    if (err <= 0) {
+      err += 2 * y + 1;
+    }
+    if (err > 0) {
+      x--;
+      err -= 2 * x + 1;
+    }
+  }
+}
+
+/**
+ * Draw a filled circle centered at (`cx`, `cy`) with the given `radius`.
+ */
+void image_draw_circle_fill(image_t *img,
+                            const int cx,
+                            const int cy,
+                            const int radius,
+                            const color_t color) {
+  assert(img != NULL);
+
+  for (int y = -radius; y <= radius; y++) {
+    for (int x = -radius; x <= radius; x++) {
+      if (x * x + y * y <= radius * radius) {
+        image_set_pixel(img, cx + x, cy + y, color);
+      }
+    }
+  }
+}
+
+// 5x7 bitmap font for ASCII 32-126
+//
+// Each character is 5 columns wide and 7 rows tall. Each row is stored as a
+// single byte where only the bottom 5 bits are used (bits 0-4). A set bit
+// means the pixel is "on".
+//
+// Example: the letter 'A' (index 33 in the array)
+//
+//   font_5x7['A' - 32] = {0x7E, 0x11, 0x11, 0x11, 0x7E}
+//
+//   Row 0 (0x7E = 0b01111110): .XXXXX.
+//   Row 1 (0x11 = 0b00010001): X.....X
+//   Row 2 (0x11 = 0b00010001): X.....X
+//   Row 3 (0x11 = 0b00010001): X.....X
+//   Row 4 (0x7E = 0b01111110): .XXXXX.
+//
+// Each byte maps to a column of pixels like this:
+//
+//   bit 0 (LSB) = row 0 (top)
+//   bit 1       = row 1
+//   bit 2       = row 2
+//   bit 3       = row 3
+//   bit 4       = row 4
+//   bit 5       = row 5
+//   bit 6       = row 6 (bottom)
+//   bit 7       = unused
+//
+// When drawing, image_draw_char() iterates over each byte (column), tests each
+// bit, and if set, fills a scale x scale block of pixels at the corresponding
+// position. The `scale` parameter lets you render at any integer multiple of
+// the base 5x7 size (e.g. scale=2 produces 10x14 characters).
+static const uint8_t font_5x7[][5] = {
+    {0x00, 0x00, 0x00, 0x00, 0x00}, // space
+    {0x00, 0x00, 0x5F, 0x00, 0x00}, // !
+    {0x00, 0x07, 0x00, 0x07, 0x00}, // "
+    {0x14, 0x7F, 0x14, 0x7F, 0x14}, // #
+    {0x24, 0x2A, 0x7F, 0x2A, 0x12}, // $
+    {0x23, 0x13, 0x08, 0x64, 0x62}, // %
+    {0x36, 0x49, 0x55, 0x22, 0x50}, // &
+    {0x00, 0x05, 0x03, 0x00, 0x00}, // '
+    {0x00, 0x1C, 0x22, 0x41, 0x00}, // (
+    {0x00, 0x41, 0x22, 0x1C, 0x00}, // )
+    {0x14, 0x08, 0x3E, 0x08, 0x14}, // *
+    {0x08, 0x08, 0x3E, 0x08, 0x08}, // +
+    {0x00, 0x50, 0x30, 0x00, 0x00}, // ,
+    {0x08, 0x08, 0x08, 0x08, 0x08}, // -
+    {0x00, 0x60, 0x60, 0x00, 0x00}, // .
+    {0x20, 0x10, 0x08, 0x04, 0x02}, // /
+    {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
+    {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
+    {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
+    {0x21, 0x41, 0x45, 0x4B, 0x31}, // 3
+    {0x18, 0x14, 0x12, 0x7F, 0x10}, // 4
+    {0x27, 0x45, 0x45, 0x45, 0x39}, // 5
+    {0x3C, 0x4A, 0x49, 0x49, 0x30}, // 6
+    {0x01, 0x71, 0x09, 0x05, 0x03}, // 7
+    {0x36, 0x49, 0x49, 0x49, 0x36}, // 8
+    {0x06, 0x49, 0x49, 0x29, 0x1E}, // 9
+    {0x00, 0x36, 0x36, 0x00, 0x00}, // :
+    {0x00, 0x56, 0x36, 0x00, 0x00}, // ;
+    {0x08, 0x14, 0x22, 0x41, 0x00}, // <
+    {0x14, 0x14, 0x14, 0x14, 0x14}, // =
+    {0x00, 0x41, 0x22, 0x14, 0x08}, // >
+    {0x02, 0x01, 0x51, 0x09, 0x06}, // ?
+    {0x32, 0x49, 0x79, 0x41, 0x3E}, // @
+    {0x7E, 0x11, 0x11, 0x11, 0x7E}, // A
+    {0x7F, 0x49, 0x49, 0x49, 0x36}, // B
+    {0x3E, 0x41, 0x41, 0x41, 0x22}, // C
+    {0x7F, 0x41, 0x41, 0x22, 0x1C}, // D
+    {0x7F, 0x49, 0x49, 0x49, 0x41}, // E
+    {0x7F, 0x09, 0x09, 0x09, 0x01}, // F
+    {0x3E, 0x41, 0x49, 0x49, 0x7A}, // G
+    {0x7F, 0x08, 0x08, 0x08, 0x7F}, // H
+    {0x00, 0x41, 0x7F, 0x41, 0x00}, // I
+    {0x20, 0x40, 0x41, 0x3F, 0x01}, // J
+    {0x7F, 0x08, 0x14, 0x22, 0x41}, // K
+    {0x7F, 0x40, 0x40, 0x40, 0x40}, // L
+    {0x7F, 0x02, 0x0C, 0x02, 0x7F}, // M
+    {0x7F, 0x04, 0x08, 0x10, 0x7F}, // N
+    {0x3E, 0x41, 0x41, 0x41, 0x3E}, // O
+    {0x7F, 0x09, 0x09, 0x09, 0x06}, // P
+    {0x3E, 0x41, 0x51, 0x21, 0x5E}, // Q
+    {0x7F, 0x09, 0x19, 0x29, 0x46}, // R
+    {0x46, 0x49, 0x49, 0x49, 0x31}, // S
+    {0x01, 0x01, 0x7F, 0x01, 0x01}, // T
+    {0x3F, 0x40, 0x40, 0x40, 0x3F}, // U
+    {0x1F, 0x20, 0x40, 0x20, 0x1F}, // V
+    {0x3F, 0x40, 0x38, 0x40, 0x3F}, // W
+    {0x63, 0x14, 0x08, 0x14, 0x63}, // X
+    {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
+    {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
+    {0x00, 0x7F, 0x41, 0x41, 0x00}, // [
+    {0x02, 0x04, 0x08, 0x10, 0x20}, // backslash
+    {0x00, 0x41, 0x41, 0x7F, 0x00}, // ]
+    {0x04, 0x02, 0x01, 0x02, 0x04}, // ^
+    {0x40, 0x40, 0x40, 0x40, 0x40}, // _
+    {0x00, 0x01, 0x02, 0x04, 0x00}, // `
+    {0x20, 0x54, 0x54, 0x54, 0x78}, // a
+    {0x7F, 0x48, 0x44, 0x44, 0x38}, // b
+    {0x38, 0x44, 0x44, 0x44, 0x20}, // c
+    {0x38, 0x44, 0x44, 0x48, 0x7F}, // d
+    {0x38, 0x54, 0x54, 0x54, 0x18}, // e
+    {0x08, 0x7E, 0x09, 0x01, 0x02}, // f
+    {0x0C, 0x52, 0x52, 0x52, 0x3E}, // g
+    {0x7F, 0x08, 0x04, 0x04, 0x78}, // h
+    {0x00, 0x44, 0x7D, 0x40, 0x00}, // i
+    {0x20, 0x40, 0x44, 0x3D, 0x00}, // j
+    {0x7F, 0x10, 0x28, 0x44, 0x00}, // k
+    {0x00, 0x41, 0x7F, 0x40, 0x00}, // l
+    {0x7C, 0x04, 0x18, 0x04, 0x78}, // m
+    {0x7C, 0x08, 0x04, 0x04, 0x78}, // n
+    {0x38, 0x44, 0x44, 0x44, 0x38}, // o
+    {0x7C, 0x14, 0x14, 0x14, 0x08}, // p
+    {0x08, 0x14, 0x14, 0x18, 0x7C}, // q
+    {0x7C, 0x08, 0x04, 0x04, 0x08}, // r
+    {0x48, 0x54, 0x54, 0x54, 0x20}, // s
+    {0x04, 0x3F, 0x44, 0x40, 0x20}, // t
+    {0x3C, 0x40, 0x40, 0x20, 0x7C}, // u
+    {0x1C, 0x20, 0x40, 0x20, 0x1C}, // v
+    {0x3C, 0x40, 0x30, 0x40, 0x3C}, // w
+    {0x44, 0x28, 0x10, 0x28, 0x44}, // x
+    {0x0C, 0x50, 0x50, 0x50, 0x3C}, // y
+    {0x44, 0x64, 0x54, 0x4C, 0x44}, // z
+    {0x00, 0x08, 0x36, 0x41, 0x00}, // {
+    {0x00, 0x00, 0x7F, 0x00, 0x00}, // |
+    {0x00, 0x41, 0x36, 0x08, 0x00}, // }
+    {0x10, 0x08, 0x08, 0x10, 0x08}, // ~
+};
+
+#define FONT_CHAR_WIDTH 5
+#define FONT_CHAR_HEIGHT 7
+#define FONT_FIRST_CHAR 32
+#define FONT_NUM_CHARS 95
+
+/**
+ * Draw a single character `c` at (`x`, `y`) at the given `scale` (1 = 5x7,
+ * 2 = 10x14, etc.).
+ */
+void image_draw_char(image_t *img,
+                     const int x,
+                     const int y,
+                     const char c,
+                     const int scale,
+                     const color_t color) {
+  assert(img != NULL);
+  assert(scale > 0);
+
+  int idx = (int) c - FONT_FIRST_CHAR;
+  if (idx < 0 || idx >= FONT_NUM_CHARS) {
+    return;
+  }
+
+  for (int row = 0; row < FONT_CHAR_HEIGHT; row++) {
+    uint8_t bits = font_5x7[idx][row];
+    for (int col = 0; col < FONT_CHAR_WIDTH; col++) {
+      if (bits & (1 << col)) {
+        for (int sy = 0; sy < scale; sy++) {
+          for (int sx = 0; sx < scale; sx++) {
+            image_set_pixel(img,
+                            x + col * scale + sx,
+                            y + row * scale + sy,
+                            color);
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Draw null-terminated string `str` at (`x`, `y`) at the given `scale`.
+ */
+void image_draw_string(image_t *img,
+                       const int x,
+                       const int y,
+                       const char *str,
+                       const int scale,
+                       const color_t color) {
+  assert(img != NULL);
+  assert(str != NULL);
+  assert(scale > 0);
+
+  int cursor_x = x;
+  for (int i = 0; str[i] != '\0'; i++) {
+    image_draw_char(img, cursor_x, y, str[i], scale, color);
+    cursor_x += FONT_CHAR_WIDTH * scale + scale; // glyph width + 1px gap
+  }
+}
+
 
 /////////////
 // PINHOLE //
@@ -10760,8 +11199,8 @@ void voxel_copy(const voxel_t *src, voxel_t *dst) {
   dst->length = src->length;
 }
 
-/** Add point `p` to voxel if it has capacity remaining. */
-void voxel_add(voxel_t *voxel, const float p[3]) {
+/** Insert point `p` to voxel if it has capacity remaining. */
+void voxel_insert(voxel_t *voxel, const float p[3]) {
   if (voxel->length >= VOXEL_MAX_POINTS) {
     return;
   }
