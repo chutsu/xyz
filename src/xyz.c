@@ -8399,7 +8399,6 @@ void image_draw_string(image_t *img,
   }
 }
 
-
 /////////////
 // PINHOLE //
 /////////////
@@ -18409,55 +18408,33 @@ static void print_int_vector(const char *prefix, const int *v, const int n) {
  * Print YAML Token
  */
 inline void yaml_print_token(const yaml_token_t token) {
+  // clang-format off
   switch (token.type) {
     case YAML_NO_TOKEN: printf("YAML_NO_TOKEN\n"); break;
     case YAML_STREAM_START_TOKEN: printf("YAML_STREAM_START_TOKEN\n"); break;
     case YAML_STREAM_END_TOKEN: printf("YAML_STREAM_END_TOKEN\n"); break;
-
-    case YAML_VERSION_DIRECTIVE_TOKEN:
-      printf("YAML_VERSION_DIRECTIVE_TOKEN\n");
-      break;
+    case YAML_VERSION_DIRECTIVE_TOKEN: printf("YAML_VERSION_DIRECTIVE_TOKEN\n"); break;
     case YAML_TAG_DIRECTIVE_TOKEN: printf("YAML_TAG_DIRECTIVE_TOKEN\n"); break;
-    case YAML_DOCUMENT_START_TOKEN:
-      printf("YAML_DOCUMENT_START_TOKEN\n");
-      break;
+    case YAML_DOCUMENT_START_TOKEN: printf("YAML_DOCUMENT_START_TOKEN\n"); break;
     case YAML_DOCUMENT_END_TOKEN: printf("YAML_DOCUMENT_END_TOKEN\n"); break;
-
-    case YAML_BLOCK_SEQUENCE_START_TOKEN:
-      printf("YAML_BLOCK_SEQUENCE_START_TOKEN\n");
-      break;
-    case YAML_BLOCK_MAPPING_START_TOKEN:
-      printf("YAML_BLOCK_MAPPING_START_TOKEN\n");
-      break;
+    case YAML_BLOCK_SEQUENCE_START_TOKEN: printf("YAML_BLOCK_SEQUENCE_START_TOKEN\n"); break;
+    case YAML_BLOCK_MAPPING_START_TOKEN: printf("YAML_BLOCK_MAPPING_START_TOKEN\n"); break;
     case YAML_BLOCK_END_TOKEN: printf("YAML_BLOCK_END_TOKEN\n"); break;
-
-    case YAML_FLOW_SEQUENCE_START_TOKEN:
-      printf("YAML_FLOW_SEQUENCE_START_TOKEN\n");
-      break;
-    case YAML_FLOW_SEQUENCE_END_TOKEN:
-      printf("YAML_FLOW_SEQUENCE_END_TOKEN\n");
-      break;
-    case YAML_FLOW_MAPPING_START_TOKEN:
-      printf("YAML_FLOW_MAPPING_START_TOKEN\n");
-      break;
-    case YAML_FLOW_MAPPING_END_TOKEN:
-      printf("YAML_FLOW_MAPPING_END_TOKEN\n");
-      break;
-
+    case YAML_FLOW_SEQUENCE_START_TOKEN: printf("YAML_FLOW_SEQUENCE_START_TOKEN\n"); break;
+    case YAML_FLOW_SEQUENCE_END_TOKEN: printf("YAML_FLOW_SEQUENCE_END_TOKEN\n"); break;
+    case YAML_FLOW_MAPPING_START_TOKEN: printf("YAML_FLOW_MAPPING_START_TOKEN\n"); break;
+    case YAML_FLOW_MAPPING_END_TOKEN: printf("YAML_FLOW_MAPPING_END_TOKEN\n"); break;
     case YAML_BLOCK_ENTRY_TOKEN: printf("YAML_BLOCK_ENTRY_TOKEN\n"); break;
     case YAML_FLOW_ENTRY_TOKEN: printf("YAML_FLOW_ENTRY_TOKEN\n"); break;
     case YAML_KEY_TOKEN: printf("YAML_KEY_TOKEN\n"); break;
     case YAML_VALUE_TOKEN: printf("YAML_VALUE_TOKEN\n"); break;
-
     case YAML_ALIAS_TOKEN: printf("YAML_ALIAS_TOKEN\n"); break;
     case YAML_ANCHOR_TOKEN: printf("YAML_ANCHOR_TOKEN\n"); break;
     case YAML_TAG_TOKEN: printf("YAML_TAG_TOKEN\n"); break;
-    case YAML_SCALAR_TOKEN:
-      printf("YAML_SCALAR_TOKEN [%s]\n", token.data.scalar.value);
-      break;
-
+    case YAML_SCALAR_TOKEN: printf("YAML_SCALAR_TOKEN [%s]\n", token.data.scalar.value); break;
     default: printf("-\n"); break;
   }
+  // clang-format on
 }
 
 /**
@@ -21468,16 +21445,22 @@ void gui_process_input(gui_t *gui) {
       gl_float_t camera_left[3] = {0};
       gl_vec3_cross(gui->camera.front, gui->camera.up, camera_left);
       gl_normalize(camera_left, 3);
-      gui->camera.position[0] -= camera_left[0] * gui->camera_speed * gui->frame_dt;
-      gui->camera.position[1] -= camera_left[1] * gui->camera_speed * gui->frame_dt;
-      gui->camera.position[2] -= camera_left[2] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[0] -=
+          camera_left[0] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[1] -=
+          camera_left[1] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[2] -=
+          camera_left[2] * gui->camera_speed * gui->frame_dt;
     } else if (gui->key_d) {
       gl_float_t camera_left[3] = {0};
       gl_vec3_cross(gui->camera.front, gui->camera.up, camera_left);
       gl_normalize(camera_left, 3);
-      gui->camera.position[0] += camera_left[0] * gui->camera_speed * gui->frame_dt;
-      gui->camera.position[1] += camera_left[1] * gui->camera_speed * gui->frame_dt;
-      gui->camera.position[2] += camera_left[2] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[0] +=
+          camera_left[0] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[1] +=
+          camera_left[1] * gui->camera_speed * gui->frame_dt;
+      gui->camera.position[2] +=
+          camera_left[2] * gui->camera_speed * gui->frame_dt;
     } else if (gui->key_equal) {
       gl_camera_zoom(&gui->camera, 1.0, 0, gui->camera_speed * gui->frame_dt);
     } else if (gui->key_minus) {
@@ -21489,12 +21472,16 @@ void gui_process_input(gui_t *gui) {
   if (gui->camera.view_mode == ORBIT) {
     if (gui->key_w) {
       gui->camera.pitch += 0.01;
-      gui->camera.pitch = (gui->camera.pitch >= M_PI) ? M_PI : gui->camera.pitch;
-      gui->camera.pitch = (gui->camera.pitch <= 0.0f) ? 0.0f : gui->camera.pitch;
+      gui->camera.pitch =
+          (gui->camera.pitch >= M_PI) ? M_PI : gui->camera.pitch;
+      gui->camera.pitch =
+          (gui->camera.pitch <= 0.0f) ? 0.0f : gui->camera.pitch;
     } else if (gui->key_s) {
       gui->camera.pitch -= 0.01;
-      gui->camera.pitch = (gui->camera.pitch >= M_PI) ? M_PI : gui->camera.pitch;
-      gui->camera.pitch = (gui->camera.pitch <= 0.0f) ? 0.0f : gui->camera.pitch;
+      gui->camera.pitch =
+          (gui->camera.pitch >= M_PI) ? M_PI : gui->camera.pitch;
+      gui->camera.pitch =
+          (gui->camera.pitch <= 0.0f) ? 0.0f : gui->camera.pitch;
     } else if (gui->key_a) {
       gui->camera.yaw -= 0.01;
       gui->camera.yaw = (gui->camera.yaw >= M_PI) ? M_PI : gui->camera.yaw;
@@ -21505,10 +21492,12 @@ void gui_process_input(gui_t *gui) {
       gui->camera.yaw = (gui->camera.yaw <= -M_PI) ? -M_PI : gui->camera.yaw;
     } else if (gui->key_equal) {
       gui->camera.radius += 0.1;
-      gui->camera.radius = (gui->camera.radius <= 0.01) ? 0.01 : gui->camera.radius;
+      gui->camera.radius =
+          (gui->camera.radius <= 0.01) ? 0.01 : gui->camera.radius;
     } else if (gui->key_minus) {
       gui->camera.radius -= 0.1;
-      gui->camera.radius = (gui->camera.radius <= 0.01) ? 0.01 : gui->camera.radius;
+      gui->camera.radius =
+          (gui->camera.radius <= 0.01) ? 0.01 : gui->camera.radius;
     }
   }
 
@@ -21543,13 +21532,17 @@ void gui_process_input(gui_t *gui) {
 
   // Rotate camera (left-click drag)
   if (gui->mouse_button_left == GLFW_PRESS) {
-    gl_camera_rotate(&gui->camera, gui->mouse_sensitivity, gui->cursor_dx,
+    gl_camera_rotate(&gui->camera,
+                     gui->mouse_sensitivity,
+                     gui->cursor_dx,
                      gui->cursor_dy);
   }
 
   // Pan camera (right-click drag)
   if (gui->mouse_button_right == GLFW_PRESS) {
-    gl_camera_pan(&gui->camera, gui->mouse_sensitivity, gui->cursor_dx,
+    gl_camera_pan(&gui->camera,
+                  gui->mouse_sensitivity,
+                  gui->cursor_dx,
                   gui->cursor_dy);
   }
 
