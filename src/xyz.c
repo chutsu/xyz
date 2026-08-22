@@ -8194,19 +8194,28 @@ void image_draw_circle_fill(image_t *img,
 
 // 5x7 bitmap font for ASCII 32-126
 //
-// Each character is 5 columns wide and 7 rows tall. Each row is stored as a
-// single byte where only the bottom 5 bits are used (bits 0-4). A set bit
-// means the pixel is "on".
+// Each character is 5 columns wide and 7 rows tall. Each column is stored as a
+// single byte where the bottom 7 bits are used (bits 0-6). A set bit means
+// the pixel is "on".
 //
 // Example: the letter 'A' (index 33 in the array)
 //
 //   font_5x7['A' - 32] = {0x7E, 0x11, 0x11, 0x11, 0x7E}
 //
-//   Row 0 (0x7E = 0b01111110): .XXXXX.
-//   Row 1 (0x11 = 0b00010001): X.....X
-//   Row 2 (0x11 = 0b00010001): X.....X
-//   Row 3 (0x11 = 0b00010001): X.....X
-//   Row 4 (0x7E = 0b01111110): .XXXXX.
+//   Col 0 (0x7E = 0b01111110): rows 1-5 on
+//   Col 1 (0x11 = 0b00010001): rows 0,3 on
+//   Col 2 (0x11 = 0b00010001): rows 0,3 on
+//   Col 3 (0x11 = 0b00010001): rows 0,3 on
+//   Col 4 (0x7E = 0b01111110): rows 1-5 on
+//
+//   Rendered:
+//     .XXX.
+//     X...X
+//     X...X
+//     XXXXX
+//     X...X
+//     X...X
+//     .....
 //
 // Each byte maps to a column of pixels like this:
 //
@@ -8344,10 +8353,10 @@ void image_draw_char(image_t *img,
     return;
   }
 
-  for (int row = 0; row < FONT_CHAR_HEIGHT; row++) {
-    uint8_t bits = font_5x7[idx][row];
-    for (int col = 0; col < FONT_CHAR_WIDTH; col++) {
-      if (bits & (1 << col)) {
+  for (int col = 0; col < FONT_CHAR_WIDTH; col++) {
+    uint8_t bits = font_5x7[idx][col];
+    for (int row = 0; row < FONT_CHAR_HEIGHT; row++) {
+      if (bits & (1 << row)) {
         for (int sy = 0; sy < scale; sy++) {
           for (int sx = 0; sx < scale; sx++) {
             image_set_pixel(img,

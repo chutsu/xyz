@@ -1547,13 +1547,15 @@ int test_image_draw_char(void) {
 int test_image_draw_string(void) {
   image_t *img = image_malloc(200, 30, 3);
   color_t green = COLOR_GREEN;
-  image_draw_string(img, 5, 5, "HI", 2, green);
+  image_draw_string(img, 5, 5, "ABCDE", 2, green);
 
-  // 'H' top-left pixel
+  // 'A' at (5,5) scale=2: col=1 row=0 is lit (0x11 bit 0 set)
+  // screen pixel: x=5+1*2=7, y=5+0*2=5
   color_t c;
-  image_get_pixel(img, 5, 5, &c);
+  image_get_pixel(img, 7, 5, &c);
   MU_ASSERT(c.g == 255);
 
+  image_save_png(img, "/tmp/test_image.png");
   image_free(img);
   return 0;
 }

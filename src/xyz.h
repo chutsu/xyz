@@ -1404,9 +1404,9 @@ int mav_waypoints_update(mav_waypoints_t *wps,
  * COMPUTER-VISION
  *****************************************************************************/
 
-//////////////
-// IMAGE U8 //
-//////////////
+////////////
+// IMAGE  //
+////////////
 
 typedef struct color_t {
   uint8_t r;

@@ -94,8 +94,10 @@ venv: ## Setup env
 
 libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
 
-tests: $(TESTS) ## Build and run tests
-	@cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
+tests: ## Build and run tests
+	@$(CC) $(CFLAGS) src/test_xyz.c -o $(BLD_DIR)/test_xyz $(LDFLAGS) -lxyz
+	@$(CC) $(CFLAGS) src/test_xyz_gui.c -o $(BLD_DIR)/test_xyz_gui $(LDFLAGS) -lxyz
+	# @cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
 
 tools:
 	@gcc -c tools/calib_camera.c -o $(BLD_DIR)/calib_camera

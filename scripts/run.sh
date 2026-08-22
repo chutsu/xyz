@@ -66,9 +66,10 @@ run_test() {
     cd ~/code/xyz \
       && clear \
       && make libxyz -j \
-      && time make tests -j \
+      && make tests \
       && cd build \
-      && $DEBUG ./$1 --target $2
+      && $DEBUG ./$1 --target $2 \
+      && cd ~/code/xyz
   " C-m C-m
   exit
 }
@@ -135,6 +136,20 @@ run_test() {
 # run_test test_xyz test_hm_set_and_get
 ## XYZ-NETWORK
 # run_test test_xyz test_tcp_server_setup
+## XYZ-IMAGE
+# run_test test_xyz test_image_malloc
+# run_test test_xyz test_image_save_png
+# run_test test_xyz test_image_fill
+# run_test test_xyz test_image_set_get_pixel
+# run_test test_xyz test_image_draw_line
+# run_test test_xyz test_image_draw_rect
+# run_test test_xyz test_image_draw_rect_fill
+# run_test test_xyz test_image_draw_circle
+# run_test test_xyz test_image_draw_circle_fill
+# run_test test_xyz test_image_draw_char
+run_test test_xyz test_image_draw_string
+# run_test test_xyz test_image_draw_line_thickness
+# run_test test_xyz test_image_draw_circle_thickness
 ## XYZ-MATH
 # run_test test_xyz test_min
 # run_test test_xyz test_max
@@ -252,7 +267,7 @@ run_test() {
 # run_test test_xyz test_homography_pose
 # run_test test_xyz test_p3p_kneip
 # run_test test_xyz test_solvepnp
-run_test test_xyz test_hedborgh
+# run_test test_xyz test_hedborgh
 ## XYZ-APRILGRID
 # run_test test_xyz test_aprilgrid_malloc_and_free
 # run_test test_xyz test_aprilgrid_center
