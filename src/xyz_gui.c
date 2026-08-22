@@ -845,6 +845,31 @@ int gl_save_frame_buffer(const int width, const int height, const char *fp) {
 }
 
 /**
+ * Read the current OpenGL framebuffer and return it as an `image_t`.
+ * The caller is responsible for freeing the returned image with `image_free`.
+ * @returns image_t* on success, NULL on failure
+ */
+image_t *gl_grab_frame_buffer(const int width, const int height) {
+  // Read pixels from OpenGL context
+  const int num_channels = 3;
+  const size_t num_pixels = (size_t) num_channels * width * height;
+  GLubyte *pixels = malloc(sizeof(GLubyte) * num_pixels);
+  glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels);
+
+  // OpenGL reads bottom-up, flip to top-down
+  image_t *img = image_malloc(width, height, num_channels);
+  const int row_bytes = num_channels * width;
+  for (int y = 0; y < height; ++y) {
+    memcpy(img->data + y * row_bytes,
+           pixels + (height - 1 - y) * row_bytes,
+           row_bytes);
+  }
+
+  free(pixels);
+  return img;
+}
+
+/**
  * Map the scalar `value` in [0, 1] to RGB components of a jet
  * colormap.
  */

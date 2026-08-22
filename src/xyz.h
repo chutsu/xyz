@@ -599,8 +599,8 @@ void vec2csv(const real_t *v, const int n, char *s);
 void eye(real_t *A, const size_t m, const size_t n);
 void ones(real_t *A, const size_t m, const size_t n);
 void zeros(real_t *A, const size_t m, const size_t n);
-void hat(const real_t x[3], real_t A[3 * 3]);
-void vee(const real_t A[3 * 3], real_t x[3]);
+void skew(const real_t x[3], real_t A[3 * 3]);
+void antiskew(const real_t A[3 * 3], real_t x[3]);
 void fwdsubs(const real_t *L, const real_t *b, real_t *y, const size_t n);
 void bwdsubs(const real_t *U, const real_t *y, real_t *x, const size_t n);
 void enforce_spd(real_t *A, const int m, const int n);
@@ -608,8 +608,8 @@ void enforce_spd(real_t *A, const int m, const int n);
 void eyef(float *A, const size_t m, const size_t n);
 void onesf(float *A, const size_t m, const size_t n);
 void zerosf(float *A, const size_t m, const size_t n);
-void hatf(const float x[3], float A[3 * 3]);
-void veef(const float A[3 * 3], float x[3]);
+void skewf(const float x[3], float A[3 * 3]);
+void antiskewf(const float A[3 * 3], float x[3]);
 void fwdsubsf(const float *L, const float *b, float *y, const size_t n);
 void bwdsubsf(const float *U, const float *y, float *x, const size_t n);
 void enforce_spdf(float *A, const int m, const int n);
@@ -621,8 +621,8 @@ int mat_equals(const real_t *A,
                const size_t m,
                const size_t n,
                const real_t tol);
-// int mat_save(const char *save_path, const real_t *A, const int m, const int n);
-// real_t *mat_load(const char *save_path, int *num_rows, int *num_cols);
+int mat_save(const char *save_path, const real_t *A, const int m, const int n);
+real_t *mat_load(const char *save_path, int *num_rows, int *num_cols);
 void mat_set(real_t *A,
              const size_t stride,
              const size_t i,
@@ -793,25 +793,25 @@ void bdiag_dot(const real_t *A,
   real_t Y[XM * XM] = {0};                                                     \
   dot_XAXt(X, XM, XN, A, AM, AN, Y);
 
-#define HAT(X, X_HAT)                                                          \
+#define SKEW(X, X_HAT)                                                          \
   real_t X_HAT[3 * 3] = {0};                                                   \
-  hat(X, X_HAT);
+  skew(X, X_HAT);
 
-#define VEE(A, X)                                                              \
+#define ANTISKEW(A, X)                                                              \
   real_t X[3] = {0};                                                           \
-  vee(A, X);
+  antiskew(A, X);
 
 #define DOTF(A, AM, AN, B, BM, BN, C)                                          \
   float C[AM * BN] = {0};                                                      \
   dotf(A, AM, AN, B, BM, BN, C);
 
-#define HATF(X, X_HAT)                                                         \
+#define SKEWF(X, X_HAT)                                                         \
   float X_HAT[3 * 3] = {0};                                                    \
-  hatf(X, X_HAT);
+  skewf(X, X_HAT);
 
-#define VEEF(A, X)                                                             \
+#define ANTISKEWF(A, X)                                                             \
   float X[3] = {0};                                                            \
-  veef(A, X);
+  antiskewf(A, X);
 
 int check_inv(const real_t *A, const real_t *A_inv, const int m);
 real_t check_Axb(const real_t *A,

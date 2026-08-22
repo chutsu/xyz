@@ -3008,7 +3008,7 @@ void zeros(real_t *A, const size_t m, const size_t n) {
  * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
  * [Section II-C2, Example II-C2, eq (10)]
  */
-void hat(const real_t x[3], real_t A[3 * 3]) {
+void skew(const real_t x[3], real_t A[3 * 3]) {
   assert(x != NULL);
   assert(A != NULL);
 
@@ -3036,7 +3036,7 @@ void hat(const real_t x[3], real_t A[3 * 3]) {
  * state estimation in robotics." arXiv preprint arXiv:1812.01537 (2018).
  * [Section II-C2, Example II-C2, eq (11)]
  */
-void vee(const real_t A[3 * 3], real_t x[3]) {
+void antiskew(const real_t A[3 * 3], real_t x[3]) {
   assert(A != NULL);
   assert(x != NULL);
 
@@ -3158,7 +3158,7 @@ void zerosf(float *A, const size_t m, const size_t n) {
 /**
  * Create skew-symmetric matrix `A` from a 3x1 vector `x`.
  */
-void hatf(const float x[3], float A[3 * 3]) {
+void skewf(const float x[3], float A[3 * 3]) {
   assert(x != NULL);
   assert(A != NULL);
 
@@ -3181,7 +3181,7 @@ void hatf(const float x[3], float A[3 * 3]) {
 /**
  * Opposite of the skew-symmetric matrix
  */
-void veef(const float A[3 * 3], float x[3]) {
+void antiskewf(const float A[3 * 3], float x[3]) {
   assert(A != NULL);
   assert(x != NULL);
 
@@ -3319,105 +3319,109 @@ int mat_equals(const real_t *A,
   return 1;
 }
 
-// /**
-//  * Save matrix `A` of size `m x n` to `save_path`.
-//  * @returns `0` for success, `-1` for failure
-//  */
-// int mat_save(const char *save_path, const real_t *A, const int m, const int
-// n) {
-//   assert(save_path != NULL);
-//   assert(A != NULL);
-//   assert(m > 0);
-//   assert(n > 0);
-//
-//   FILE *csv_file = fopen(save_path, "w");
-//   if (csv_file == NULL) {
-//     return -1;
-//   }
-//
-//   int idx = 0;
-//   for (int i = 0; i < m; i++) {
-//     for (int j = 0; j < n; j++) {
-//       fprintf(csv_file, "%.18e", A[idx]);
-//       idx++;
-//       if ((j + 1) != n) {
-//         fprintf(csv_file, ",");
-//       }
-//     }
-//     fprintf(csv_file, "\n");
-//   }
-//   fclose(csv_file);
-//
-//   return 0;
-// }
-//
-// /**
-//  * Load matrix from file in `mat_path`, on success `num_rows` and `num_cols`
-//  * will be set respectively.
-//  */
-// real_t *mat_load(const char *mat_path, int *num_rows, int *num_cols) {
-//   assert(mat_path != NULL);
-//   assert(num_rows != NULL);
-//   assert(num_cols != NULL);
-//
-//   // Obtain number of rows and columns in csv data
-//   *num_rows = dsv_rows(mat_path);
-//   *num_cols = dsv_cols(mat_path, ',');
-//   if (*num_rows == -1 || *num_cols == -1) {
-//     return NULL;
-//   }
-//
-//   // Initialize memory for csv data
-//   real_t *A = malloc(sizeof(real_t) * *num_rows * *num_cols);
-//
-//   // Load file
-//   FILE *infile = fopen(mat_path, "r");
-//   if (infile == NULL) {
-//     free(A);
-//     return NULL;
-//   }
-//
-//   // Loop through data
-//   char line[MAX_LINE_LENGTH] = {0};
-//   int row_idx = 0;
-//   int col_idx = 0;
-//   int idx = 0;
-//
-//   // Loop through data line by line
-//   while (fgets(line, MAX_LINE_LENGTH, infile) != NULL) {
-//     // Ignore if comment line
-//     if (line[0] == '#') {
-//       continue;
-//     }
-//
-//     // Iterate through values in line separated by commas
-//     char entry[100] = {0};
-//     for (size_t i = 0; i < strlen(line); i++) {
-//       char c = line[i];
-//       if (c == ' ') {
-//         continue;
-//       }
-//
-//       if (c == ',' || c == '\n') {
-//         A[idx] = strtod(entry, NULL);
-//         idx++;
-//
-//         memset(entry, '\0', sizeof(char) * 100);
-//         col_idx++;
-//       } else {
-//         entry[strlen(entry)] = c;
-//       }
-//     }
-//
-//     col_idx = 0;
-//     row_idx++;
-//   }
-//
-//   // Clean up
-//   fclose(infile);
-//
-//   return A;
-// }
+/**
+ * Save matrix `A` of size `m x n` to `save_path`.
+ * @returns `0` for success, `-1` for failure
+ */
+int mat_save(const char *save_path, const real_t *A, const int m, const int n) {
+  assert(save_path != NULL);
+  assert(A != NULL);
+  assert(m > 0);
+  assert(n > 0);
+
+  FILE *csv_file = fopen(save_path, "w");
+  if (csv_file == NULL) {
+    return -1;
+  }
+
+  int idx = 0;
+  for (int i = 0; i < m; i++) {
+    for (int j = 0; j < n; j++) {
+      fprintf(csv_file, "%.18e", A[idx]);
+      idx++;
+      if ((j + 1) != n) {
+        fprintf(csv_file, ",");
+      }
+    }
+    fprintf(csv_file, "\n");
+  }
+  fclose(csv_file);
+
+  return 0;
+}
+
+/**
+ * Load matrix from file in `mat_path`, on success `num_rows` and `num_cols`
+ * will be set respectively.
+ */
+real_t *mat_load(const char *mat_path, int *num_rows, int *num_cols) {
+  assert(mat_path != NULL);
+  assert(num_rows != NULL);
+  assert(num_cols != NULL);
+
+  // Obtain number of rows and columns in csv data
+  *num_rows = dsv_rows(mat_path);
+  *num_cols = dsv_cols(mat_path, ',');
+  if (*num_rows == -1 || *num_cols == -1) {
+    return NULL;
+  }
+
+  // Initialize memory for csv data
+  real_t *A = malloc(sizeof(real_t) * *num_rows * *num_cols);
+
+  // Load file
+  FILE *infile = fopen(mat_path, "r");
+  if (infile == NULL) {
+    free(A);
+    return NULL;
+  }
+
+  // Loop through data
+  char line[MAX_LINE_LENGTH] = {0};
+  int row_idx = 0;
+  int col_idx = 0;
+  int idx = 0;
+
+  // Loop through data line by line
+  while (fgets(line, MAX_LINE_LENGTH, infile) != NULL) {
+    // Ignore if comment line
+    if (line[0] == '#') {
+      continue;
+    }
+
+    // Iterate through values in line separated by commas
+    char entry[100] = {0};
+    for (size_t i = 0; i < strlen(line); i++) {
+      char c = line[i];
+      if (c == ' ') {
+        continue;
+      }
+
+      if (c == ',' || c == '\n') {
+        A[idx] = strtod(entry, NULL);
+        idx++;
+        memset(entry, '\0', sizeof(char) * 100);
+        col_idx++;
+      } else {
+        entry[strlen(entry)] = c;
+      }
+    }
+
+    // Handle last value if line doesn't end with newline
+    if (entry[0] != '\0') {
+      A[idx] = strtod(entry, NULL);
+      idx++;
+    }
+
+    col_idx = 0;
+    row_idx++;
+  }
+
+  // Clean up
+  fclose(infile);
+
+  return A;
+}
 
 /**
  * Set matrix `A` with value `val` at `(i, j)`.
@@ -6931,8 +6935,8 @@ void quat_transform(const real_t q[4], const real_t x[3], real_t y[3]) {
  * Exponential map on SO(3): maps the Lie-algebra rotation vector `phi` to the
  * corresponding rotation matrix `C` via the Rodrigues formula:
  *
- *   C = I + (sin(theta) / theta) * hat(phi)
- *         + ((1 - cos(theta)) / theta^2) * hat(phi)^2
+ *   C = I + (sin(theta) / theta) * skew(phi)
+ *         + ((1 - cos(theta)) / theta^2) * skew(phi)^2
  *
  * where theta = ||phi||. This is the inverse of so3_log(). For theta ~ 0 a
  * second-order Taylor approximation is used to avoid cancellation.
@@ -6950,11 +6954,11 @@ void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
   real_t phi_skew[3 * 3] = {0};
   real_t phi_skew_sq[3 * 3] = {0};
 
-  hat(phi, phi_skew);
+  skew(phi, phi_skew);
   dot(phi_skew, 3, 3, phi_skew, 3, 3, phi_skew_sq);
 
   if (phi_norm < 1e-3) {
-    // C = eye(3) + hat(phi) + 1/2 * hat(phi)^2;
+    // C = eye(3) + skew(phi) + 1/2 * skew(phi)^2;
     eye(C, 3, 3);
     mat_add(C, phi_skew, C, 3, 3);
     real_t A[3 * 3] = {0};
@@ -6990,7 +6994,7 @@ void so3_exp(const real_t phi[3], real_t C[3 * 3]) {
  *   theta = acos((trace(C) - 1) / 2);
  *   rvec = theta * axis;
  *
- * The special cases theta ~ 0 (where the limit is rvec = 1/2 * vee(C - C'))
+ * The special cases theta ~ 0 (where the limit is rvec = 1/2 * antiskew(C - C'))
  * and theta ~ pi (where sin(theta) ~ 0 and the axis is recovered from the
  * symmetric part, since C + I = 2 n n') are handled explicitly.
  *
@@ -7018,7 +7022,7 @@ void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
   const real_t theta = acos(cos_theta);
 
   if (theta < 1e-6) {
-    // Small angle: rvec ~= 1/2 * vee(C - C')
+    // Small angle: rvec ~= 1/2 * antiskew(C - C')
     rvec[0] = 0.5 * (C21 - C12);
     rvec[1] = 0.5 * (C02 - C20);
     rvec[2] = 0.5 * (C10 - C01);
@@ -7026,7 +7030,7 @@ void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
   }
 
   if (theta < M_PI - 1e-4) {
-    // rvec = theta / (2 * sin(theta)) * vee(C - C')
+    // rvec = theta / (2 * sin(theta)) * antiskew(C - C')
     const real_t s = theta / (2.0 * sin(theta));
     rvec[0] = s * (C21 - C12);
     rvec[1] = s * (C02 - C20);
@@ -7074,8 +7078,8 @@ void so3_log(const real_t C[3 * 3], real_t rvec[3]) {
 /**
  * Right Jacobian of SO(3) at `phi`:
  *
- *   J_r(phi) = I - ((1 - cos(theta)) / theta^2) * hat(phi)
- *                + ((theta - sin(theta)) / theta^3) * hat(phi)^2
+ *   J_r(phi) = I - ((1 - cos(theta)) / theta^2) * skew(phi)
+ *                + ((theta - sin(theta)) / theta^3) * skew(phi)^2
  *
  * where theta = ||phi||, used for right perturbations, i.e.
  *
@@ -7095,7 +7099,7 @@ void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]) {
   const real_t theta = sqrt(wx * wx + wy * wy + wz * wz);
 
   if (theta < 1e-6) {
-    // Small angle: J_r ~= I - 1/2 * hat(phi)
+    // Small angle: J_r ~= I - 1/2 * skew(phi)
     // clang-format off
     J[0] =  1.0;      J[1] =  0.5 * wz;  J[2] = -0.5 * wy;
     J[3] = -0.5 * wz; J[4] =  1.0;       J[5] = 0.5 * wx;
@@ -7108,7 +7112,7 @@ void so3_right_jacobian(const real_t phi[3], real_t J[3 * 3]) {
   const real_t b = (theta - sin(theta)) / (theta * theta * theta);
   const real_t t2 = theta * theta;
 
-  // J = I - a * hat(phi) + b * hat(phi)^2
+  // J = I - a * skew(phi) + b * skew(phi)^2
   J[0] = 1.0 + b * (wx * wx - t2);
   J[1] = a * wz + b * wx * wy;
   J[2] = -a * wy + b * wx * wz;
@@ -8353,6 +8357,9 @@ void image_draw_char(image_t *img,
     return;
   }
 
+  // Each column of the glyph is stored as a byte where bit `row` being set
+  // means the pixel at (col, row) is lit. For each set bit, we fill a
+  // `scale x scale` block of pixels to render at the desired size.
   for (int col = 0; col < FONT_CHAR_WIDTH; col++) {
     uint8_t bits = font_5x7[idx][col];
     for (int row = 0; row < FONT_CHAR_HEIGHT; row++) {
@@ -8383,6 +8390,8 @@ void image_draw_string(image_t *img,
   assert(str != NULL);
   assert(scale > 0);
 
+  // Walk through each character in the string, drawing it at the current
+  // cursor position and advancing by the glyph width plus a 1-pixel gap.
   int cursor_x = x;
   for (int i = 0; str[i] != '\0'; i++) {
     image_draw_char(img, cursor_x, y, str[i], scale, color);
@@ -9242,7 +9251,7 @@ void rodrigues(const real_t w[3], real_t R[3 * 3]) {
 
   const real_t k[3] = {w[0] / theta, w[1] / theta, w[2] / theta};
   real_t K[3 * 3] = {0};
-  hat(k, K);
+  skew(k, K);
 
   real_t K2[3 * 3] = {0};
   dot(K, 3, 3, K, 3, 3, K2);
@@ -9806,7 +9815,7 @@ static void _solvepnp_linearize(const real_t *proj_params,
     // -- J_pos = Jh * -C_CF
     real_t J_pos[2 * 3] = {0};
     dot(Jh, 2, 3, nC_CF, 3, 3, J_pos);
-    // -- J_rot = Jh * -C_CF * hat(p_F - r_FC) * -C_FC
+    // -- J_rot = Jh * -C_CF * skew(p_F - r_FC) * -C_FC
     real_t J_rot[2 * 3] = {0};
     real_t A[3 * 3] = {0};
     real_t dp[3] = {0};
@@ -9814,7 +9823,7 @@ static void _solvepnp_linearize(const real_t *proj_params,
     dp[0] = p_F[0] - r_FC[0];
     dp[1] = p_F[1] - r_FC[1];
     dp[2] = p_F[2] - r_FC[2];
-    hat(dp, dp_hat);
+    skew(dp, dp_hat);
     dot(dp_hat, 3, 3, nC_FC, 3, 3, A);
     dot(J_pos, 2, 3, A, 3, 3, J_rot);
     // -- J = [J_pos | J_rot]
@@ -12792,7 +12801,7 @@ static void ba_factor_pose_jacobian(const real_t Jh_weighted[2 * 3],
 
   // Jh_weighted = -1 * sqrt_info * Jh;
   // J_pos = Jh_weighted * -C_CW;
-  // J_rot = Jh_weighted * -C_CW * hat(p_W - r_WC) * -C_WC;
+  // J_rot = Jh_weighted * -C_CW * skew(p_W - r_WC) * -C_WC;
   // J = [J_pos, J_rot]
 
   // Setup
@@ -12820,11 +12829,11 @@ static void ba_factor_pose_jacobian(const real_t Jh_weighted[2 * 3],
 
   /**
    * Jh_weighted = -1 * sqrt_info * Jh;
-   * J_rot = Jh_weighted * -C_CW * hat(p_W - r_WC) * -C_WC;
+   * J_rot = Jh_weighted * -C_CW * skew(p_W - r_WC) * -C_WC;
    * where:
    *
    *   A = -C_CW;
-   *   B = hat(p_W - r_WC);
+   *   B = skew(p_W - r_WC);
    *   C = -C_WC;
    */
   real_t J_rot[2 * 3] = {0};
@@ -12836,7 +12845,7 @@ static void ba_factor_pose_jacobian(const real_t Jh_weighted[2 * 3],
   dp[0] = p_W[0] - r_WC[0];
   dp[1] = p_W[1] - r_WC[1];
   dp[2] = p_W[2] - r_WC[2];
-  hat(dp, B);
+  skew(dp, B);
 
   real_t C[3 * 3] = {0};
   mat_copy(C_WC, 3, 3, C);
@@ -13022,7 +13031,7 @@ static void camera_factor_pose_jacobian(const real_t Jh_w[2 * 3],
 
   // Jh_w = -1 * sqrt_info * Jh;
   // J_pos = Jh_w * C_CB * -C_BW;
-  // J_rot = Jh_w * C_CB * C_BW * hat(p_W - r_WB) * -C_WB;
+  // J_rot = Jh_w * C_CB * C_BW * skew(p_W - r_WB) * -C_WB;
   // J = [J_pos, J_rot];
 
   // Setup
@@ -13050,12 +13059,12 @@ static void camera_factor_pose_jacobian(const real_t Jh_w[2 * 3],
   mat_copy(C_WB, 3, 3, neg_C_WB);
   mat_scale(neg_C_WB, 3, 3, -1.0);
 
-  // Form: C_CB * -C_BW * hat(p_W - r_WB) * -C_WB
+  // Form: C_CB * -C_BW * skew(p_W - r_WB) * -C_WB
   real_t p[3] = {0};
   real_t S[3 * 3] = {0};
   TF_TRANS(T_WB, r_WB);
   vec_sub(p_W, r_WB, p, 3);
-  hat(p, S);
+  skew(p, S);
 
   real_t A[3 * 3] = {0};
   real_t B[3 * 3] = {0};
@@ -13074,7 +13083,7 @@ static void camera_factor_pose_jacobian(const real_t Jh_w[2 * 3],
   J[7] = J_pos[4];
   J[8] = J_pos[5];
 
-  // Form: J_rot = Jh_w * C_CB * -C_BW * hat(p_W - r_WB) * -C_WB;
+  // Form: J_rot = Jh_w * C_CB * -C_BW * skew(p_W - r_WB) * -C_WB;
   real_t J_rot[2 * 3] = {0};
   dot(Jh_w, 2, 3, B, 3, 3, J_rot);
 
@@ -13101,7 +13110,7 @@ static void camera_factor_extrinsic_jacobian(const real_t Jh_w[2 * 3],
 
   // Jh_w = -1 * sqrt_info * Jh;
   // J_pos = Jh_w * -C_CB;
-  // J_rot = Jh_w * C_CB * hat(C_BC * p_C);
+  // J_rot = Jh_w * C_CB * skew(C_BC * p_C);
 
   // Setup
   real_t C_BC[3 * 3] = {0};
@@ -13123,11 +13132,11 @@ static void camera_factor_extrinsic_jacobian(const real_t Jh_w[2 * 3],
   mat_copy(C_BC, 3, 3, neg_C_BC);
   mat_scale(neg_C_BC, 3, 3, -1.0);
 
-  // Form: -C_CB * hat(C_BC * p_C) * -C_BC
+  // Form: -C_CB * skew(C_BC * p_C) * -C_BC
   real_t p[3] = {0};
   real_t S[3 * 3] = {0};
   dot(C_BC, 3, 3, p_C, 3, 1, p);
-  hat(p, S);
+  skew(p, S);
 
   real_t A[3 * 3] = {0};
   real_t B[3 * 3] = {0};
@@ -13146,7 +13155,7 @@ static void camera_factor_extrinsic_jacobian(const real_t Jh_w[2 * 3],
   J[7] = J_pos[4];
   J[8] = J_pos[5];
 
-  // Form: J_rot = Jh_w * -C_CB * hat(C_BC * p_C) * -C_BC;
+  // Form: J_rot = Jh_w * -C_CB * skew(C_BC * p_C) * -C_BC;
   real_t J_rot[2 * 3] = {0};
   dot(Jh_w, 2, 3, B, 3, 3, J_rot);
 
@@ -13660,22 +13669,22 @@ void imu_factor_F_matrix(const real_t q_i[4],
   // Setup
   const real_t dt_sq = dt * dt;
 
-  // gyr_x = hat(0.5 * (imu_buf.gyr[k] + imu_buf.gyr[k + 1]) - bg_i)
+  // gyr_x = skew(0.5 * (imu_buf.gyr[k] + imu_buf.gyr[k + 1]) - bg_i)
   real_t gyr[3] = {0};
   real_t gyr_x[3 * 3] = {0};
   gyr[0] = 0.5 * (w_i[0] + w_j[0]) - bg_i[0];
   gyr[1] = 0.5 * (w_i[1] + w_j[1]) - bg_i[1];
   gyr[2] = 0.5 * (w_i[2] + w_j[2]) - bg_i[2];
-  hat(gyr, gyr_x);
+  skew(gyr, gyr_x);
 
-  // acc_i_x = hat(imu_buf.acc[k] - ba_i)
-  // acc_j_x = hat(imu_buf.acc[k + 1] - ba_i)
+  // acc_i_x = skew(imu_buf.acc[k] - ba_i)
+  // acc_j_x = skew(imu_buf.acc[k + 1] - ba_i)
   real_t acc_i[3] = {a_i[0] - ba_i[0], a_i[1] - ba_i[1], a_i[2] - ba_i[2]};
   real_t acc_j[3] = {a_j[0] - ba_i[0], a_j[1] - ba_i[1], a_j[2] - ba_i[2]};
   real_t acc_i_x[3 * 3] = {0};
   real_t acc_j_x[3 * 3] = {0};
-  hat(acc_i, acc_i_x);
-  hat(acc_j, acc_j_x);
+  skew(acc_i, acc_i_x);
+  skew(acc_j, acc_j_x);
 
   // dC_i = quat2rot(q_i)
   // dC_j = quat2rot(q_j)
@@ -13770,15 +13779,15 @@ void imu_factor_form_G_matrix(const imu_factor_t *factor,
   quat2rot(factor->q_i, dC_i);
   quat2rot(factor->q_j, dC_j);
 
-  // acc_i_x = hat(imu_buf.acc[k] - ba_i)
-  // acc_j_x = hat(imu_buf.acc[k + 1] - ba_i)
+  // acc_i_x = skew(imu_buf.acc[k] - ba_i)
+  // acc_j_x = skew(imu_buf.acc[k + 1] - ba_i)
   const real_t *ba_i = factor->ba_i;
   real_t acc_i[3] = {a_i[0] - ba_i[0], a_i[1] - ba_i[1], a_i[2] - ba_i[2]};
   real_t acc_j[3] = {a_j[0] - ba_i[0], a_j[1] - ba_i[1], a_j[2] - ba_i[2]};
   real_t acc_i_x[3 * 3] = {0};
   real_t acc_j_x[3 * 3] = {0};
-  hat(acc_i, acc_i_x);
-  hat(acc_j, acc_j_x);
+  skew(acc_i, acc_i_x);
+  skew(acc_j, acc_j_x);
 
   // dC_j @ acc_j_x
   real_t dC_j_acc_j_x[3 * 3] = {0};
@@ -14088,8 +14097,8 @@ static void imu_factor_pose_i_jac(imu_factor_t *factor,
   mat_block_set(J_pose_i, 6, 0, 2, 0, 2, drij_dri);
 
   // -- Jacobian w.r.t. q_i
-  HAT(dr_est, drij_dCi);
-  HAT(dv_est, dvij_dCi);
+  SKEW(dr_est, drij_dCi);
+  SKEW(dv_est, dvij_dCi);
 
   // -(quat_left(rot2quat(C_j.T @ C_i)) @ quat_right(dq))[1:4, 1:4]
   real_t dtheta_dCi[3 * 3] = {0};
@@ -14630,7 +14639,7 @@ void pcd_deskew(pcd_t *pcd,
 //   J_pos[4] = -1.0;
 //   J_pos[8] = -1.0;
 //
-//   // J_rot = C_WL @ hat(p_W_est)
+//   // J_rot = C_WL @ skew(p_W_est)
 //   // clang-format off
 //   real_t xP[3 * 3] = {0};
 //   xP[0] = 0.0;         xP[1] = -p_W_est[2]; xP[2] = p_W_est[1];
@@ -15147,7 +15156,7 @@ int calib_camera_factor_eval(void *factor_ptr) {
     factor->jacs[0][7] = J_pos[4];
     factor->jacs[0][8] = J_pos[5];
 
-    // J_rot = Jh * C_CiB * -C_BF @ hat(p_FFi)
+    // J_rot = Jh * C_CiB * -C_BF @ skew(p_FFi)
     real_t C_BF[3 * 3] = {0};
     real_t C_CiF[3 * 3] = {0};
     tf_rot_get(T_BF, C_BF);
@@ -15156,7 +15165,7 @@ int calib_camera_factor_eval(void *factor_ptr) {
 
     real_t J_rot[2 * 3] = {0};
     real_t p_FFi_x[3 * 3] = {0};
-    hat(p_FFi, p_FFi_x);
+    skew(p_FFi, p_FFi_x);
     dot3(Jh_w, 2, 3, C_CiF, 3, 3, p_FFi_x, 3, 3, J_rot);
 
     factor->jacs[0][3] = J_rot[0];
@@ -15184,7 +15193,7 @@ int calib_camera_factor_eval(void *factor_ptr) {
     factor->jacs[1][7] = J_pos[4];
     factor->jacs[1][8] = J_pos[5];
 
-    // J_rot = Jh * -C_CiB * hat(r_BFi - r_BCi) * -C_BCi
+    // J_rot = Jh * -C_CiB * skew(r_BFi - r_BCi) * -C_BCi
     real_t J_rot[2 * 3] = {0};
     real_t r_BFi[3] = {0};
     real_t r_BCi[3] = {0};
@@ -15197,7 +15206,7 @@ int calib_camera_factor_eval(void *factor_ptr) {
     dr[0] = r_BFi[0] - r_BCi[0];
     dr[1] = r_BFi[1] - r_BCi[1];
     dr[2] = r_BFi[2] - r_BCi[2];
-    hat(dr, hdr);
+    skew(dr, hdr);
     tf_rot_get(T_BCi, nC_BCi);
     mat_scale(nC_BCi, 3, 3, -1.0);
 
@@ -15374,7 +15383,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     factor->jacs[0][7] = J_pos[4];
     factor->jacs[0][8] = J_pos[5];
 
-    // J_rot = Jh * C_CiW * -C_WF @ hat(p_FFi)
+    // J_rot = Jh * C_CiW * -C_WF @ skew(p_FFi)
     real_t C_WF[3 * 3] = {0};
     real_t C_CiF[3 * 3] = {0};
     tf_rot_get(T_WF, C_WF);
@@ -15383,7 +15392,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
 
     real_t J_rot[2 * 3] = {0};
     real_t p_FFi_x[3 * 3] = {0};
-    hat(factor->p_FFi, p_FFi_x);
+    skew(factor->p_FFi, p_FFi_x);
     dot3(Jh_w, 2, 3, C_CiF, 3, 3, p_FFi_x, 3, 3, J_rot);
 
     factor->jacs[0][3] = J_rot[0];
@@ -15411,7 +15420,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     factor->jacs[1][7] = J_pos[4];
     factor->jacs[1][8] = J_pos[5];
 
-    // J_rot = Jh * -C_CiW * hat(p_WFi - r_WS) * -C_WS
+    // J_rot = Jh * -C_CiW * skew(p_WFi - r_WS) * -C_WS
     real_t r_WS[3] = {0};
     real_t dp[3] = {0};
     real_t dp_x[3 * 3] = {0};
@@ -15421,7 +15430,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     dp[0] = p_WFi[0] - r_WS[0];
     dp[1] = p_WFi[1] - r_WS[1];
     dp[2] = p_WFi[2] - r_WS[2];
-    hat(dp, dp_x);
+    skew(dp, dp_x);
 
     real_t nC_WS[3 * 3] = {0};
     tf_rot_get(T_WS, nC_WS);
@@ -15455,7 +15464,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     factor->jacs[2][7] = J_pos[4];
     factor->jacs[2][8] = J_pos[5];
 
-    // J_rot = Jh * -C_CiS * hat(p_SFi - r_SC0) * -C_SC0
+    // J_rot = Jh * -C_CiS * skew(p_SFi - r_SC0) * -C_SC0
     real_t r_SC0[3] = {0};
     real_t dp[3] = {0};
     real_t dp_x[3 * 3] = {0};
@@ -15466,7 +15475,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     dp[0] = p_SFi[0] - r_SC0[0];
     dp[1] = p_SFi[1] - r_SC0[1];
     dp[2] = p_SFi[2] - r_SC0[2];
-    hat(dp, dp_x);
+    skew(dp, dp_x);
 
     real_t nC_SC0[3 * 3] = {0};
     tf_rot_get(T_SC0, nC_SC0);
@@ -15500,7 +15509,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     factor->jacs[3][7] = J_pos[4];
     factor->jacs[3][8] = J_pos[5];
 
-    // J_rot = Jh * -C_CiC0 * hat(p_C0Fi - r_C0Ci) * -C_C0Ci
+    // J_rot = Jh * -C_CiC0 * skew(p_C0Fi - r_C0Ci) * -C_C0Ci
     real_t J_rot[2 * 3] = {0};
     real_t r_C0Fi[3] = {0};
     real_t r_C0Ci[3] = {0};
@@ -15514,7 +15523,7 @@ int calib_imucam_factor_eval(void *factor_ptr) {
     dr[0] = r_C0Fi[0] - r_C0Ci[0];
     dr[1] = r_C0Fi[1] - r_C0Ci[1];
     dr[2] = r_C0Fi[2] - r_C0Ci[2];
-    hat(dr, hdr);
+    skew(dr, hdr);
     tf_rot_get(T_C0Ci, nC_C0Ci);
     mat_scale(nC_C0Ci, 3, 3, -1.0);
 

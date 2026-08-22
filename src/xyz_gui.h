@@ -21,6 +21,8 @@
 #include <stb_image.h>
 #include <stb_image_write.h>
 
+#include "xyz.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -227,6 +229,7 @@ void gl_tf_er(const gl_float_t ypr[3],
               gl_float_t T[4 * 4]);
 void gl_tf2pose(const gl_float_t T[4 * 4], gl_pose_t *pose);
 int gl_save_frame_buffer(const int width, const int height, const char *fp);
+image_t *gl_grab_frame_buffer(const int width, const int height);
 
 void gl_jet_colormap(const gl_float_t value,
                      gl_float_t *r,
