@@ -1,5 +1,6 @@
 include config.mk
-.PHONY: benchmarks build docs scripts src deps tools test-build test-run _libxyz_internal
+
+.PHONY: help setup all deps venv compile_commands libxyz _libxyz_internal tests tools ci cppcheck clean docs
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
@@ -104,13 +105,13 @@ compile_commands: ## Generate compile_commands.json
 
 libxyz: ## Build libxyz
 	@if command -v bear > /dev/null 2>&1; then \
-		bear -- $(MAKE) _libxyz_internal; \
+		bear -- $(MAKE) -s _libxyz_internal; \
 		mv compile_commands.json $(BLD_DIR)/; \
 	elif command -v compiledb > /dev/null 2>&1; then \
-		compiledb -n $(MAKE) _libxyz_internal; \
+		compiledb -n $(MAKE) -s _libxyz_internal; \
 		mv compile_commands.json $(BLD_DIR)/; \
 	else \
-		$(MAKE) _libxyz_internal; \
+		$(MAKE) -s _libxyz_internal; \
 	fi
 
 _libxyz_internal: \
