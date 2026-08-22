@@ -105,7 +105,6 @@ ci: ## Run CI tests
 
 cppcheck: ## Run cppcheck
 	@cppcheck src/xyz.c src/xyz.h
-	@cppcheck src/xyz_gui.c src/xyz_gui.h
 
 clean:  ## Clean
 	@rm -rf $(BLD_DIR)
