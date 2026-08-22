@@ -1,3 +1,45 @@
+/**
+ * A C99 library providing data structures, linear algebra, 3D transforms,
+ * computer vision, state estimation, sensor data loaders, and rendering.
+ *
+ * Modules:
+ *   - SYSTEM ............ Stack traces and terminal helpers
+ *   - DATA .............. Strings, file I/O, CSV/DSV parsing
+ *   - TIME .............. Timestamps and timing utilities
+ *   - ARRAY ............. Generic dynamic pointer array
+ *   - DARRAY ............ Typed dynamic array with expand/contract
+ *   - LIST .............. Doubly-linked list
+ *   - RED-BLACK-TREE .... Self-balancing BST (keys and values)
+ *   - HASHMAP ........... Open-addressing hash map
+ *   - NETWORK ........... TCP server and client
+ *   - MATH .............. Scalar math, comparison, statistics
+ *   - LINEAR ALGEBRA .... Matrix/vector ops, SVD, Cholesky, QR, eigen
+ *   - SUITE-SPARSE ...... CHOLMOD sparse linear algebra
+ *   - TRANSFORMS ........ 3D rigid transforms, rotations, quaternions
+ *   - LIE ............... SO(3) and S2 Lie group operations
+ *   - GNUPLOT ........... Gnuplot pipe interface
+ *   - CONTROL ........... PID controller
+ *   - MAV ............... Quadrotor model, controllers, waypoints
+ *   - COMPUTER-VISION ... Images, camera models, projective geometry
+ *   - APRILGRID ......... AprilTag grid detection and layout
+ *   - MORTON CODES ...... 2D/3D spatial encoding
+ *   - PLANE ............. 3D plane representation
+ *   - FRUSTUM ........... View frustum and culling
+ *   - POINT CLOUD ....... Umeyama point cloud alignment
+ *   - VOXEL ............. Voxel grid and downsampling
+ *   - OCTREE ............ Octree spatial partitioning
+ *   - KD-TREE ........... KD-tree nearest-neighbor search
+ *   - STATE-ESTIMATION .. Factors, cameras, IMU, bundle adjustment
+ *   - SOLVER ............ Gauss-Newton nonlinear least squares
+ *   - TIMELINE .......... Sensor event ordering and loading
+ *   - SIMULATION ........ Synthetic trajectories, IMU, and camera data
+ *   - EUROC ............. EuRoC MAV dataset loader
+ *   - KITTI ............. KITTI dataset loader
+ *   - OPENGL ............ OpenGL math, shaders, cameras
+ *   - GUI ............... GLFW window and input handling
+ *   - GL-PRIMITIVES ..... 3D drawables (points, lines, meshes, text)
+ */
+
 #pragma once
 
 #include <assert.h>
@@ -805,11 +847,11 @@ void bdiag_dot(const real_t *A,
   real_t Y[XM * XM] = {0};                                                     \
   dot_XAXt(X, XM, XN, A, AM, AN, Y);
 
-#define SKEW(X, X_HAT)                                                          \
+#define SKEW(X, X_HAT)                                                         \
   real_t X_HAT[3 * 3] = {0};                                                   \
   skew(X, X_HAT);
 
-#define ANTISKEW(A, X)                                                              \
+#define ANTISKEW(A, X)                                                         \
   real_t X[3] = {0};                                                           \
   antiskew(A, X);
 
@@ -817,11 +859,11 @@ void bdiag_dot(const real_t *A,
   float C[AM * BN] = {0};                                                      \
   dotf(A, AM, AN, B, BM, BN, C);
 
-#define SKEWF(X, X_HAT)                                                         \
+#define SKEWF(X, X_HAT)                                                        \
   float X_HAT[3 * 3] = {0};                                                    \
   skewf(X, X_HAT);
 
-#define ANTISKEWF(A, X)                                                             \
+#define ANTISKEWF(A, X)                                                        \
   float X[3] = {0};                                                            \
   antiskewf(A, X);
 
@@ -1426,35 +1468,35 @@ typedef struct color_t {
   uint8_t b;
 } color_t;
 
-#define COLOR_WHITE      ((color_t){255, 255, 255})
-#define COLOR_BLACK      ((color_t){0, 0, 0})
-#define COLOR_RED        ((color_t){255, 0, 0})
-#define COLOR_GREEN      ((color_t){0, 255, 0})
-#define COLOR_BLUE       ((color_t){0, 0, 255})
-#define COLOR_YELLOW     ((color_t){255, 255, 0})
-#define COLOR_CYAN       ((color_t){0, 255, 255})
-#define COLOR_MAGENTA    ((color_t){255, 0, 255})
-#define COLOR_ORANGE     ((color_t){255, 165, 0})
-#define COLOR_GRAY       ((color_t){128, 128, 128})
-#define COLOR_DARK_GRAY  ((color_t){64, 64, 64})
+#define COLOR_WHITE ((color_t){255, 255, 255})
+#define COLOR_BLACK ((color_t){0, 0, 0})
+#define COLOR_RED ((color_t){255, 0, 0})
+#define COLOR_GREEN ((color_t){0, 255, 0})
+#define COLOR_BLUE ((color_t){0, 0, 255})
+#define COLOR_YELLOW ((color_t){255, 255, 0})
+#define COLOR_CYAN ((color_t){0, 255, 255})
+#define COLOR_MAGENTA ((color_t){255, 0, 255})
+#define COLOR_ORANGE ((color_t){255, 165, 0})
+#define COLOR_GRAY ((color_t){128, 128, 128})
+#define COLOR_DARK_GRAY ((color_t){64, 64, 64})
 #define COLOR_LIGHT_GRAY ((color_t){192, 192, 192})
-#define COLOR_BROWN      ((color_t){139, 69, 19})
-#define COLOR_PINK       ((color_t){255, 192, 203})
-#define COLOR_PURPLE     ((color_t){128, 0, 128})
-#define COLOR_MAROON     ((color_t){128, 0, 0})
-#define COLOR_OLIVE      ((color_t){128, 128, 0})
-#define COLOR_LIME       ((color_t){0, 255, 0})
-#define COLOR_TEAL       ((color_t){0, 128, 128})
-#define COLOR_NAVY       ((color_t){0, 0, 128})
-#define COLOR_AQUA       ((color_t){0, 255, 255})
-#define COLOR_SILVER     ((color_t){192, 192, 192})
-#define COLOR_CORAL      ((color_t){255, 127, 80})
-#define COLOR_SALMON     ((color_t){250, 128, 114})
-#define COLOR_GOLD       ((color_t){255, 215, 0})
-#define COLOR_VIOLET     ((color_t){238, 130, 238})
-#define COLOR_INDIGO     ((color_t){75, 0, 130})
-#define COLOR_TURQUOISE  ((color_t){64, 224, 208})
-#define COLOR_CRIMSON    ((color_t){220, 20, 60})
+#define COLOR_BROWN ((color_t){139, 69, 19})
+#define COLOR_PINK ((color_t){255, 192, 203})
+#define COLOR_PURPLE ((color_t){128, 0, 128})
+#define COLOR_MAROON ((color_t){128, 0, 0})
+#define COLOR_OLIVE ((color_t){128, 128, 0})
+#define COLOR_LIME ((color_t){0, 255, 0})
+#define COLOR_TEAL ((color_t){0, 128, 128})
+#define COLOR_NAVY ((color_t){0, 0, 128})
+#define COLOR_AQUA ((color_t){0, 255, 255})
+#define COLOR_SILVER ((color_t){192, 192, 192})
+#define COLOR_CORAL ((color_t){255, 127, 80})
+#define COLOR_SALMON ((color_t){250, 128, 114})
+#define COLOR_GOLD ((color_t){255, 215, 0})
+#define COLOR_VIOLET ((color_t){238, 130, 238})
+#define COLOR_INDIGO ((color_t){75, 0, 130})
+#define COLOR_TURQUOISE ((color_t){64, 224, 208})
+#define COLOR_CRIMSON ((color_t){220, 20, 60})
 
 typedef struct image_t {
   int width;
@@ -3477,68 +3519,6 @@ void kitti_raw_free(kitti_raw_t *data);
 /*******************************************************************************
  * OPENGL
  ******************************************************************************/
-
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-////////////
-// MACROS //
-////////////
-
-/**
- * Mark variable unused.
- * @param[in] expr Variable to mark as unused
- */
-#ifndef UNUSED
-#define UNUSED(expr)                                                           \
-  do {                                                                         \
-    (void) (expr);                                                             \
-  } while (0)
-#endif
-
-/**
- * Return max between a and b
- */
-#ifndef MAX
-#define MAX(a, b) a > b ? a : b
-#endif
-
-/**
- * Return min between a and b
- */
-#ifndef MIN
-#define MIN(a, b) a < b ? a : b;
-#endif
-
-/**
- * Fatal
- *
- * @param[in] M Message
- * @param[in] ... Varadic arguments
- */
-#ifndef FATAL
-#define FATAL(...)                                                             \
-  do {                                                                         \
-    fprintf(stderr, "[FATAL] [%s:%d:%s()]: ", __FILE__, __LINE__, __func__);   \
-    fprintf(stderr, __VA_ARGS__);                                              \
-  } while (0);                                                                 \
-  exit(-1)
-#endif
-
-/**
- * Log error
- * @param[in] M Message
- * @param[in] ... Varadic arguments
- */
-#ifndef LOG_ERROR
-#define LOG_ERROR(...)                                                         \
-  do {                                                                         \
-    fprintf(stderr, "[ERROR] [%s:%d:%s()]: ", __FILE__, __LINE__, __func__);   \
-    fprintf(stderr, __VA_ARGS__);                                              \
-  } while (0)
-#endif
 
 #define GL_DEL_VERTEX_ARRAY(X)                                                 \
   if (glIsVertexArray(X) == GL_TRUE) {                                         \
