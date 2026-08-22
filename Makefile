@@ -1,17 +1,17 @@
 include config.mk
-.PHONY: benchmarks build docs scripts src deps tools
+.PHONY: benchmarks build docs scripts src deps tools test-build test-run
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
 		| awk 'BEGIN {FS = ":.*?## "}; \
-		{printf "\033[1;34m%-10s\033[0m%s\n", $$1, $$2}'
+		{printf "\033[1;34m%-12s\033[0m%s\n", $$1, $$2}'
 
 setup:
 	@mkdir -p $(BLD_DIR)
 	@cp -r deps/fonts $(BLD_DIR)
 	@cp -r src/test_data $(BLD_DIR)
 
-$(BLD_DIR)/test_%: src/test_%.c libxyz
+$(BLD_DIR)/test_%: src/test_%.c $(BLD_DIR)/libxyz.a
 	@echo "TEST [$(notdir $@)]"
 	@$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lxyz
 
@@ -92,12 +92,10 @@ venv: ## Setup env
 	venv/bin/pip3 install -r requirements.txt && \
 	echo "Run 'source venv/bin/activate' to activate the virtualenv"
 
-libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a  ## Build libxyz
+libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a $(TESTS) ## Build libxyz
 
-tests: ## Build and run tests
-	@$(CC) $(CFLAGS) src/test_xyz.c -o $(BLD_DIR)/test_xyz $(LDFLAGS) -lxyz
-	@$(CC) $(CFLAGS) src/test_xyz_gui.c -o $(BLD_DIR)/test_xyz_gui $(LDFLAGS) -lxyz
-	# @cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
+tests: libxyz ## Build and run tests
+	@cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
 
 tools:
 	@gcc -c tools/calib_camera.c -o $(BLD_DIR)/calib_camera
