@@ -1,30 +1,62 @@
 xyz
 ===
 
-``xyz`` contain notes and code used to learn about different aspects of
-robotics.
+``xyz`` is a C99 library for robotics. It provides data structures, linear
+algebra, 3D transforms, computer vision, state estimation, sensor data
+loaders, and rendering.
+
+Modules
+-------
+
+- SYSTEM - Stack traces and terminal helpers
+- DATA - Strings, file I/O, CSV/DSV parsing
+- TIME - Timestamps and timing utilities
+- ARRAY - Generic dynamic pointer array
+- DARRAY - Typed dynamic array with expand/contract
+- LIST - Doubly-linked list
+- RED-BLACK-TREE - Self-balancing BST (keys and values)
+- HASHMAP - Open-addressing hash map
+- NETWORK - TCP server and client
+- MATH - Scalar math, comparison, statistics
+- LINEAR ALGEBRA - Matrix/vector ops, SVD, Cholesky, QR, eigen
+- SUITE-SPARSE - CHOLMOD sparse linear algebra
+- TRANSFORMS - 3D rigid transforms, rotations, quaternions
+- LIE - SO(3) and S2 Lie group operations
+- GNUPLOT - Gnuplot pipe interface
+- CONTROL - PID controller
+- MAV - Quadrotor model, controllers, waypoints
+- COMPUTER-VISION - Images, camera models, projective geometry
+- APRILGRID - AprilTag grid detection and layout
+- MORTON CODES - 2D/3D spatial encoding
+- PLANE - 3D plane representation
+- FRUSTUM - View frustum and culling
+- POINT CLOUD - Umeyama point cloud alignment
+- VOXEL - Voxel grid and downsampling
+- OCTREE - Octree spatial partitioning
 
 Build
 -----
 
 For convenience there is a ``Makefile`` that automates the installation of
 dependencies and building of ``xyz``. To install dependencies, build and test
-``xyz`` run `make libxyz` and `make tests`.
+``xyz`` run ``make libxyz`` and ``make tests``.
 
 Other make targets include:
 
 .. code-block::
 
-  all       Buld all
-  deps      Install dependencies
-  libxyz    Build libxyz
-  tests     Build and run tests
-  ci        Run CI tests
-  cppcheck  Run cppcheck
-  clean     Clean
-  docs      Build docs
+  all        Build all
+  deps       Install dependencies
+  libxyz     Build libxyz
+  tests      Build and run tests
+  ci         Run CI tests
+  cppcheck   Run cppcheck
+  clean      Clean
+  docs       Build docs
+  venv       Setup Python virtual environment
+  compile_commands  Generate compile_commands.json
 
-alternatively just type ``make help`` to bring up info on make targets.
+Alternatively just type ``make help`` to bring up info on make targets.
 
 
 License
