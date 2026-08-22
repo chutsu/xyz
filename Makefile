@@ -1,5 +1,5 @@
 include config.mk
-.PHONY: benchmarks build docs scripts src deps tools test-build test-run
+.PHONY: benchmarks build docs scripts src deps tools test-build test-run _libxyz_internal
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
@@ -92,7 +92,32 @@ venv: ## Setup env
 	venv/bin/pip3 install -r requirements.txt && \
 	echo "Run 'source venv/bin/activate' to activate the virtualenv"
 
-libxyz: setup $(BLD_DIR)/libglad.a $(BLD_DIR)/libxyz.a $(TESTS) ## Build libxyz
+compile_commands: ## Generate compile_commands.json
+	@if command -v bear > /dev/null 2>&1; then \
+		bear -- $(MAKE) _libxyz_internal; \
+	elif command -v compiledb > /dev/null 2>&1; then \
+		compiledb -n $(MAKE) _libxyz_internal; \
+	else \
+		echo "Error: install bear or compiledb"; exit 1; \
+	fi
+	@mv compile_commands.json $(BLD_DIR)/
+
+libxyz: ## Build libxyz
+	@if command -v bear > /dev/null 2>&1; then \
+		bear -- $(MAKE) _libxyz_internal; \
+		mv compile_commands.json $(BLD_DIR)/; \
+	elif command -v compiledb > /dev/null 2>&1; then \
+		compiledb -n $(MAKE) _libxyz_internal; \
+		mv compile_commands.json $(BLD_DIR)/; \
+	else \
+		$(MAKE) _libxyz_internal; \
+	fi
+
+_libxyz_internal: \
+	setup \
+	$(BLD_DIR)/libglad.a \
+	$(BLD_DIR)/libxyz.a \
+	$(TESTS)
 
 tests: libxyz ## Build and run tests
 	@cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
