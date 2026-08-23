@@ -66,7 +66,6 @@ run_test() {
     cd ~/code/xyz \
       && clear \
       && make libxyz -j \
-      && make tests \
       && cd build \
       && $DEBUG ./$1 --target $2 \
       && cd ~/code/xyz
@@ -147,7 +146,7 @@ run_test() {
 # run_test test_xyz test_image_draw_circle
 # run_test test_xyz test_image_draw_circle_fill
 # run_test test_xyz test_image_draw_char
-run_test test_xyz test_image_draw_string
+# run_test test_xyz test_image_draw_string
 # run_test test_xyz test_image_draw_line_thickness
 # run_test test_xyz test_image_draw_circle_thickness
 ## XYZ-MATH
@@ -267,7 +266,7 @@ run_test test_xyz test_image_draw_string
 # run_test test_xyz test_homography_pose
 # run_test test_xyz test_p3p_kneip
 # run_test test_xyz test_solvepnp
-# run_test test_xyz test_hedborgh
+run_test test_xyz test_hedborg_essential_matrix
 ## XYZ-APRILGRID
 # run_test test_xyz test_aprilgrid_malloc_and_free
 # run_test test_xyz test_aprilgrid_center

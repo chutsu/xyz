@@ -1,6 +1,7 @@
 include config.mk
 
-.PHONY: help setup all deps venv compile_commands libxyz _libxyz_internal tests tools ci cppcheck clean docs
+.PHONY: help setup all deps venv compile_commands libxyz _libxyz_internal tests \
+	tools ci cppcheck clean docs
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \

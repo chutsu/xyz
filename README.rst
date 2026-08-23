@@ -39,7 +39,7 @@ Build
 
 For convenience there is a ``Makefile`` that automates the installation of
 dependencies and building of ``xyz``. To install dependencies, build and test
-``xyz`` run ``make libxyz`` and ``make tests``.
+run ``make all``.
 
 Other make targets include:
 
