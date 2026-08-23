@@ -10586,6 +10586,41 @@ static int _hedborg_seed(const real_t *R_init,
   return 4;
 }
 
+/**
+ * Estimate the essential matrix from point correspondences using the
+ * Hedborg 5-point algorithm (Hedborg & Felsberg 2013).
+ *
+ * Source:
+ *   Hedborg, Johan, and Michael Felsberg. "Fast iterative five point relative
+ *   pose estimation." 2013 IEEE Workshop on Robot Vision (WORV). IEEE, 2013.
+ *
+ * Note: This implementation differs from the original paper in a few ways:
+ *   - Uses Gauss-Newton instead of Levenberg-Marquardt for the inner solver
+ *   - The translation parameterization uses tangent-space coordinates on S^2
+ *     with an exponential map, whereas the paper uses a different
+ *     re-linearization strategy for the translation direction
+ *   - Multi-start initialization with deterministic seeds rather than random
+ *
+ * Parameterizes the essential matrix with 5 parameters:
+ *   w = [ax, ay, az, du, dv]
+ * where (ax, ay, az) is the rotation axis-angle and (du, dv) are tangent-space
+ * coordinates for the translation direction on S^2.
+ *
+ * Uses multi-start Gauss-Newton optimization with re-linearization on S^2.
+ * After each accepted step the translation is updated via the exponential map
+ * on S^2 and the tangent-space parameters are reset to zero.
+ *
+ * @param hpts_i   First set of homogeneous points [x, y, w] row-major (n*3)
+ * @param hpts_j   Second set of homogeneous points [x, y, w] row-major (n*3)
+ * @param n        Number of point pairs (>= 5)
+ * @param max_iters  Maximum Gauss-Newton iterations per seed
+ * @param tol      Convergence threshold (gradient infinity-norm)
+ * @param R_init   Optional initial 3x3 rotation, or NULL for multi-start
+ * @param t_init   Optional initial translation direction, or NULL for multi-start
+ * @param R_out    Output 3x3 rotation matrix (row-major, 9 elements)
+ * @param t_out    Output unit translation direction (3 elements)
+ * @returns        0 on success
+ */
 int hedborg_essential_matrix(const real_t *hpts_i,
                              const real_t *hpts_j,
                              const int n,

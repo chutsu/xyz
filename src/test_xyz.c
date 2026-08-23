@@ -5081,7 +5081,7 @@ int test_hedborg_essential_matrix(void) {
   };
 
   // Project points: x_j = R_gt * x_i + t_gt (then normalize)
-  for (int i = 0; i < n_pts; i++) {
+  for (int i = 0; i < n_pts; ++i) {
     // Camera 1: simple pinhole, points in camera frame
     pts_i[i * 2 + 0] = pts3d[i][0] / pts3d[i][2];
     pts_i[i * 2 + 1] = pts3d[i][1] / pts3d[i][2];
