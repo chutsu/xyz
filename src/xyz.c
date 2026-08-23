@@ -4137,6 +4137,16 @@ void vec3_normalize(real_t x[3]) {
 }
 
 /**
+ * Normalized vector `x` of size 3.
+ */
+void vec3_normalized(const real_t x[3], real_t x_normed[3]) {
+  x_normed[0] = x[0];
+  x_normed[1] = x[1];
+  x_normed[2] = x[2];
+  vec3_normalize(x_normed);
+}
+
+/**
  * Dot product of two matrices or vectors `A` and `B` of size `A_m x A_n` and
  * `B_m x B_n`. Results are written to `C`.
  */
@@ -6159,7 +6169,7 @@ void tf_perturb_rot(real_t T[4 * 4], const real_t step_size, const int i) {
   // Perturb rotation
   real_t C_rvec[3 * 3] = {0};
   real_t C_diff[3 * 3] = {0};
-  rvec2rot(drvec, 1e-8, C_rvec);
+  aa2rot(drvec, C_rvec);
   dot(C, 3, 3, C_rvec, 3, 3, C_diff);
   tf_rot_set(T, C_diff);
 }
@@ -6434,67 +6444,98 @@ void vecs2rot(const real_t acc[3], const real_t gravity[3], real_t *C) {
 }
 
 /**
- * Convert rotation vector `rvec` to 3x3 rotation matrix `R`, where `eps` is
- * the tolerance to determine if the rotation is too small.
+ * Convert a rotation vector w in so(3) to a rotation matrix R in SO(3).
+ *
+ * The rotation vector w encodes an axis-angle representation where:
+ *   - The direction of w is the rotation axis (unit vector k = w / ||w||)
+ *   - The magnitude ||w|| is the rotation angle theta (in radians)
+ *
+ * Uses Rodrigues' formula:
+ *   R = I + sin(theta) * K + (1 - cos(theta)) * K^2
+ *
+ * where K is the skew-symmetric matrix of the unit axis k = w / theta.
+ *
+ * For small angles (||w|| < 1e-8), returns identity to avoid numerical issues.
+ *
+ * @param w  Rotation vector [wx, wy, wz] in so(3) (axis * angle)
+ * @param R  Output 3x3 rotation matrix in SO(3) (row-major, 9 elements)
  */
-void rvec2rot(const real_t *rvec, const real_t eps, real_t *R) {
-  assert(rvec != NULL);
-  assert(eps > 0);
+void aa2rot(const real_t w[3], real_t R[3 * 3]) {
+  assert(w != NULL);
   assert(R != NULL);
 
-  // Magnitude of rvec
-  const real_t theta = sqrt(rvec[0] * rvec[0] + rvec[1] * rvec[1]);
-  // ^ basically norm(rvec), but faster
-
-  // Check if rotation is too small
-  if (theta < eps) {
-    R[0] = 1.0;
-    R[1] = -rvec[2];
-    R[2] = rvec[1];
-
-    R[3] = rvec[2];
-    R[4] = 1.0;
-    R[5] = -rvec[0];
-
-    R[6] = -rvec[1];
-    R[7] = rvec[0], R[8] = 1.0;
+  const real_t theta = vec3_norm(w);
+  if (theta < 1e-8) {
+    eye(R, 3, 3);
     return;
   }
 
-  // Convert rvec to rotation matrix
-  real_t rvec_normed[3] = {rvec[0], rvec[1], rvec[2]};
-  vec_scale(rvec_normed, 3, 1 / theta);
-  const real_t x = rvec_normed[0];
-  const real_t y = rvec_normed[1];
-  const real_t z = rvec_normed[2];
+  const real_t k[3] = {w[0] / theta, w[1] / theta, w[2] / theta};
+  real_t K[3 * 3] = {0};
+  skew(k, K);
 
-  const real_t c = cos(theta);
-  const real_t s = sin(theta);
-  const real_t C = 1 - c;
+  real_t K2[3 * 3] = {0};
+  dot(K, 3, 3, K, 3, 3, K2);
 
-  const real_t xs = x * s;
-  const real_t ys = y * s;
-  const real_t zs = z * s;
+  // R = I + sin(theta) * K + (1 - cos(theta)) * K^2
+  // R = I + A + B
+  // where:
+  //   A = sin(theta) * K
+  //   B = (1 - cos(theta)) * K^2
+  real_t A[3 * 3] = {0};
+  real_t B[3 * 3] = {0};
+  mat_copy(K, 3, 3, A);
+  mat_scale(A, 3, 3, sin(theta));
+  mat_copy(K2, 3, 3, B);
+  mat_scale(B, 3, 3, 1.0 - cos(theta));
 
-  const real_t xC = x * C;
-  const real_t yC = y * C;
-  const real_t zC = z * C;
+  eye(R, 3, 3);
+  mat_add(R, A, R, 3, 3);
+  mat_add(R, B, R, 3, 3);
+}
 
-  const real_t xyC = x * yC;
-  const real_t yzC = y * zC;
-  const real_t zxC = z * xC;
+/**
+ * Convert a rotation matrix R in SO(3) to a rotation vector w in so(3).
+ *
+ * Inverse of aa2rot(): recovers the axis-angle representation from a rotation
+ * matrix. The output w satisfies aa2rot(w) = R.
+ *
+ * Algorithm:
+ *   1. theta = acos((trace(R) - 1) / 2)
+ *   2. If theta ~ 0: return [0, 0, 0] (identity)
+ *   3. Otherwise: w = [R21-R12, R02-R20, R10-R01] / (2 * sin(theta)) * theta
+ *
+ * @param R  Input 3x3 rotation matrix in SO(3) (row-major, 9 elements)
+ * @param w  Output rotation vector [wx, wy, wz] in so(3) (axis * angle)
+ */
+void rot2aa(const real_t R[3 * 3], real_t w[3]) {
+  assert(R != NULL);
+  assert(w != NULL);
 
-  R[0] = x * xC + c;
-  R[1] = xyC - zs;
-  R[2] = zxC + ys;
+  const real_t trace_R = R[0] + R[4] + R[8];
+  real_t cos_angle = (trace_R - 1.0) * 0.5;
+  if (cos_angle > 1.0) {
+    cos_angle = 1.0;
+  }
+  if (cos_angle < -1.0) {
+    cos_angle = -1.0;
+  }
+  const real_t angle = acos(cos_angle);
 
-  R[3] = xyC + zs;
-  R[4] = y * yC + c;
-  R[5] = yzC - xs;
+  if (angle < 1e-8) {
+    // Near identity: small angle approximation
+    // R ~ I + skew(w), so w ~ [R[7]-R[5], R[2]-R[6], R[3]-R[1]] / 2
+    w[0] = (R[7] - R[5]) * 0.5;
+    w[1] = (R[2] - R[6]) * 0.5;
+    w[2] = (R[3] - R[1]) * 0.5;
+    return;
+  }
 
-  R[6] = zxC - ys;
-  R[7] = yzC + xs;
-  R[8] = z * zC + c;
+  // General case: w = axis * theta
+  const real_t s = 1.0 / (2.0 * sin(angle));
+  w[0] = (R[7] - R[5]) * s * angle;
+  w[1] = (R[2] - R[6]) * s * angle;
+  w[2] = (R[3] - R[1]) * s * angle;
 }
 
 /**
@@ -9282,57 +9323,6 @@ void pinhole_equi4_params_jacobian(const real_t params[8],
 //////////////
 
 /**
- * Convert a rotation vector w in so(3) to a rotation matrix R in SO(3).
- *
- * The rotation vector w encodes an axis-angle representation where:
- *   - The direction of w is the rotation axis (unit vector k = w / ||w||)
- *   - The magnitude ||w|| is the rotation angle theta (in radians)
- *
- * Uses Rodrigues' formula:
- *   R = I + sin(theta) * K + (1 - cos(theta)) * K^2
- *
- * where K is the skew-symmetric matrix of the unit axis k = w / theta.
- *
- * For small angles (||w|| < 1e-8), returns identity to avoid numerical issues.
- *
- * @param w  Rotation vector [wx, wy, wz] in so(3) (axis * angle)
- * @param R  Output 3x3 rotation matrix in SO(3) (row-major, 9 elements)
- */
-void rodrigues(const real_t w[3], real_t R[3 * 3]) {
-  assert(w != NULL);
-  assert(R != NULL);
-
-  const real_t theta = vec3_norm(w);
-  if (theta < 1e-8) {
-    eye(R, 3, 3);
-    return;
-  }
-
-  const real_t k[3] = {w[0] / theta, w[1] / theta, w[2] / theta};
-  real_t K[3 * 3] = {0};
-  skew(k, K);
-
-  real_t K2[3 * 3] = {0};
-  dot(K, 3, 3, K, 3, 3, K2);
-
-  // R = I + sin(theta) * K + (1 - cos(theta)) * K^2
-  // R = I + A + B
-  // where:
-  //   A = sin(theta) * K
-  //   B = (1 - cos(theta)) * K^2
-  real_t A[3 * 3] = {0};
-  real_t B[3 * 3] = {0};
-  mat_copy(K, 3, 3, A);
-  mat_scale(A, 3, 3, sin(theta));
-  mat_copy(K2, 3, 3, B);
-  mat_scale(B, 3, 3, 1.0 - cos(theta));
-
-  eye(R, 3, 3);
-  mat_add(R, A, R, 3, 3);
-  mat_add(R, B, R, 3, 3);
-}
-
-/**
  * Compute the essential matrix E from a compact 5-parameter representation.
  *
  * This function parameterizes the essential matrix using:
@@ -9343,7 +9333,7 @@ void rodrigues(const real_t w[3], real_t R[3 * 3]) {
  * camera views and satisfies: x2^T * E * x1 = 0 for corresponding points x1, x2.
  *
  * Parameter vector w = [ax, ay, az, du, dv]:
- *   - w[0:3] = rotation vector in so(3) → R = rodrigues(w[0:3])
+ *   - w[0:3] = rotation vector in so(3) → R = aa2rot(w[0:3])
  *   - w[3]   = du, coefficient along tangent basis vector e1
  *   - w[4]   = dv, coefficient along tangent basis vector e2
  *
@@ -9375,8 +9365,8 @@ void essential_from_params(const real_t w[5],
   const real_t du = w[3];
   const real_t dv = w[4];
 
-  // R = rodrigues(w[:3])
-  rodrigues(w, R);
+  // R = aa2rot(w[:3])
+  aa2rot(w, R);
 
   // e1, e2 = s2_tangent_basis(t_cur)
   real_t e1[3], e2[3];
@@ -10522,23 +10512,9 @@ static int _hedborg_seed(const real_t *R_init,
                          real_t w_seeds[4][5],
                          real_t t_seeds[4][3]) {
   if (R_init != NULL && t_init != NULL) {
-    // Convert R_init to axis-angle via inverse Rodrigues
+    // Convert R_init to axis-angle
     real_t rvec[3] = {0};
-    real_t trace_R = R_init[0] + R_init[4] + R_init[8];
-    real_t cos_angle = (trace_R - 1.0) * 0.5;
-    if (cos_angle > 1.0) {
-      cos_angle = 1.0;
-    }
-    if (cos_angle < -1.0) {
-      cos_angle = -1.0;
-    }
-    real_t angle = acos(cos_angle);
-    if (fabs(angle) > 1e-8) {
-      real_t s = 1.0 / (2.0 * sin(angle));
-      rvec[0] = (R_init[7] - R_init[5]) * s;
-      rvec[1] = (R_init[2] - R_init[6]) * s;
-      rvec[2] = (R_init[3] - R_init[1]) * s;
-    }
+    rot2aa(R_init, rvec);
 
     w_seeds[0][0] = rvec[0];
     w_seeds[0][1] = rvec[1];
@@ -10548,9 +10524,7 @@ static int _hedborg_seed(const real_t *R_init,
 
     real_t t_norm = vec3_norm(t_init);
     if (t_norm > 1e-12) {
-      t_seeds[0][0] = t_init[0] / t_norm;
-      t_seeds[0][1] = t_init[1] / t_norm;
-      t_seeds[0][2] = t_init[2] / t_norm;
+      vec3_scale(t_init, 1.0 / t_norm, t_seeds[0]);
     } else {
       t_seeds[0][0] = 0.0;
       t_seeds[0][1] = 0.0;

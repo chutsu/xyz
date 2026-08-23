@@ -4560,12 +4560,12 @@ int test_pinhole_equi4_params_jacobian(void) {
   return 0;
 }
 
-int test_rodrigues(void) {
+int test_aa2rot(void) {
   // Rotation about the x-axis by 45 degrees
   const real_t th = M_PI / 4.0;
   const real_t w[3] = {th, 0.0, 0.0};
   real_t R[9] = {0};
-  rodrigues(w, R);
+  aa2rot(w, R);
 
   // clang-format off
   const real_t R_expected[9] = {
@@ -4588,7 +4588,7 @@ int test_rodrigues(void) {
   // Zero rotation returns identity
   const real_t w0[3] = {0.0, 0.0, 0.0};
   real_t R0[9] = {0};
-  rodrigues(w0, R0);
+  aa2rot(w0, R0);
   MU_ASSERT(mat_equals(R0, I, 3, 3, 1e-8));
 
   return 0;
@@ -9631,7 +9631,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_pinhole_equi4_project_jacobian);
   MU_ADD_TEST(test_pinhole_equi4_params_jacobian);
   // -- Geometry
-  MU_ADD_TEST(test_rodrigues);
+  MU_ADD_TEST(test_aa2rot);
   MU_ADD_TEST(test_decompose_essential_matrix);
   MU_ADD_TEST(test_sampson_distance);
   MU_ADD_TEST(test_linear_triangulation);

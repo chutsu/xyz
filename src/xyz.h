@@ -766,6 +766,7 @@ real_t vec3_dot(const real_t a[3], const real_t b[3]);
 void vec3_cross(const real_t a[3], const real_t b[3], real_t c[3]);
 real_t vec3_norm(const real_t x[3]);
 void vec3_normalize(real_t x[3]);
+void vec3_normalized(const real_t x[3], real_t x_normed[3]);
 
 void dot(const real_t *A,
          const size_t A_m,
@@ -1226,7 +1227,8 @@ void pose_random_perturb(real_t pose[7],
                          const real_t drot);
 void print_pose(const char *prefix, const real_t pose[7]);
 void vecs2rot(const real_t acc[3], const real_t g[3], real_t *C);
-void rvec2rot(const real_t *rvec, const real_t eps, real_t *R);
+void aa2rot(const real_t w[3], real_t R[3 * 3]);
+void rot2aa(const real_t R[3 * 3], real_t w[3]);
 void euler321(const real_t ypr[3], real_t C[3 * 3]);
 void euler2quat(const real_t ypr[3], real_t q[4]);
 void rot2quat(const real_t C[3 * 3], real_t q[4]);
@@ -1666,8 +1668,6 @@ void pinhole_equi4_params_jacobian(const real_t params[8],
 //////////////
 // GEOMETRY //
 //////////////
-
-void rodrigues(const real_t w[3], real_t R[3 * 3]);
 
 void essential_from_params(const real_t w[5],
                            const real_t t_cur[3],
