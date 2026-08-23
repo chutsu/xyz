@@ -7169,25 +7169,56 @@ void so3_box_minus(const real_t Ca[3 * 3],
   so3_log(dC, alpha);
 }
 
-/** Build orthonormal basis [e1, e2] for the tangent space of S^2 at t. */
+/**
+ * Construct an orthonormal basis (e1, e2) for the tangent space of S^2 at t.
+ *
+ * The tangent space T_t(S^2) at a point t on the unit sphere S^2 is the plane
+ * perpendicular to t. This function computes two orthonormal vectors e1, e2
+ * that span this plane.
+ *
+ * Algorithm:
+ *   1. e1 = cross(t, x_axis) — takes cross product with x-axis [1,0,0]
+ *   2. If ||e1|| is near zero (t is parallel to x-axis), use y-axis instead
+ *   3. Normalize e1
+ *   4. e2 = cross(t, e1), then normalize e2
+ *
+ * The resulting basis satisfies:
+ *   - e1, e2 are orthonormal: ||e1|| = ||e2|| = 1, e1·e2 = 0
+ *   - e1, e2 are both orthogonal to t: e1·t = 0, e2·t = 0
+ *   - (t, e1, e2) forms a right-handed coordinate frame
+ *
+ * @param t   Point on S^2 (unit vector, 3 elements)
+ * @param e1  Output first tangent basis vector (3 elements)
+ * @param e2  Output second tangent basis vector (3 elements)
+ */
 void s2_tangent_basis(const real_t t[3], real_t e1[3], real_t e2[3]) {
-  // Form first basis vector e1
   const real_t b[3] = {1.0, 0.0, 0.0};
   vec3_cross(t, b, e1);
-  // -- Check if norm is too small
   if (vec3_norm(e1) < 1e-8) {
     const real_t b[3] = {0.0, 1.0, 0.0};
     vec3_cross(t, b, e1);
   }
-  // -- Normalize
   vec3_normalize(e1);
 
-  // Form second basis vector e2
   vec3_cross(t, e1, e2);
   vec3_normalize(e2);
 }
 
-/** Exponential map on S^2 at t with tangent vector v (orthogonal to t). */
+/**
+ * Exponential map on S^2 at t with tangent vector v.
+ *
+ * Maps a tangent vector v in T_t(S^2) to a point on the unit sphere S^2.
+ * The tangent vector v must be orthogonal to t.
+ *
+ * Formula:
+ *   Exp_t(v) = cos(theta) * t + sin(theta) * (v / theta)
+ *
+ * where theta = ||v|| is the geodesic distance on S^2.
+ *
+ * @param t     Point on S^2 (unit vector, 3 elements)
+ * @param v     Tangent vector at t (orthogonal to t, 3 elements)
+ * @param out   Output point on S^2 (unit vector, 3 elements)
+ */
 void s2_exp_map(const real_t t[3], const real_t v[3], real_t out[3]) {
   const real_t theta = vec3_norm(v);
   if (theta < 1e-12) {
@@ -7203,8 +7234,23 @@ void s2_exp_map(const real_t t[3], const real_t v[3], real_t out[3]) {
 }
 
 /**
- * Logarithmic map on S^2 at t: maps point p on the sphere to the tangent
- * vector v at t such that s2_exp_map(t, v) = p.
+ * Logarithmic map on S^2 at t: maps point p on the sphere to tangent vector.
+ *
+ * Computes the tangent vector v at t such that s2_exp_map(t, v) = p.
+ * This is the inverse of s2_exp_map().
+ *
+ * Algorithm:
+ *   1. theta = acos(t · p) — geodesic distance
+ *   2. Project p onto tangent plane: v_proj = p - (t · p) * t
+ *   3. Scale by theta / sin(theta) to get the correct tangent vector
+ *
+ * Special cases:
+ *   - theta ~ 0: returns v_proj directly (limit of theta/sin(theta) = 1)
+ *   - theta ~ pi: returns zero vector (geodesic direction is ambiguous)
+ *
+ * @param t   Point on S^2 (unit vector, 3 elements)
+ * @param p   Target point on S^2 (unit vector, 3 elements)
+ * @param v   Output tangent vector at t (3 elements)
  */
 void s2_log_map(const real_t t[3], const real_t p[3], real_t v[3]) {
   real_t cos_theta = vec3_dot(t, p);
@@ -9236,7 +9282,21 @@ void pinhole_equi4_params_jacobian(const real_t params[8],
 //////////////
 
 /**
- * Exponential map from lie algebra so(3) vector to SO(3) rotation matrix.
+ * Convert a rotation vector w in so(3) to a rotation matrix R in SO(3).
+ *
+ * The rotation vector w encodes an axis-angle representation where:
+ *   - The direction of w is the rotation axis (unit vector k = w / ||w||)
+ *   - The magnitude ||w|| is the rotation angle theta (in radians)
+ *
+ * Uses Rodrigues' formula:
+ *   R = I + sin(theta) * K + (1 - cos(theta)) * K^2
+ *
+ * where K is the skew-symmetric matrix of the unit axis k = w / theta.
+ *
+ * For small angles (||w|| < 1e-8), returns identity to avoid numerical issues.
+ *
+ * @param w  Rotation vector [wx, wy, wz] in so(3) (axis * angle)
+ * @param R  Output 3x3 rotation matrix in SO(3) (row-major, 9 elements)
  */
 void rodrigues(const real_t w[3], real_t R[3 * 3]) {
   assert(w != NULL);
@@ -9270,6 +9330,72 @@ void rodrigues(const real_t w[3], real_t R[3 * 3]) {
   eye(R, 3, 3);
   mat_add(R, A, R, 3, 3);
   mat_add(R, B, R, 3, 3);
+}
+
+/**
+ * Compute the essential matrix E from a compact 5-parameter representation.
+ *
+ * This function parameterizes the essential matrix using:
+ *   - 3 parameters for rotation (axis-angle in so(3))
+ *   - 2 parameters for translation direction (tangent vectors on S^2)
+ *
+ * The essential matrix E encodes the epipolar geometry between two calibrated
+ * camera views and satisfies: x2^T * E * x1 = 0 for corresponding points x1, x2.
+ *
+ * Parameter vector w = [ax, ay, az, du, dv]:
+ *   - w[0:3] = rotation vector in so(3) → R = rodrigues(w[0:3])
+ *   - w[3]   = du, coefficient along tangent basis vector e1
+ *   - w[4]   = dv, coefficient along tangent basis vector e2
+ *
+ * Translation computation:
+ *   1. Compute orthonormal basis (e1, e2) for tangent space of S^2 at t_cur
+ *   2. Tangent vector v = du * e1 + dv * e2
+ *   3. t_vec = s2_exp_map(t_cur, v) — exponential map to get unit translation
+ *
+ * The essential matrix is then: E = [t_vec]_x * R
+ *   where [t_vec]_x is the skew-symmetric matrix of t_vec.
+ *
+ * @param w      Parameter vector [ax, ay, az, du, dv] (5 elements)
+ * @param t_cur  Current translation direction on S^2 for tangent space (3 elements)
+ * @param E      Output 3x3 essential matrix (row-major, 9 elements)
+ * @param R      Output 3x3 rotation matrix (row-major, 9 elements)
+ * @param t_vec  Output unit translation vector on S^2 (3 elements)
+ */
+void essential_from_params(const real_t w[5],
+                           const real_t t_cur[3],
+                           real_t E[3 * 3],
+                           real_t R[3 * 3],
+                           real_t t_vec[3]) {
+  assert(w != NULL);
+  assert(t_cur != NULL);
+  assert(E != NULL);
+  assert(R != NULL);
+  assert(t_vec != NULL);
+
+  const real_t du = w[3];
+  const real_t dv = w[4];
+
+  // R = rodrigues(w[:3])
+  rodrigues(w, R);
+
+  // e1, e2 = s2_tangent_basis(t_cur)
+  real_t e1[3], e2[3];
+  s2_tangent_basis(t_cur, e1, e2);
+
+  // v = du * e1 + dv * e2
+  real_t v[3];
+  real_t term1[3], term2[3];
+  vec3_scale(e1, du, term1);
+  vec3_scale(e2, dv, term2);
+  vec3_add(term1, term2, v);
+
+  // t_vec = s2_exp_map(t_cur, v)
+  s2_exp_map(t_cur, v, t_vec);
+
+  // E = skew(t_vec) * R
+  real_t Sk[3 * 3] = {0};
+  skew(t_vec, Sk);
+  dot(Sk, 3, 3, R, 3, 3, E);
 }
 
 /**
@@ -9410,6 +9536,155 @@ real_t sampson_distance(const real_t E[3 * 3],
   }
 
   return total;
+}
+
+/**
+ * Epipolar distance:
+ *
+ *   r_i = (x'^T E x) / sqrt((E x)_0^2 + (E x)_1^2)
+ *
+ * Distance from point `x'` (hpts2) to the epipolar line `l' = E x` induced by
+ * point `x` (hpts1), given the essential matrix `E`. Each point in `hpts1` and
+ * `hpts2` is a homogeneous coordinate `[x, y, w]` stored row-major over `n`
+ * points.
+ */
+void epipolar_distance(const real_t E[3 * 3],
+                       const real_t *hpts1,
+                       const real_t *hpts2,
+                       const size_t n,
+                       real_t *dist) {
+  for (size_t i = 0; i < n; i++) {
+    const real_t x1 = hpts1[i * 3 + 0];
+    const real_t y1 = hpts1[i * 3 + 1];
+    const real_t w1 = hpts1[i * 3 + 2];
+    const real_t x2 = hpts2[i * 3 + 0];
+    const real_t y2 = hpts2[i * 3 + 1];
+    const real_t w2 = hpts2[i * 3 + 2];
+
+    // Ex1 = E * [x1, y1, w1]
+    const real_t Ex1[3] = {
+        E[0] * x1 + E[1] * y1 + E[2] * w1,
+        E[3] * x1 + E[4] * y1 + E[5] * w1,
+        E[6] * x1 + E[7] * y1 + E[8] * w1,
+    };
+
+    // numerator = x'^T (E x), denominator = ||l'|| over the first two coords
+    const real_t numerator = x2 * Ex1[0] + y2 * Ex1[1] + w2 * Ex1[2];
+    const real_t denominator = sqrt(Ex1[0] * Ex1[0] + Ex1[1] * Ex1[1]);
+
+    dist[i] = (denominator > 1e-12) ? numerator / denominator : 0.0;
+  }
+}
+
+/**
+ * Analytical Nx5 Jacobian of epipolar distance residuals.
+ *
+ * Computes the Jacobian of the epipolar distance residual
+ *
+ *   r_i = (x'^T E x) / sqrt((E x)_0^2 + (E x)_1^2)
+ *
+ * with respect to the 5-parameter vector w = [ax, ay, az, du, dv] where
+ * (ax, ay, az) is the rotation axis-angle and (du, dv) are tangent-space
+ * coordinates for the translation direction on S^2.
+ */
+void epipolar_jacobian(const real_t w[5],
+                       const real_t t_cur[3],
+                       const real_t *hpts1,
+                       const real_t *hpts2,
+                       const size_t n,
+                       real_t *J) {
+  assert(w != NULL);
+  assert(t_cur != NULL);
+  assert(hpts1 != NULL);
+  assert(hpts2 != NULL);
+  assert(J != NULL);
+
+  // Compute E, R, t_vec from parameters
+  real_t E[3 * 3] = {0};
+  real_t R[3 * 3] = {0};
+  real_t t_vec[3] = {0};
+  essential_from_params(w, t_cur, E, R, t_vec);
+
+  // Compute tangent basis for translation derivatives
+  real_t e1[3], e2[3];
+  s2_tangent_basis(t_cur, e1, e2);
+
+  // Compute dE[0..4]: analytical derivatives of E w.r.t. each parameter
+  //
+  // Rotation derivatives: dE_k = skew(t_vec) * R * skew(Jr[:, k])
+  //   where Jr is the SO(3) right Jacobian
+  //
+  // Translation derivatives: dE/du = skew(e1) * R, dE/dv = skew(e2) * R
+  real_t dE[5][3 * 3];
+  memset(dE, 0, sizeof(dE));
+
+  real_t Jr[3 * 3] = {0};
+  so3_right_jacobian(w, Jr);
+
+  real_t Sk_t[3 * 3] = {0};
+  skew(t_vec, Sk_t);
+
+  for (int k = 0; k < 3; k++) {
+    // Extract k-th column of Jr: Jr[:, k]
+    real_t jr_k[3] = {Jr[k], Jr[3 + k], Jr[6 + k]};
+    real_t Sk_jr[3 * 3] = {0};
+    skew(jr_k, Sk_jr);
+    // dR_k = R * skew(jr_k)
+    real_t dR_k[3 * 3] = {0};
+    dot(R, 3, 3, Sk_jr, 3, 3, dR_k);
+    // dE_k = skew(t_vec) * dR_k
+    dot(Sk_t, 3, 3, dR_k, 3, 3, dE[k]);
+  }
+
+  // dE/du = skew(e1) * R
+  real_t Sk_e1[3 * 3] = {0};
+  skew(e1, Sk_e1);
+  dot(Sk_e1, 3, 3, R, 3, 3, dE[3]);
+
+  // dE/dv = skew(e2) * R
+  real_t Sk_e2[3 * 3] = {0};
+  skew(e2, Sk_e2);
+  dot(Sk_e2, 3, 3, R, 3, 3, dE[4]);
+
+  // Compute Jacobian for each point
+  for (size_t i = 0; i < n; i++) {
+    const real_t x1 = hpts1[i * 3 + 0];
+    const real_t y1 = hpts1[i * 3 + 1];
+    const real_t w1 = hpts1[i * 3 + 2];
+    const real_t x2 = hpts2[i * 3 + 0];
+    const real_t y2 = hpts2[i * 3 + 1];
+    const real_t w2 = hpts2[i * 3 + 2];
+
+    // Ex1 = E * [x1, y1, w1]
+    const real_t Ex1[3] = {
+        E[0] * x1 + E[1] * y1 + E[2] * w1,
+        E[3] * x1 + E[4] * y1 + E[5] * w1,
+        E[6] * x1 + E[7] * y1 + E[8] * w1,
+    };
+
+    const real_t a = Ex1[0];
+    const real_t b = Ex1[1];
+    const real_t d_sq = a * a + b * b;
+    const real_t d = sqrt(d_sq);
+    const real_t n_i = x2 * Ex1[0] + y2 * Ex1[1] + w2 * Ex1[2];
+
+    for (int j = 0; j < 5; j++) {
+      // dEx1 = dE[j] * [x1, y1, w1]
+      const real_t dEx1[3] = {
+          dE[j][0] * x1 + dE[j][1] * y1 + dE[j][2] * w1,
+          dE[j][3] * x1 + dE[j][4] * y1 + dE[j][5] * w1,
+          dE[j][6] * x1 + dE[j][7] * y1 + dE[j][8] * w1,
+      };
+
+      const real_t dn = x2 * dEx1[0] + y2 * dEx1[1] + w2 * dEx1[2];
+      const real_t da = dEx1[0];
+      const real_t db = dEx1[1];
+      const real_t dd = (d > 1e-12) ? (a * da + b * db) / d : 0.0;
+
+      const real_t denom = d_sq + 1e-12;
+      J[i * 5 + j] = (dn * d - n_i * dd) / denom;
+    }
+  }
 }
 
 /**
@@ -9997,50 +10272,382 @@ int solvepnp(const real_t proj_params[4],
 }
 
 /**
- * Epipolar distance:
+ * Compute the half-sum-of-squares cost from a residual vector.
+ *
+ *   cost = 0.5 * sum(r_i^2) = 0.5 * ||r||^2
+ *
+ * @param r  Residual vector (n elements)
+ * @param n  Number of residuals
+ * @returns  Scalar cost value
+ */
+static real_t _hedborg_cost(const real_t *r, const size_t n) {
+  real_t cost = 0.0;
+  for (size_t i = 0; i < n; i++) {
+    cost += r[i] * r[i];
+  }
+  return 0.5 * cost;
+}
+
+/**
+ * Compute epipolar distance residuals for the Hedborg 5-parameter model.
+ *
+ * Builds the essential matrix E from the 5-parameter vector w and current
+ * translation direction t, then evaluates the per-point epipolar distance:
  *
  *   r_i = (x'^T E x) / sqrt((E x)_0^2 + (E x)_1^2)
  *
- * Distance from point `x'` (hpts2) to the epipolar line `l' = E x` induced by
- * point `x` (hpts1), given the essential matrix `E`. Each point in `hpts1` and
- * `hpts2` is a homogeneous coordinate `[x, y, w]` stored row-major over `n`
- * points.
+ * @param w      Parameter vector [ax, ay, az, du, dv] (5 elements)
+ * @param t      Current translation direction on S^2 (3 elements, unit vector)
+ * @param hpts_i First set of homogeneous points [x, y, w] row-major (n*3)
+ * @param hpts_j Second set of homogeneous points [x, y, w] row-major (n*3)
+ * @param n      Number of point pairs
+ * @param r      Output residual vector (n elements)
  */
-void epipolar_distance(const real_t E[3 * 3],
-                       const real_t *hpts1,
-                       const real_t *hpts2,
-                       const size_t n,
-                       real_t *dist) {
-  for (size_t i = 0; i < n; i++) {
-    const real_t x1 = hpts1[i * 3 + 0];
-    const real_t y1 = hpts1[i * 3 + 1];
-    const real_t w1 = hpts1[i * 3 + 2];
-    const real_t x2 = hpts2[i * 3 + 0];
-    const real_t y2 = hpts2[i * 3 + 1];
-    const real_t w2 = hpts2[i * 3 + 2];
-
-    // Ex1 = E * [x1, y1, w1]
-    const real_t Ex1[3] = {
-        E[0] * x1 + E[1] * y1 + E[2] * w1,
-        E[3] * x1 + E[4] * y1 + E[5] * w1,
-        E[6] * x1 + E[7] * y1 + E[8] * w1,
-    };
-
-    // numerator = x'^T (E x), denominator = ||l'|| over the first two coords
-    const real_t numerator = x2 * Ex1[0] + y2 * Ex1[1] + w2 * Ex1[2];
-    const real_t denominator = sqrt(Ex1[0] * Ex1[0] + Ex1[1] * Ex1[1]);
-
-    dist[i] = (denominator > 1e-12) ? numerator / denominator : 0.0;
-  }
+static void _hedborg_residual(const real_t w[5],
+                              const real_t t[3],
+                              const real_t *hpts_i,
+                              const real_t *hpts_j,
+                              const size_t n,
+                              real_t *r) {
+  real_t E[3 * 3] = {0};
+  real_t R[3 * 3] = {0};
+  real_t t_vec[3] = {0};
+  essential_from_params(w, t, E, R, t_vec);
+  epipolar_distance(E, hpts_i, hpts_j, n, r);
 }
 
-int hedborg_essential_matrix(const real_t *pts_i,
-                             const real_t *pts_j,
-                             const int num_points,
+/**
+ * Solve a 5x5 linear system A*x = b via Gaussian elimination with partial
+ * pivoting.
+ *
+ * @param A  Input 5x5 coefficient matrix (row-major, 25 elements)
+ * @param b  Input right-hand side vector (5 elements)
+ * @param x  Output solution vector (5 elements)
+ * @returns  0 on success, -1 if the matrix is singular (pivot < 1e-20)
+ */
+static int _solve5x5(const real_t A[5 * 5], const real_t b[5], real_t x[5]) {
+  // Form the augmented matrix [A | b] as a 5x6 array
+  real_t aug[5 * 6] = {0};
+  for (int r = 0; r < 5; r++) {
+    for (int c = 0; c < 5; c++) {
+      aug[r * 6 + c] = A[r * 5 + c];
+    }
+    aug[r * 6 + 5] = b[r];
+  }
+
+  // Forward elimination with partial pivoting
+  for (int col = 0; col < 5; col++) {
+    // Find the row with the largest absolute value in the current column
+    int pivot = col;
+    real_t max_val = fabs(aug[col * 6 + col]);
+    for (int row = col + 1; row < 5; row++) {
+      real_t val = fabs(aug[row * 6 + col]);
+      if (val > max_val) {
+        max_val = val;
+        pivot = row;
+      }
+    }
+    if (max_val < 1e-20) {
+      return -1;
+    }
+
+    // Swap the pivot row with the current row
+    if (pivot != col) {
+      for (int c = 0; c < 6; c++) {
+        real_t tmp = aug[col * 6 + c];
+        aug[col * 6 + c] = aug[pivot * 6 + c];
+        aug[pivot * 6 + c] = tmp;
+      }
+    }
+
+    // Normalize the pivot row so the diagonal element becomes 1
+    real_t diag = aug[col * 6 + col];
+    for (int c = col; c < 6; c++) {
+      aug[col * 6 + c] /= diag;
+    }
+
+    // Eliminate all other rows in this column
+    for (int row = 0; row < 5; row++) {
+      if (row == col) {
+        continue;
+      }
+      real_t factor = aug[row * 6 + col];
+      for (int c = col; c < 6; c++) {
+        aug[row * 6 + c] -= factor * aug[col * 6 + c];
+      }
+    }
+  }
+
+  // Back substitution: extract solution from the last column
+  for (int r = 0; r < 5; r++) {
+    x[r] = aug[r * 6 + 5];
+  }
+  return 0;
+}
+
+static int _hedborg_solve(const real_t w_init[5],
+                          const real_t t_init[3],
+                          const real_t *hpts_i,
+                          const real_t *hpts_j,
+                          const size_t n,
+                          const int max_iters,
+                          const real_t tol,
+                          real_t w_out[5],
+                          real_t t_out[3],
+                          real_t *cost_out) {
+  real_t w[5] = {0};
+  real_t t_cur[3] = {0};
+  memcpy(w, w_init, sizeof(real_t) * 5);
+  memcpy(t_cur, t_init, sizeof(real_t) * 3);
+
+  real_t *r = calloc(n, sizeof(real_t));
+  real_t *J = calloc(n * 5, sizeof(real_t));
+  real_t JtJ[5 * 5] = {0};
+  real_t g[5] = {0};
+  real_t h[5] = {0};
+
+  _hedborg_residual(w, t_cur, hpts_i, hpts_j, n, r);
+  real_t cost = _hedborg_cost(r, n);
+
+  for (int iter = 0; iter < max_iters; iter++) {
+    epipolar_jacobian(w, t_cur, hpts_i, hpts_j, n, J);
+
+    // JtJ = J^T * J
+    memset(JtJ, 0, sizeof(JtJ));
+    for (int i = 0; i < 5; i++) {
+      for (int j = 0; j <= i; j++) {
+        real_t s = 0.0;
+        for (size_t k = 0; k < n; k++) {
+          s += J[k * 5 + i] * J[k * 5 + j];
+        }
+        JtJ[i * 5 + j] = s;
+        JtJ[j * 5 + i] = s;
+      }
+    }
+
+    // g = J^T * r
+    for (int i = 0; i < 5; i++) {
+      real_t s = 0.0;
+      for (size_t k = 0; k < n; k++) {
+        s += J[k * 5 + i] * r[k];
+      }
+      g[i] = s;
+    }
+
+    // Gradient check
+    real_t g_inf = 0.0;
+    for (int i = 0; i < 5; i++) {
+      real_t ai = fabs(g[i]);
+      if (ai > g_inf) {
+        g_inf = ai;
+      }
+    }
+    if (g_inf < tol) {
+      break;
+    }
+
+    // Solve J^T*J * h = -J^T*r
+    real_t neg_g[5];
+    for (int i = 0; i < 5; i++) {
+      neg_g[i] = -g[i];
+    }
+    if (_solve5x5(JtJ, neg_g, h) != 0) {
+      break;
+    }
+
+    // Update rotation: w_new = w + h[:3]
+    real_t w_new[5] = {0};
+    w_new[0] = w[0] + h[0];
+    w_new[1] = w[1] + h[1];
+    w_new[2] = w[2] + h[2];
+
+    // Update translation via S^2 exponential map
+    real_t e1[3], e2[3];
+    s2_tangent_basis(t_cur, e1, e2);
+    real_t v[3] = {0};
+    real_t v1[3], v2[3];
+    vec3_scale(e1, h[3], v1);
+    vec3_scale(e2, h[4], v2);
+    vec3_add(v1, v2, v);
+    real_t t_new[3] = {0};
+    s2_exp_map(t_cur, v, t_new);
+
+    // Reset tangent-space parameters
+    w_new[3] = 0.0;
+    w_new[4] = 0.0;
+
+    // Accept step
+    memcpy(w, w_new, sizeof(real_t) * 5);
+    memcpy(t_cur, t_new, sizeof(real_t) * 3);
+
+    // Recompute residual at new point
+    _hedborg_residual(w, t_cur, hpts_i, hpts_j, n, r);
+    cost = _hedborg_cost(r, n);
+
+    // Check convergence on step size
+    real_t h_norm = 0.0;
+    for (int j = 0; j < 5; j++) {
+      h_norm += h[j] * h[j];
+    }
+    if (sqrt(h_norm) < tol) {
+      break;
+    }
+  }
+
+  memcpy(w_out, w, sizeof(real_t) * 5);
+  memcpy(t_out, t_cur, sizeof(real_t) * 3);
+  *cost_out = cost;
+
+  free(r);
+  free(J);
+  return 0;
+}
+
+/**
+ * Generate initial parameter seeds for the Hedborg multi-start optimizer.
+ *
+ * If R_init and t_init are provided, produces a single seed from the given
+ * rotation (converted to axis-angle) and translation direction. Otherwise
+ * generates 4 seeds: one identity seed and three with varied axis-angle
+ * rotations and S^2 translation directions.
+ *
+ * @param R_init   Initial 3x3 rotation matrix, or NULL for default seeds
+ * @param t_init   Initial 3D translation direction, or NULL for default seeds
+ * @param w_seeds  Output array of 4 parameter vectors [4][5]
+ * @param t_seeds  Output array of 4 translation directions [4][3]
+ * @returns        Number of seeds generated (1 or 4)
+ */
+static int _hedborg_seed(const real_t *R_init,
+                         const real_t *t_init,
+                         real_t w_seeds[4][5],
+                         real_t t_seeds[4][3]) {
+  if (R_init != NULL && t_init != NULL) {
+    // Convert R_init to axis-angle via inverse Rodrigues
+    real_t rvec[3] = {0};
+    real_t trace_R = R_init[0] + R_init[4] + R_init[8];
+    real_t cos_angle = (trace_R - 1.0) * 0.5;
+    if (cos_angle > 1.0) {
+      cos_angle = 1.0;
+    }
+    if (cos_angle < -1.0) {
+      cos_angle = -1.0;
+    }
+    real_t angle = acos(cos_angle);
+    if (fabs(angle) > 1e-8) {
+      real_t s = 1.0 / (2.0 * sin(angle));
+      rvec[0] = (R_init[7] - R_init[5]) * s;
+      rvec[1] = (R_init[2] - R_init[6]) * s;
+      rvec[2] = (R_init[3] - R_init[1]) * s;
+    }
+
+    w_seeds[0][0] = rvec[0];
+    w_seeds[0][1] = rvec[1];
+    w_seeds[0][2] = rvec[2];
+    w_seeds[0][3] = 0.0;
+    w_seeds[0][4] = 0.0;
+
+    real_t t_norm = vec3_norm(t_init);
+    if (t_norm > 1e-12) {
+      t_seeds[0][0] = t_init[0] / t_norm;
+      t_seeds[0][1] = t_init[1] / t_norm;
+      t_seeds[0][2] = t_init[2] / t_norm;
+    } else {
+      t_seeds[0][0] = 0.0;
+      t_seeds[0][1] = 0.0;
+      t_seeds[0][2] = 1.0;
+    }
+    return 1;
+  }
+
+  // Seed 0: zero rotation, t = [0, 0, 1]
+  w_seeds[0][0] = 0.0;
+  w_seeds[0][1] = 0.0;
+  w_seeds[0][2] = 0.0;
+  w_seeds[0][3] = 0.0;
+  w_seeds[0][4] = 0.0;
+  t_seeds[0][0] = 0.0;
+  t_seeds[0][1] = 0.0;
+  t_seeds[0][2] = 1.0;
+
+  // Seeds 1-3: varied axis-angle and S^2 direction
+  real_t angles[] = {0.3, -0.5, 0.7};
+  real_t phis[] = {1.0, -2.0, 0.5};
+  real_t thetas[] = {0.8, 1.5, 2.1};
+  for (int s = 1; s < 4; s++) {
+    w_seeds[s][0] = angles[s - 1] * 0.5;
+    w_seeds[s][1] = angles[s - 1] * 0.3;
+    w_seeds[s][2] = angles[s - 1] * 0.7;
+    w_seeds[s][3] = 0.0;
+    w_seeds[s][4] = 0.0;
+    t_seeds[s][0] = sin(thetas[s - 1]) * cos(phis[s - 1]);
+    t_seeds[s][1] = sin(thetas[s - 1]) * sin(phis[s - 1]);
+    t_seeds[s][2] = cos(thetas[s - 1]);
+  }
+  return 4;
+}
+
+int hedborg_essential_matrix(const real_t *hpts_i,
+                             const real_t *hpts_j,
+                             const int n,
                              const int max_iters,
                              const real_t tol,
                              const real_t *R_init,
-                             const real_t *t_init) {
+                             const real_t *t_init,
+                             real_t R_out[3 * 3],
+                             real_t t_out[3]) {
+  assert(hpts_i != NULL);
+  assert(hpts_j != NULL);
+  assert(n >= 5);
+  assert(max_iters > 0);
+  assert(R_out != NULL);
+  assert(t_out != NULL);
+
+  real_t w_seeds[4][5] = {{0}};
+  real_t t_seeds[4][3] = {{0}};
+  const int n_seeds = _hedborg_seed(R_init, t_init, w_seeds, t_seeds);
+
+  real_t best_w[5] = {0};
+  real_t best_t[3] = {0};
+  real_t best_cost = INFINITY;
+  for (int s = 0; s < n_seeds; s++) {
+    real_t w_opt[5] = {0};
+    real_t t_opt[3] = {0};
+    real_t cost = 0.0;
+
+    _hedborg_solve(w_seeds[s],
+                   t_seeds[s],
+                   hpts_i,
+                   hpts_j,
+                   (size_t) n,
+                   max_iters,
+                   tol,
+                   w_opt,
+                   t_opt,
+                   &cost);
+
+    if (cost < best_cost) {
+      best_cost = cost;
+      memcpy(best_w, w_opt, sizeof(real_t) * 5);
+      memcpy(best_t, t_opt, sizeof(real_t) * 3);
+    }
+  }
+
+  // Extract R and t from the best parameters
+  real_t E[3 * 3] = {0};
+  real_t t_vec[3] = {0};
+  essential_from_params(best_w, best_t, E, R_out, t_vec);
+
+  real_t t_norm = vec3_norm(t_vec);
+  if (t_norm > 1e-12) {
+    t_out[0] = t_vec[0] / t_norm;
+    t_out[1] = t_vec[1] / t_norm;
+    t_out[2] = t_vec[2] / t_norm;
+  } else {
+    t_out[0] = t_vec[0];
+    t_out[1] = t_vec[1];
+    t_out[2] = t_vec[2];
+  }
+
   return 0;
 }
 
