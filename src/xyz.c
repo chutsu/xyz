@@ -1023,7 +1023,7 @@ timestamp_t path2ts(const char *file_path) {
 
 arr_t *arr_malloc(const size_t capacity) {
   arr_t *arr = malloc(sizeof(arr_t));
-  arr->data = malloc(sizeof(void **) * capacity);
+  arr->data = malloc(sizeof(void *) * capacity);
   arr->size = 0;
   arr->capacity = capacity;
   return arr;
@@ -1037,7 +1037,11 @@ void arr_free(arr_t *keys) {
 void arr_push_back(arr_t *arr, void *data) {
   if ((arr->size * 2.0) >= arr->capacity) {
     size_t new_capacity = arr->capacity * 2.0;
-    arr->data = realloc(arr->data, sizeof(void *) * new_capacity);
+    void **new_data = realloc(arr->data, sizeof(void *) * new_capacity);
+    if (new_data == NULL) {
+      return;
+    }
+    arr->data = new_data;
     arr->capacity = new_capacity;
   }
   arr->data[arr->size++] = data;
@@ -1325,8 +1329,13 @@ void list_clear(list_t *list) {
   while (node != NULL) {
     next_node = node->next;
     free(node->value);
+    free(node);
     node = next_node;
   }
+
+  list->first = NULL;
+  list->last = NULL;
+  list->length = 0;
 }
 
 void list_clear_free(list_t *list) {
@@ -1737,6 +1746,7 @@ rbt_node_t *rbt_node_rotate(rbt_node_t *n, const bool dir) {
   tmp->color = n->color;
   n->color = RB_RED;
   n->size = rbt_node_size(n->child[0]) + rbt_node_size(n->child[1]) + 1;
+  tmp->size = rbt_node_size(tmp->child[0]) + rbt_node_size(tmp->child[1]) + 1;
   return tmp;
 }
 
@@ -1899,6 +1909,9 @@ rbt_node_t *rbt_node_delete_min(rbt_node_t *n) {
 }
 
 rbt_node_t *rbt_node_delete_max(rbt_node_t *n) {
+  if (n == NULL) {
+    return NULL;
+  }
   if (rbt_node_is_red(n->child[0])) {
     n = rbt_node_rotate(n, 1);
   }
