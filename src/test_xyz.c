@@ -1600,6 +1600,100 @@ int test_image_draw_circle_thickness(void) {
   return 0;
 }
 
+int test_image_to_grayscale(void) {
+  image_t *img = image_malloc(4, 4, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  image_t *gray = image_to_grayscale(img);
+  MU_ASSERT(gray != NULL);
+  MU_ASSERT(gray->width == 4);
+  MU_ASSERT(gray->height == 4);
+  MU_ASSERT(gray->channels == 1);
+
+  // Y = 0.299 * 255 = 76.245 -> 76
+  for (int i = 0; i < 4 * 4; i++) {
+    MU_ASSERT(gray->data[i] == 76);
+  }
+
+  image_free(img);
+  image_free(gray);
+  return 0;
+}
+
+int test_image_gaussian_blur(void) {
+  // Create 5x5 image with a single bright pixel in the center
+  image_t *img = image_malloc(5, 5, 1);
+  img->data[2 * 5 + 2] = 255;
+
+  image_t *blurred = image_gaussian_blur(img, 3, 1.0);
+  MU_ASSERT(blurred != NULL);
+  MU_ASSERT(blurred->width == 5);
+  MU_ASSERT(blurred->height == 5);
+  MU_ASSERT(blurred->channels == 1);
+
+  // Center should still be the brightest pixel
+  uint8_t center = blurred->data[2 * 5 + 2];
+  MU_ASSERT(center > 0);
+  uint8_t neighbor = blurred->data[2 * 5 + 3];
+  MU_ASSERT(neighbor > 0);
+  MU_ASSERT(center > neighbor);
+
+  image_free(img);
+  image_free(blurred);
+  return 0;
+}
+
+int test_image_threshold(void) {
+  image_t *img = image_malloc(4, 1, 1);
+  img->data[0] = 50;
+  img->data[1] = 100;
+  img->data[2] = 200;
+  img->data[3] = 255;
+
+  image_t *binary = image_threshold(img, 128);
+  MU_ASSERT(binary != NULL);
+  MU_ASSERT(binary->channels == 1);
+
+  MU_ASSERT(binary->data[0] == 0);
+  MU_ASSERT(binary->data[1] == 0);
+  MU_ASSERT(binary->data[2] == 255);
+  MU_ASSERT(binary->data[3] == 255);
+
+  image_free(img);
+  image_free(binary);
+  return 0;
+}
+
+int test_image_sobel(void) {
+  // Left half white, right half black -> strong vertical edge
+  image_t *img = image_malloc(6, 4, 3);
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 3; x++) {
+      image_set_pixel(img, x, y, COLOR_WHITE);
+    }
+  }
+
+  image_t *edges = image_sobel(img);
+  MU_ASSERT(edges != NULL);
+  MU_ASSERT(edges->channels == 1);
+
+  // Edge pixels at x=2 (white side) and x=3 (black side) should have high
+  // magnitude
+  uint8_t left_edge = edges->data[2 * 6 + 2];
+  uint8_t right_edge = edges->data[2 * 6 + 3];
+  MU_ASSERT(left_edge > 100);
+  MU_ASSERT(right_edge > 100);
+
+  // Interior of the white region should be near zero
+  uint8_t interior = edges->data[2 * 6 + 0];
+  MU_ASSERT(interior < 10);
+
+  image_free(img);
+  image_free(edges);
+  return 0;
+}
+
 /******************************************************************************
  * MATH
  ******************************************************************************/
@@ -9452,6 +9546,10 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_draw_string);
   MU_ADD_TEST(test_image_draw_line_thickness);
   MU_ADD_TEST(test_image_draw_circle_thickness);
+  MU_ADD_TEST(test_image_to_grayscale);
+  MU_ADD_TEST(test_image_gaussian_blur);
+  MU_ADD_TEST(test_image_threshold);
+  MU_ADD_TEST(test_image_sobel);
 
   // MATH
   MU_ADD_TEST(test_min);

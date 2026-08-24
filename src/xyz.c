@@ -8499,6 +8499,214 @@ void image_draw_string(image_t *img,
   }
 }
 
+/**
+ * Apply a 2D convolution kernel to `img` and return a new image.
+ *
+ * The convolution is performed per-channel with the same kernel. Boundary
+ * pixels are handled by clamping coordinates to the image edges (replicate
+ * border).
+ *
+ * @param[in] img       Input image
+ * @param[in] kernel    Row-major float array of size kernel_w * kernel_h
+ * @param[in] kernel_w  Kernel width (must be odd and > 0)
+ * @param[in] kernel_h  Kernel height (must be odd and > 0)
+ * @returns  Heap-allocated output image (caller must free with image_free)
+ */
+image_t *image_convolve(const image_t *img,
+                        const float *kernel,
+                        const int kernel_w,
+                        const int kernel_h) {
+  assert(img != NULL);
+  assert(kernel != NULL);
+  assert(kernel_w > 0 && kernel_h > 0);
+  assert((kernel_w & 1) == 1 && (kernel_h & 1) == 1);
+
+  const int kx_radius = kernel_w / 2;
+  const int ky_radius = kernel_h / 2;
+  const int channels = img->channels;
+
+  image_t *out = image_malloc(img->width, img->height, channels);
+
+  for (int y = 0; y < img->height; y++) {
+    for (int x = 0; x < img->width; x++) {
+      for (int c = 0; c < channels; c++) {
+        float sum = 0.0f;
+        for (int ky = 0; ky < kernel_h; ky++) {
+          for (int kx = 0; kx < kernel_w; kx++) {
+            int src_x = x + kx - kx_radius;
+            int src_y = y + ky - ky_radius;
+            if (src_x < 0) src_x = 0;
+            if (src_x >= img->width) src_x = img->width - 1;
+            if (src_y < 0) src_y = 0;
+            if (src_y >= img->height) src_y = img->height - 1;
+            int idx = (src_y * img->width + src_x) * channels + c;
+            sum += kernel[ky * kernel_w + kx] * (float) img->data[idx];
+          }
+        }
+        if (sum < 0.0f) sum = 0.0f;
+        if (sum > 255.0f) sum = 255.0f;
+        int out_idx = (y * img->width + x) * channels + c;
+        out->data[out_idx] = (uint8_t) (sum + 0.5f);
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Convert an image to single-channel grayscale.
+ *
+ * If the image is already 1-channel, a copy is returned. Otherwise, luminance
+ * is computed using ITU-R BT.601 weights: Y = 0.299*R + 0.587*G + 0.114*B.
+ *
+ * @param[in] img  Input image (1, 3, or 4 channels)
+ * @returns  Heap-allocated 1-channel image (caller must free with image_free)
+ */
+image_t *image_to_grayscale(const image_t *img) {
+  assert(img != NULL);
+
+  if (img->channels == 1) {
+    image_t *out = image_malloc(img->width, img->height, 1);
+    memcpy(out->data, img->data, (size_t) img->width * img->height);
+    return out;
+  }
+
+  assert(img->channels == 3 || img->channels == 4);
+
+  image_t *out = image_malloc(img->width, img->height, 1);
+  const int n = img->width * img->height;
+  for (int i = 0; i < n; i++) {
+    int idx = i * img->channels;
+    float y = 0.299f * img->data[idx + 0] +
+              0.587f * img->data[idx + 1] +
+              0.114f * img->data[idx + 2];
+    if (y > 255.0f) y = 255.0f;
+    out->data[i] = (uint8_t) (y + 0.5f);
+  }
+
+  return out;
+}
+
+/**
+ * Apply Gaussian blur to an image.
+ *
+ * Builds a Gaussian kernel of the given odd `size` and standard deviation
+ * `sigma`, then delegates to `image_convolve`.
+ *
+ * @param[in] img   Input image (any channel count)
+ * @param[in] size  Kernel size, must be odd and > 0
+ * @param[in] sigma Standard deviation of the Gaussian
+ * @returns  Heap-allocated blurred image (caller must free with image_free)
+ */
+image_t *image_gaussian_blur(const image_t *img,
+                             const int size,
+                             const float sigma) {
+  assert(img != NULL);
+  assert(size > 0 && (size & 1) == 1);
+  assert(sigma > 0.0f);
+
+  const int radius = size / 2;
+  const float s2 = 2.0f * sigma * sigma;
+
+  float kernel[size * size];
+  float sum = 0.0f;
+  for (int y = -radius; y <= radius; y++) {
+    for (int x = -radius; x <= radius; x++) {
+      float val = expf(-(float) (x * x + y * y) / s2);
+      kernel[(y + radius) * size + (x + radius)] = val;
+      sum += val;
+    }
+  }
+  for (int i = 0; i < size * size; i++) {
+    kernel[i] /= sum;
+  }
+
+  image_t *out = image_convolve(img, kernel, size, size);
+  return out;
+}
+
+/**
+ * Binarize a single-channel image at a given threshold.
+ *
+ * Pixels with intensity >= `threshold` become 255, others become 0.
+ *
+ * @param[in] img        Input image (must be 1-channel)
+ * @param[in] threshold  Threshold value [0, 255]
+ * @returns  Heap-allocated 1-channel binary image (caller must free)
+ */
+image_t *image_threshold(const image_t *img, const uint8_t threshold) {
+  assert(img != NULL);
+  assert(img->channels == 1);
+
+  image_t *out = image_malloc(img->width, img->height, 1);
+  const int n = img->width * img->height;
+  for (int i = 0; i < n; i++) {
+    out->data[i] = img->data[i] >= threshold ? 255 : 0;
+  }
+
+  return out;
+}
+
+/**
+ * Sobel edge detection.
+ *
+ * Converts the input to grayscale (if needed), then applies the horizontal
+ * and vertical Sobel operators. The output is the edge magnitude image with
+ * values in [0, 255].
+ *
+ * @param[in] img  Input image (any channel count)
+ * @returns  Heap-allocated 1-channel edge magnitude image (caller must free)
+ */
+image_t *image_sobel(const image_t *img) {
+  assert(img != NULL);
+
+  image_t *gray = image_to_grayscale(img);
+  const int w = gray->width;
+  const int h = gray->height;
+
+  image_t *out = image_malloc(w, h, 1);
+
+  // Gx kernel: [-1 0 1; -2 0 2; -1 0 1]
+  const float gx_kern[3][3] = {
+    {-1.0f, 0.0f, 1.0f},
+    {-2.0f, 0.0f, 2.0f},
+    {-1.0f, 0.0f, 1.0f}
+  };
+  // Gy kernel: [-1 -2 -1; 0 0 0; 1 2 1]
+  const float gy_kern[3][3] = {
+    {-1.0f, -2.0f, -1.0f},
+    { 0.0f,  0.0f,  0.0f},
+    { 1.0f,  2.0f,  1.0f}
+  };
+
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      float gx = 0.0f;
+      float gy = 0.0f;
+      for (int ky = -1; ky <= 1; ky++) {
+        for (int kx = -1; kx <= 1; kx++) {
+          int src_x = x + kx;
+          int src_y = y + ky;
+          if (src_x < 0) src_x = 0;
+          if (src_x >= w) src_x = w - 1;
+          if (src_y < 0) src_y = 0;
+          if (src_y >= h) src_y = h - 1;
+          float val = (float) gray->data[src_y * w + src_x];
+          gx += gx_kern[ky + 1][kx + 1] * val;
+          gy += gy_kern[ky + 1][kx + 1] * val;
+        }
+      }
+      float mag = sqrtf(gx * gx + gy * gy);
+      if (mag > 255.0f) mag = 255.0f;
+      out->data[y * w + x] = (uint8_t) (mag + 0.5f);
+    }
+  }
+
+  image_free(gray);
+  return out;
+}
+
 /////////////
 // PINHOLE //
 /////////////

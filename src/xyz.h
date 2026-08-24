@@ -1558,11 +1558,19 @@ void image_draw_char(image_t *img,
                      const int scale,
                      const color_t color);
 void image_draw_string(image_t *img,
-                       const int x,
-                       const int y,
-                       const char *str,
-                       const int scale,
-                       const color_t color);
+                      const int x,
+                      const int y,
+                      const char *str,
+                      const int scale,
+                      const color_t color);
+image_t *image_convolve(const image_t *img,
+                        const float *kernel,
+                        const int kernel_w,
+                        const int kernel_h);
+image_t *image_to_grayscale(const image_t *img);
+image_t *image_gaussian_blur(const image_t *img, const int size, const float sigma);
+image_t *image_threshold(const image_t *img, const uint8_t threshold);
+image_t *image_sobel(const image_t *img);
 
 /////////////
 // PINHOLE //
