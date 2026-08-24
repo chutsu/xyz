@@ -481,7 +481,8 @@ int test_list_remove_destroy_not_found(void) {
 
   // Try to remove a value that is not in the list
   free_called_with_null = 0;
-  int result = list_remove_destroy(list, missing, strcmp2, free_assert_not_null);
+  int result =
+      list_remove_destroy(list, missing, strcmp2, free_assert_not_null);
   MU_ASSERT(result == 0);
   MU_ASSERT(free_called_with_null == 0);
   MU_ASSERT(list->length == 1);
@@ -1372,7 +1373,6 @@ int test_image_save_png(void) {
   return 0;
 }
 
-
 int test_image_fill(void) {
   image_t *img = image_malloc(4, 4, 3);
   color_t red = COLOR_RED;
@@ -1691,6 +1691,90 @@ int test_image_sobel(void) {
 
   image_free(img);
   image_free(edges);
+  return 0;
+}
+
+int test_image_harris(void) {
+  // Create a white filled rectangle on black background -> 4 corners
+  image_t *img = image_malloc(20, 20, 3);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  darray_t *corners = image_harris(img, 0.04f, 3, 1.0f, 1e6f);
+  MU_ASSERT(corners != NULL);
+  MU_ASSERT(corners->end >= 4);
+
+  // Check that corners exist near the 4 expected positions
+  int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
+  for (int i = 0; i < corners->end; i++) {
+    keypoint_t *kp = (keypoint_t *) darray_get(corners, i);
+    if (abs(kp->x - 5) <= 2 && abs(kp->y - 5) <= 2)
+      found_tl = 1;
+    if (abs(kp->x - 14) <= 2 && abs(kp->y - 5) <= 2)
+      found_tr = 1;
+    if (abs(kp->x - 5) <= 2 && abs(kp->y - 14) <= 2)
+      found_bl = 1;
+    if (abs(kp->x - 14) <= 2 && abs(kp->y - 14) <= 2)
+      found_br = 1;
+    MU_ASSERT(kp->score > 0);
+  }
+  MU_ASSERT(found_tl);
+  MU_ASSERT(found_tr);
+  MU_ASSERT(found_bl);
+  MU_ASSERT(found_br);
+
+  for (int i = 0; i < corners->end; i++) {
+    free(darray_get(corners, i));
+  }
+  darray_destroy(corners);
+  image_free(img);
+  return 0;
+}
+
+int test_image_good_features(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  darray_t *corners = image_good_features(img, 3, 1.0f, 1e4f);
+  MU_ASSERT(corners != NULL);
+  MU_ASSERT(corners->end >= 4);
+
+  int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
+  for (int i = 0; i < corners->end; i++) {
+    keypoint_t *kp = (keypoint_t *) darray_get(corners, i);
+    if (abs(kp->x - 5) <= 2 && abs(kp->y - 5) <= 2)
+      found_tl = 1;
+    if (abs(kp->x - 14) <= 2 && abs(kp->y - 5) <= 2)
+      found_tr = 1;
+    if (abs(kp->x - 5) <= 2 && abs(kp->y - 14) <= 2)
+      found_bl = 1;
+    if (abs(kp->x - 14) <= 2 && abs(kp->y - 14) <= 2)
+      found_br = 1;
+    MU_ASSERT(kp->score > 0);
+  }
+  MU_ASSERT(found_tl);
+  MU_ASSERT(found_tr);
+  MU_ASSERT(found_bl);
+  MU_ASSERT(found_br);
+
+  for (int i = 0; i < corners->end; i++) {
+    free(darray_get(corners, i));
+  }
+  darray_destroy(corners);
+  image_free(img);
+  return 0;
+}
+
+int test_image_harris_no_corners(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t gray = COLOR_GRAY;
+  image_fill(img, gray);
+
+  darray_t *corners = image_harris(img, 0.04f, 3, 1.0f, 1e6f);
+  MU_ASSERT(corners != NULL);
+  MU_ASSERT(corners->end == 0);
+
+  darray_destroy(corners);
+  image_free(img);
   return 0;
 }
 
@@ -4210,7 +4294,6 @@ int test_pinhole_params_jacobian(void) {
   return 0;
 }
 
-
 int test_radtan4_distort(void) {
   const real_t params[4] = {0.01, 0.001, 0.001, 0.001};
   const real_t p[2] = {0.1, 0.2};
@@ -4697,9 +4780,7 @@ int test_decompose_essential_matrix(void) {
     0.0, sin(M_PI / 4.0), cos(M_PI / 4.0)
   };
   // clang-format on
-  const real_t t_gt[3] = {1.0 / sqrt(14.0),
-                          2.0 / sqrt(14.0),
-                          3.0 / sqrt(14.0)};
+  const real_t t_gt[3] = {1.0 / sqrt(14.0), 2.0 / sqrt(14.0), 3.0 / sqrt(14.0)};
 
   // Form essential matrix E = [t]_x * R
   real_t t_skew[9] = {0};
@@ -4751,9 +4832,7 @@ int test_sampson_distance(void) {
     0.0, sin(M_PI / 4.0), cos(M_PI / 4.0)
   };
   // clang-format on
-  const real_t t_gt[3] = {1.0 / sqrt(14.0),
-                          2.0 / sqrt(14.0),
-                          3.0 / sqrt(14.0)};
+  const real_t t_gt[3] = {1.0 / sqrt(14.0), 2.0 / sqrt(14.0), 3.0 / sqrt(14.0)};
 
   // Form essential matrix [t]_x * R
   real_t t_skew[9] = {0};
@@ -4806,7 +4885,6 @@ int test_sampson_distance(void) {
 
   return 0;
 }
-
 
 int test_linear_triangulation(void) {
   // Setup camera
@@ -5142,12 +5220,19 @@ int test_hedborg_essential_matrix(void) {
   // Use a rotation of ~30 degrees around z-axis and translation [1, 0, 0]
   const real_t angle = 0.5;
   real_t R_gt[3 * 3] = {
-      cos(angle), -sin(angle), 0.0,
-      sin(angle), cos(angle), 0.0,
-      0.0, 0.0, 1.0,
+      cos(angle),
+      -sin(angle),
+      0.0,
+      sin(angle),
+      cos(angle),
+      0.0,
+      0.0,
+      0.0,
+      1.0,
   };
   real_t t_gt[3] = {1.0, 0.0, 0.0};
-  real_t t_norm = sqrt(t_gt[0] * t_gt[0] + t_gt[1] * t_gt[1] + t_gt[2] * t_gt[2]);
+  real_t t_norm =
+      sqrt(t_gt[0] * t_gt[0] + t_gt[1] * t_gt[1] + t_gt[2] * t_gt[2]);
   t_gt[0] /= t_norm;
   t_gt[1] /= t_norm;
   t_gt[2] /= t_norm;
@@ -5165,13 +5250,11 @@ int test_hedborg_essential_matrix(void) {
 
   // Random-ish 3D points in front of camera
   real_t pts3d[][3] = {
-      {1.0, 0.5, 3.0},  {-0.5, 1.0, 4.0}, {0.3, -0.7, 2.5},
-      {0.8, 0.8, 5.0},  {-1.0, 0.3, 3.5}, {0.5, -0.5, 4.5},
-      {-0.3, -1.0, 3.0}, {1.2, 0.2, 2.0},  {-0.7, 0.9, 6.0},
-      {0.1, 0.4, 3.2},  {0.6, -0.8, 4.0}, {-0.4, 0.6, 2.8},
-      {0.9, -0.3, 5.5}, {-0.2, 0.7, 3.8}, {0.4, 1.0, 4.2},
-      {-0.8, -0.4, 3.3}, {0.2, -0.9, 5.2}, {0.7, 0.1, 2.7},
-      {-0.6, 0.5, 4.8}, {0.3, 0.8, 3.6},
+      {1.0, 0.5, 3.0},  {-0.5, 1.0, 4.0}, {0.3, -0.7, 2.5},  {0.8, 0.8, 5.0},
+      {-1.0, 0.3, 3.5}, {0.5, -0.5, 4.5}, {-0.3, -1.0, 3.0}, {1.2, 0.2, 2.0},
+      {-0.7, 0.9, 6.0}, {0.1, 0.4, 3.2},  {0.6, -0.8, 4.0},  {-0.4, 0.6, 2.8},
+      {0.9, -0.3, 5.5}, {-0.2, 0.7, 3.8}, {0.4, 1.0, 4.2},   {-0.8, -0.4, 3.3},
+      {0.2, -0.9, 5.2}, {0.7, 0.1, 2.7},  {-0.6, 0.5, 4.8},  {0.3, 0.8, 3.6},
   };
 
   // Project points: x_j = R_gt * x_i + t_gt (then normalize)
@@ -9550,6 +9633,9 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_gaussian_blur);
   MU_ADD_TEST(test_image_threshold);
   MU_ADD_TEST(test_image_sobel);
+  MU_ADD_TEST(test_image_harris);
+  MU_ADD_TEST(test_image_good_features);
+  MU_ADD_TEST(test_image_harris_no_corners);
 
   // MATH
   MU_ADD_TEST(test_min);

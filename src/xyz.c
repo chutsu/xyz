@@ -8535,16 +8535,22 @@ image_t *image_convolve(const image_t *img,
           for (int kx = 0; kx < kernel_w; kx++) {
             int src_x = x + kx - kx_radius;
             int src_y = y + ky - ky_radius;
-            if (src_x < 0) src_x = 0;
-            if (src_x >= img->width) src_x = img->width - 1;
-            if (src_y < 0) src_y = 0;
-            if (src_y >= img->height) src_y = img->height - 1;
+            if (src_x < 0)
+              src_x = 0;
+            if (src_x >= img->width)
+              src_x = img->width - 1;
+            if (src_y < 0)
+              src_y = 0;
+            if (src_y >= img->height)
+              src_y = img->height - 1;
             int idx = (src_y * img->width + src_x) * channels + c;
             sum += kernel[ky * kernel_w + kx] * (float) img->data[idx];
           }
         }
-        if (sum < 0.0f) sum = 0.0f;
-        if (sum > 255.0f) sum = 255.0f;
+        if (sum < 0.0f)
+          sum = 0.0f;
+        if (sum > 255.0f)
+          sum = 255.0f;
         int out_idx = (y * img->width + x) * channels + c;
         out->data[out_idx] = (uint8_t) (sum + 0.5f);
       }
@@ -8578,10 +8584,10 @@ image_t *image_to_grayscale(const image_t *img) {
   const int n = img->width * img->height;
   for (int i = 0; i < n; i++) {
     int idx = i * img->channels;
-    float y = 0.299f * img->data[idx + 0] +
-              0.587f * img->data[idx + 1] +
+    float y = 0.299f * img->data[idx + 0] + 0.587f * img->data[idx + 1] +
               0.114f * img->data[idx + 2];
-    if (y > 255.0f) y = 255.0f;
+    if (y > 255.0f)
+      y = 255.0f;
     out->data[i] = (uint8_t) (y + 0.5f);
   }
 
@@ -8668,17 +8674,13 @@ image_t *image_sobel(const image_t *img) {
   image_t *out = image_malloc(w, h, 1);
 
   // Gx kernel: [-1 0 1; -2 0 2; -1 0 1]
-  const float gx_kern[3][3] = {
-    {-1.0f, 0.0f, 1.0f},
-    {-2.0f, 0.0f, 2.0f},
-    {-1.0f, 0.0f, 1.0f}
-  };
+  const float gx_kern[3][3] = {{-1.0f, 0.0f, 1.0f},
+                               {-2.0f, 0.0f, 2.0f},
+                               {-1.0f, 0.0f, 1.0f}};
   // Gy kernel: [-1 -2 -1; 0 0 0; 1 2 1]
-  const float gy_kern[3][3] = {
-    {-1.0f, -2.0f, -1.0f},
-    { 0.0f,  0.0f,  0.0f},
-    { 1.0f,  2.0f,  1.0f}
-  };
+  const float gy_kern[3][3] = {{-1.0f, -2.0f, -1.0f},
+                               {0.0f, 0.0f, 0.0f},
+                               {1.0f, 2.0f, 1.0f}};
 
   for (int y = 0; y < h; y++) {
     for (int x = 0; x < w; x++) {
@@ -8688,23 +8690,367 @@ image_t *image_sobel(const image_t *img) {
         for (int kx = -1; kx <= 1; kx++) {
           int src_x = x + kx;
           int src_y = y + ky;
-          if (src_x < 0) src_x = 0;
-          if (src_x >= w) src_x = w - 1;
-          if (src_y < 0) src_y = 0;
-          if (src_y >= h) src_y = h - 1;
+          if (src_x < 0)
+            src_x = 0;
+          if (src_x >= w)
+            src_x = w - 1;
+          if (src_y < 0)
+            src_y = 0;
+          if (src_y >= h)
+            src_y = h - 1;
           float val = (float) gray->data[src_y * w + src_x];
           gx += gx_kern[ky + 1][kx + 1] * val;
           gy += gy_kern[ky + 1][kx + 1] * val;
         }
       }
       float mag = sqrtf(gx * gx + gy * gy);
-      if (mag > 255.0f) mag = 255.0f;
+      if (mag > 255.0f)
+        mag = 255.0f;
       out->data[y * w + x] = (uint8_t) (mag + 0.5f);
     }
   }
 
   image_free(gray);
   return out;
+}
+
+/**
+ * Convolve a single-channel float image with a kernel.
+ */
+static void convolve_f32(const float *src,
+                         float *dst,
+                         const int w,
+                         const int h,
+                         const float *kernel,
+                         const int ksize) {
+  const int radius = ksize / 2;
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      float sum = 0.0f;
+      for (int ky = 0; ky < ksize; ky++) {
+        for (int kx = 0; kx < ksize; kx++) {
+          int sx = x + kx - radius;
+          int sy = y + ky - radius;
+          if (sx < 0)
+            sx = 0;
+          if (sx >= w)
+            sx = w - 1;
+          if (sy < 0)
+            sy = 0;
+          if (sy >= h)
+            sy = h - 1;
+          sum += kernel[ky * ksize + kx] * src[sy * w + sx];
+        }
+      }
+      dst[y * w + x] = sum;
+    }
+  }
+}
+
+/**
+ * Detect corners using the Harris corner response function.
+ *
+ * Computes the structure tensor M = [[Ix^2, IxIy],[IxIy, Iy^2]] with Gaussian
+ * weighting, then evaluates R = det(M) - k * trace(M)^2. Pixels where R >
+ * threshold and R is a local maximum in a block_size neighborhood are returned
+ * as keypoints.
+ *
+ * @param[in] img         Input image (any channel count)
+ * @param[in] k           Harris free parameter (typically 0.04)
+ * @param[in] block_size  Neighborhood size for non-maximum suppression
+ * @param[in] sigma       Gaussian sigma for structure tensor windowing
+ * @param[in] threshold   Minimum R value to accept as a corner
+ * @returns  Heap-allocated darray_t of keypoint_t* (caller must free)
+ */
+darray_t *image_harris(const image_t *img,
+                       const float k,
+                       const int block_size,
+                       const float sigma,
+                       const float threshold) {
+  assert(img != NULL);
+  assert(block_size > 0 && (block_size & 1) == 1);
+  assert(sigma > 0.0f);
+
+  image_t *gray = image_to_grayscale(img);
+  const int w = gray->width;
+  const int h = gray->height;
+  const int n = w * h;
+
+  float *ix = malloc(sizeof(float) * n);
+  float *iy = malloc(sizeof(float) * n);
+
+  // Compute gradients with Sobel kernels
+  const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+  const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
+
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      float gx = 0.0f;
+      float gy = 0.0f;
+      for (int ky = -1; ky <= 1; ky++) {
+        for (int kx = -1; kx <= 1; kx++) {
+          int sx = x + kx;
+          int sy = y + ky;
+          if (sx < 0)
+            sx = 0;
+          if (sx >= w)
+            sx = w - 1;
+          if (sy < 0)
+            sy = 0;
+          if (sy >= h)
+            sy = h - 1;
+          float val = (float) gray->data[sy * w + sx];
+          gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
+          gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
+        }
+      }
+      ix[y * w + x] = gx;
+      iy[y * w + x] = gy;
+    }
+  }
+
+  image_free(gray);
+
+  // Compute products
+  float *ixx = malloc(sizeof(float) * n);
+  float *ixy = malloc(sizeof(float) * n);
+  float *iyy = malloc(sizeof(float) * n);
+  for (int i = 0; i < n; i++) {
+    ixx[i] = ix[i] * ix[i];
+    ixy[i] = ix[i] * iy[i];
+    iyy[i] = iy[i] * iy[i];
+  }
+
+  free(ix);
+  free(iy);
+
+  // Gaussian blur the products
+  int ksize = (int) (6.0f * sigma) | 1;
+  if (ksize < 3)
+    ksize = 3;
+  const int kr = ksize / 2;
+  const float s2 = 2.0f * sigma * sigma;
+  float kernel[ksize * ksize];
+  float ksum = 0.0f;
+  for (int ky = -kr; ky <= kr; ky++) {
+    for (int kx = -kr; kx <= kr; kx++) {
+      float val = expf(-(float) (kx * kx + ky * ky) / s2);
+      kernel[(ky + kr) * ksize + (kx + kr)] = val;
+      ksum += val;
+    }
+  }
+  for (int i = 0; i < ksize * ksize; i++) {
+    kernel[i] /= ksum;
+  }
+
+  float *Sxx = malloc(sizeof(float) * n);
+  float *Sxy = malloc(sizeof(float) * n);
+  float *Syy = malloc(sizeof(float) * n);
+  convolve_f32(ixx, Sxx, w, h, kernel, ksize);
+  convolve_f32(ixy, Sxy, w, h, kernel, ksize);
+  convolve_f32(iyy, Syy, w, h, kernel, ksize);
+
+  free(ixx);
+  free(ixy);
+  free(iyy);
+
+  // Compute Harris response
+  float *R = malloc(sizeof(float) * n);
+  for (int i = 0; i < n; i++) {
+    float det = Sxx[i] * Syy[i] - Sxy[i] * Sxy[i];
+    float trace = Sxx[i] + Syy[i];
+    R[i] = det - k * trace * trace;
+  }
+
+  free(Sxx);
+  free(Sxy);
+  free(Syy);
+
+  // Non-maximum suppression and thresholding
+  int radius = block_size / 2;
+  darray_t *corners = darray_new(sizeof(keypoint_t *), 64);
+
+  for (int y = radius; y < h - radius; y++) {
+    for (int x = radius; x < w - radius; x++) {
+      float r = R[y * w + x];
+      if (r <= threshold)
+        continue;
+
+      int is_max = 1;
+      for (int dy = -radius; dy <= radius && is_max; dy++) {
+        for (int dx = -radius; dx <= radius && is_max; dx++) {
+          if (dy == 0 && dx == 0)
+            continue;
+          if (R[(y + dy) * w + (x + dx)] >= r)
+            is_max = 0;
+        }
+      }
+
+      if (is_max) {
+        keypoint_t *kp = malloc(sizeof(keypoint_t));
+        kp->x = x;
+        kp->y = y;
+        kp->score = r;
+        darray_push(corners, kp);
+      }
+    }
+  }
+
+  free(R);
+  return corners;
+}
+
+/**
+ * Detect corners using Shi-Tomasi's "Good Features to Track".
+ *
+ * Computes the structure tensor M = [[Ix^2, IxIy],[IxIy, Iy^2]] with Gaussian
+ * weighting, then evaluates R = min(eigenvalue1, eigenvalue2). Pixels where R >
+ * threshold and R is a local maximum in a block_size neighborhood are returned
+ * as keypoints.
+ *
+ * @param[in] img         Input image (any channel count)
+ * @param[in] block_size  Neighborhood size for non-maximum suppression
+ * @param[in] sigma       Gaussian sigma for structure tensor windowing
+ * @param[in] threshold   Minimum min-eigenvalue to accept as a corner
+ * @returns  Heap-allocated darray_t of keypoint_t* (caller must free)
+ */
+darray_t *image_good_features(const image_t *img,
+                              const int block_size,
+                              const float sigma,
+                              const float threshold) {
+  assert(img != NULL);
+  assert(block_size > 0 && (block_size & 1) == 1);
+  assert(sigma > 0.0f);
+
+  image_t *gray = image_to_grayscale(img);
+  const int w = gray->width;
+  const int h = gray->height;
+  const int n = w * h;
+
+  float *ix = malloc(sizeof(float) * n);
+  float *iy = malloc(sizeof(float) * n);
+
+  const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+  const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
+
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      float gx = 0.0f;
+      float gy = 0.0f;
+      for (int ky = -1; ky <= 1; ky++) {
+        for (int kx = -1; kx <= 1; kx++) {
+          int sx = x + kx;
+          int sy = y + ky;
+          if (sx < 0)
+            sx = 0;
+          if (sx >= w)
+            sx = w - 1;
+          if (sy < 0)
+            sy = 0;
+          if (sy >= h)
+            sy = h - 1;
+          float val = (float) gray->data[sy * w + sx];
+          gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
+          gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
+        }
+      }
+      ix[y * w + x] = gx;
+      iy[y * w + x] = gy;
+    }
+  }
+
+  image_free(gray);
+
+  float *ixx = malloc(sizeof(float) * n);
+  float *ixy = malloc(sizeof(float) * n);
+  float *iyy = malloc(sizeof(float) * n);
+  for (int i = 0; i < n; i++) {
+    ixx[i] = ix[i] * ix[i];
+    ixy[i] = ix[i] * iy[i];
+    iyy[i] = iy[i] * iy[i];
+  }
+
+  free(ix);
+  free(iy);
+
+  int ksize = (int) (6.0f * sigma) | 1;
+  if (ksize < 3)
+    ksize = 3;
+  const int kr = ksize / 2;
+  const float s2 = 2.0f * sigma * sigma;
+  float kernel[ksize * ksize];
+  float ksum = 0.0f;
+  for (int ky = -kr; ky <= kr; ky++) {
+    for (int kx = -kr; kx <= kr; kx++) {
+      float val = expf(-(float) (kx * kx + ky * ky) / s2);
+      kernel[(ky + kr) * ksize + (kx + kr)] = val;
+      ksum += val;
+    }
+  }
+  for (int i = 0; i < ksize * ksize; i++) {
+    kernel[i] /= ksum;
+  }
+
+  float *Sxx = malloc(sizeof(float) * n);
+  float *Sxy = malloc(sizeof(float) * n);
+  float *Syy = malloc(sizeof(float) * n);
+  convolve_f32(ixx, Sxx, w, h, kernel, ksize);
+  convolve_f32(ixy, Sxy, w, h, kernel, ksize);
+  convolve_f32(iyy, Syy, w, h, kernel, ksize);
+
+  free(ixx);
+  free(ixy);
+  free(iyy);
+
+  // Compute min eigenvalue: lambda_min = (trace - sqrt(trace^2 - 4*det)) / 2
+  float *R = malloc(sizeof(float) * n);
+  for (int i = 0; i < n; i++) {
+    float a = Sxx[i];
+    float b = Sxy[i];
+    float d = Syy[i];
+    float trace = a + d;
+    float det = a * d - b * b;
+    float disc = trace * trace - 4.0f * det;
+    if (disc < 0.0f)
+      disc = 0.0f;
+    R[i] = (trace - sqrtf(disc)) * 0.5f;
+  }
+
+  free(Sxx);
+  free(Sxy);
+  free(Syy);
+
+  int radius = block_size / 2;
+  darray_t *corners = darray_new(sizeof(keypoint_t *), 64);
+
+  for (int y = radius; y < h - radius; y++) {
+    for (int x = radius; x < w - radius; x++) {
+      float r = R[y * w + x];
+      if (r <= threshold)
+        continue;
+
+      int is_max = 1;
+      for (int dy = -radius; dy <= radius && is_max; dy++) {
+        for (int dx = -radius; dx <= radius && is_max; dx++) {
+          if (dy == 0 && dx == 0)
+            continue;
+          if (R[(y + dy) * w + (x + dx)] >= r)
+            is_max = 0;
+        }
+      }
+
+      if (is_max) {
+        keypoint_t *kp = malloc(sizeof(keypoint_t));
+        kp->x = x;
+        kp->y = y;
+        kp->score = r;
+        darray_push(corners, kp);
+      }
+    }
+  }
+
+  free(R);
+  return corners;
 }
 
 /////////////
