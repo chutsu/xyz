@@ -8760,16 +8760,20 @@ static void convolve_f32(const float *src,
  * @param[in] block_size  Neighborhood size for non-maximum suppression
  * @param[in] sigma       Gaussian sigma for structure tensor windowing
  * @param[in] threshold   Minimum R value to accept as a corner
- * @returns  Heap-allocated darray_t of keypoint_t* (caller must free)
+ * @param[out] out        Heap-allocated array of keypoint_t (caller must free)
+ * @param[out] out_count  Number of keypoints returned
  */
-darray_t *image_harris(const image_t *img,
-                       const float k,
-                       const int block_size,
-                       const float sigma,
-                       const float threshold) {
+void image_harris(const image_t *img,
+                  const float k,
+                  const int block_size,
+                  const float sigma,
+                  const float threshold,
+                  keypoint_t **out,
+                  int *out_count) {
   assert(img != NULL);
   assert(block_size > 0 && (block_size & 1) == 1);
   assert(sigma > 0.0f);
+  assert(out != NULL && out_count != NULL);
 
   image_t *gray = image_to_grayscale(img);
   const int w = gray->width;
@@ -8779,7 +8783,6 @@ darray_t *image_harris(const image_t *img,
   float *ix = malloc(sizeof(float) * n);
   float *iy = malloc(sizeof(float) * n);
 
-  // Compute gradients with Sobel kernels
   const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
   const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
 
@@ -8811,7 +8814,6 @@ darray_t *image_harris(const image_t *img,
 
   image_free(gray);
 
-  // Compute products
   float *ixx = malloc(sizeof(float) * n);
   float *ixy = malloc(sizeof(float) * n);
   float *iyy = malloc(sizeof(float) * n);
@@ -8824,7 +8826,6 @@ darray_t *image_harris(const image_t *img,
   free(ix);
   free(iy);
 
-  // Gaussian blur the products
   int ksize = (int) (6.0f * sigma) | 1;
   if (ksize < 3)
     ksize = 3;
@@ -8854,7 +8855,6 @@ darray_t *image_harris(const image_t *img,
   free(ixy);
   free(iyy);
 
-  // Compute Harris response
   float *R = malloc(sizeof(float) * n);
   for (int i = 0; i < n; i++) {
     float det = Sxx[i] * Syy[i] - Sxy[i] * Sxy[i];
@@ -8866,9 +8866,10 @@ darray_t *image_harris(const image_t *img,
   free(Sxy);
   free(Syy);
 
-  // Non-maximum suppression and thresholding
   int radius = block_size / 2;
-  darray_t *corners = darray_new(sizeof(keypoint_t *), 64);
+  int capacity = 64;
+  int count = 0;
+  keypoint_t *buf = malloc(sizeof(keypoint_t) * capacity);
 
   for (int y = radius; y < h - radius; y++) {
     for (int x = radius; x < w - radius; x++) {
@@ -8887,17 +8888,21 @@ darray_t *image_harris(const image_t *img,
       }
 
       if (is_max) {
-        keypoint_t *kp = malloc(sizeof(keypoint_t));
-        kp->x = x;
-        kp->y = y;
-        kp->score = r;
-        darray_push(corners, kp);
+        if (count >= capacity) {
+          capacity *= 2;
+          buf = realloc(buf, sizeof(keypoint_t) * capacity);
+        }
+        buf[count].x = x;
+        buf[count].y = y;
+        buf[count].score = r;
+        count++;
       }
     }
   }
 
   free(R);
-  return corners;
+  *out = buf;
+  *out_count = count;
 }
 
 /**
@@ -8912,15 +8917,19 @@ darray_t *image_harris(const image_t *img,
  * @param[in] block_size  Neighborhood size for non-maximum suppression
  * @param[in] sigma       Gaussian sigma for structure tensor windowing
  * @param[in] threshold   Minimum min-eigenvalue to accept as a corner
- * @returns  Heap-allocated darray_t of keypoint_t* (caller must free)
+ * @param[out] out        Heap-allocated array of keypoint_t (caller must free)
+ * @param[out] out_count  Number of keypoints returned
  */
-darray_t *image_good_features(const image_t *img,
-                              const int block_size,
-                              const float sigma,
-                              const float threshold) {
+void image_good_features(const image_t *img,
+                         const int block_size,
+                         const float sigma,
+                         const float threshold,
+                         keypoint_t **out,
+                         int *out_count) {
   assert(img != NULL);
   assert(block_size > 0 && (block_size & 1) == 1);
   assert(sigma > 0.0f);
+  assert(out != NULL && out_count != NULL);
 
   image_t *gray = image_to_grayscale(img);
   const int w = gray->width;
@@ -9002,7 +9011,6 @@ darray_t *image_good_features(const image_t *img,
   free(ixy);
   free(iyy);
 
-  // Compute min eigenvalue: lambda_min = (trace - sqrt(trace^2 - 4*det)) / 2
   float *R = malloc(sizeof(float) * n);
   for (int i = 0; i < n; i++) {
     float a = Sxx[i];
@@ -9021,7 +9029,9 @@ darray_t *image_good_features(const image_t *img,
   free(Syy);
 
   int radius = block_size / 2;
-  darray_t *corners = darray_new(sizeof(keypoint_t *), 64);
+  int capacity = 64;
+  int count = 0;
+  keypoint_t *buf = malloc(sizeof(keypoint_t) * capacity);
 
   for (int y = radius; y < h - radius; y++) {
     for (int x = radius; x < w - radius; x++) {
@@ -9040,17 +9050,491 @@ darray_t *image_good_features(const image_t *img,
       }
 
       if (is_max) {
-        keypoint_t *kp = malloc(sizeof(keypoint_t));
-        kp->x = x;
-        kp->y = y;
-        kp->score = r;
-        darray_push(corners, kp);
+        if (count >= capacity) {
+          capacity *= 2;
+          buf = realloc(buf, sizeof(keypoint_t) * capacity);
+        }
+        buf[count].x = x;
+        buf[count].y = y;
+        buf[count].score = r;
+        count++;
       }
     }
   }
 
   free(R);
-  return corners;
+  *out = buf;
+  *out_count = count;
+}
+
+/**
+ * Downsample an image by a factor of 2.
+ *
+ * Each output pixel is the average of the corresponding 2x2 block in the
+ * input. Output dimensions are ((width+1)/2, (height+1)/2).
+ *
+ * @param[in] img  Input image (any channel count)
+ * @returns  Heap-allocated downsampled image (caller must free)
+ */
+image_t *image_downsample_2x(const image_t *img) {
+  assert(img != NULL);
+
+  const int out_w = (img->width + 1) / 2;
+  const int out_h = (img->height + 1) / 2;
+  const int c = img->channels;
+  image_t *out = image_malloc(out_w, out_h, c);
+
+  for (int y = 0; y < out_h; y++) {
+    for (int x = 0; x < out_w; x++) {
+      int sx = x * 2;
+      int sy = y * 2;
+      for (int ch = 0; ch < c; ch++) {
+        float sum = 0.0f;
+        int count = 0;
+        for (int dy = 0; dy < 2; dy++) {
+          for (int dx = 0; dx < 2; dx++) {
+            int px = sx + dx;
+            int py = sy + dy;
+            if (px < img->width && py < img->height) {
+              sum += (float) img->data[(py * img->width + px) * c + ch];
+              count++;
+            }
+          }
+        }
+        out->data[(y * out_w + x) * c + ch] =
+            (uint8_t) (sum / (float) count + 0.5f);
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Upsample an image by a factor of 2 using bilinear interpolation.
+ *
+ * Output dimensions are (width*2, height*2).
+ *
+ * @param[in] img  Input image (any channel count)
+ * @returns  Heap-allocated upsampled image (caller must free)
+ */
+image_t *image_upsample_2x(const image_t *img) {
+  assert(img != NULL);
+
+  const int out_w = img->width * 2;
+  const int out_h = img->height * 2;
+  const int c = img->channels;
+  image_t *out = image_malloc(out_w, out_h, c);
+
+  for (int y = 0; y < out_h; y++) {
+    for (int x = 0; x < out_w; x++) {
+      float fx = (float) x / 2.0f;
+      float fy = (float) y / 2.0f;
+      int x0 = (int) fx;
+      int y0 = (int) fy;
+      int x1 = x0 + 1;
+      int y1 = y0 + 1;
+      if (x1 >= img->width)
+        x1 = img->width - 1;
+      if (y1 >= img->height)
+        y1 = img->height - 1;
+
+      float dx = fx - (float) x0;
+      float dy = fy - (float) y0;
+
+      for (int ch = 0; ch < c; ch++) {
+        float v00 = (float) img->data[(y0 * img->width + x0) * c + ch];
+        float v10 = (float) img->data[(y0 * img->width + x1) * c + ch];
+        float v01 = (float) img->data[(y1 * img->width + x0) * c + ch];
+        float v11 = (float) img->data[(y1 * img->width + x1) * c + ch];
+
+        float val = v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) +
+                    v01 * (1 - dx) * dy + v11 * dx * dy;
+
+        if (val < 0.0f)
+          val = 0.0f;
+        if (val > 255.0f)
+          val = 255.0f;
+        out->data[(y * out_w + x) * c + ch] = (uint8_t) (val + 0.5f);
+      }
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Build a Gaussian pyramid.
+ *
+ * Level 0 is the original image. Each subsequent level is obtained by blurring
+ * with a Gaussian kernel and then downsampling by 2x.
+ *
+ * @param[in] img         Input image (any channel count)
+ * @param[in] num_levels  Number of pyramid levels (including level 0)
+ * @param[in] sigma       Gaussian sigma for pre-blur before downsampling
+ * @param[out] out        Heap-allocated array of image_t* (caller must free
+ *                        each level and free the array)
+ * @param[out] out_count  Number of pyramid levels returned
+ */
+void image_gaussian_pyramid(const image_t *img,
+                            const int num_levels,
+                            const float sigma,
+                            image_t ***out,
+                            int *out_count) {
+  assert(img != NULL);
+  assert(num_levels > 0);
+  assert(sigma > 0.0f);
+  assert(out != NULL && out_count != NULL);
+
+  int capacity = num_levels;
+  int count = 0;
+  image_t **buf = malloc(sizeof(image_t *) * capacity);
+
+  image_t *current = image_malloc(img->width, img->height, img->channels);
+  memcpy(current->data,
+         img->data,
+         (size_t) img->width * img->height * img->channels);
+  buf[count++] = current;
+
+  int ksize = (int) (6.0f * sigma) | 1;
+  if (ksize < 3)
+    ksize = 3;
+
+  for (int level = 1; level < num_levels; level++) {
+    image_t *blurred = image_gaussian_blur(current, ksize, sigma);
+    image_t *down = image_downsample_2x(blurred);
+    image_free(blurred);
+
+    if (down->width < 4 || down->height < 4) {
+      image_free(down);
+      break;
+    }
+
+    if (count >= capacity) {
+      capacity *= 2;
+      buf = realloc(buf, sizeof(image_t *) * capacity);
+    }
+    buf[count++] = down;
+    current = down;
+  }
+
+  *out = buf;
+  *out_count = count;
+}
+
+/**
+ * Build a Laplacian pyramid.
+ *
+ * Each level stores the difference between a Gaussian level and the upsampled
+ * next coarser level. The last level is the residual (the coarsest Gaussian
+ * level).
+ *
+ * @param[in] img         Input image (any channel count)
+ * @param[in] num_levels  Number of pyramid levels (including level 0)
+ * @param[in] sigma       Gaussian sigma for pre-blur before downsampling
+ * @param[out] out        Heap-allocated array of image_t* (caller must free
+ *                        each level and free the array)
+ * @param[out] out_count  Number of pyramid levels returned
+ */
+void image_laplacian_pyramid(const image_t *img,
+                             const int num_levels,
+                             const float sigma,
+                             image_t ***out,
+                             int *out_count) {
+  assert(img != NULL);
+  assert(num_levels > 0);
+  assert(sigma > 0.0f);
+  assert(out != NULL && out_count != NULL);
+
+  image_t **gauss;
+  int gauss_count;
+  image_gaussian_pyramid(img, num_levels, sigma, &gauss, &gauss_count);
+
+  int capacity = gauss_count;
+  int count = 0;
+  image_t **buf = malloc(sizeof(image_t *) * capacity);
+
+  for (int i = 0; i < gauss_count - 1; i++) {
+    image_t *g_i = gauss[i];
+    image_t *g_next = gauss[i + 1];
+    image_t *up = image_upsample_2x(g_next);
+
+    int w = g_i->width;
+    int h = g_i->height;
+    int c = g_i->channels;
+    image_t *diff = image_malloc(w, h, c);
+
+    for (int j = 0; j < w * h * c; j++) {
+      int val = (int) g_i->data[j] - (int) up->data[j];
+      if (val < 0)
+        val = 0;
+      if (val > 255)
+        val = 255;
+      diff->data[j] = (uint8_t) val;
+    }
+
+    image_free(up);
+    buf[count++] = diff;
+  }
+
+  image_t *last = gauss[gauss_count - 1];
+  image_t *residual = image_malloc(last->width, last->height, last->channels);
+  memcpy(residual->data,
+         last->data,
+         (size_t) last->width * last->height * last->channels);
+  buf[count++] = residual;
+
+  for (int i = 0; i < gauss_count; i++) {
+    image_free(gauss[i]);
+  }
+  free(gauss);
+
+  *out = buf;
+  *out_count = count;
+}
+
+/**
+ * Sample an image at sub-pixel coordinates using bilinear interpolation.
+ *
+ * @param[in] img      Input image
+ * @param[in] x        Horizontal coordinate (fractional)
+ * @param[in] y        Vertical coordinate (fractional)
+ * @param[in] channel  Channel index (0, 1, or 2)
+ * @returns  Interpolated pixel value clamped to [0, 255]
+ */
+uint8_t image_bilinear_sample(const image_t *img,
+                              const float x,
+                              const float y,
+                              const int channel) {
+  assert(img != NULL);
+  assert(channel >= 0 && channel < img->channels);
+
+  int x0 = (int) x;
+  int y0 = (int) y;
+  int x1 = x0 + 1;
+  int y1 = y0 + 1;
+
+  if (x0 < 0)
+    x0 = 0;
+  if (y0 < 0)
+    y0 = 0;
+  if (x1 >= img->width)
+    x1 = img->width - 1;
+  if (y1 >= img->height)
+    y1 = img->height - 1;
+  if (x0 >= img->width)
+    x0 = img->width - 1;
+  if (y0 >= img->height)
+    y0 = img->height - 1;
+
+  float dx = x - (float) x0;
+  float dy = y - (float) y0;
+  if (dx < 0.0f)
+    dx = 0.0f;
+  if (dx > 1.0f)
+    dx = 1.0f;
+  if (dy < 0.0f)
+    dy = 0.0f;
+  if (dy > 1.0f)
+    dy = 1.0f;
+
+  const int c = img->channels;
+  float v00 = (float) img->data[(y0 * img->width + x0) * c + channel];
+  float v10 = (float) img->data[(y0 * img->width + x1) * c + channel];
+  float v01 = (float) img->data[(y1 * img->width + x0) * c + channel];
+  float v11 = (float) img->data[(y1 * img->width + x1) * c + channel];
+
+  float val = v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) +
+              v01 * (1 - dx) * dy + v11 * dx * dy;
+
+  if (val < 0.0f)
+    val = 0.0f;
+  if (val > 255.0f)
+    val = 255.0f;
+  return (uint8_t) (val + 0.5f);
+}
+
+/**
+ * Track keypoints from img0 to img1 using pyramidal Lucas-Kanade.
+ *
+ * For each keypoint, computes the optical flow by iteratively solving the
+ * Lucas-Kanade equations across pyramid levels (coarsest to finest).
+ *
+ * @param[in]  img0       Reference image (single-channel)
+ * @param[in]  img1       Target image (single-channel)
+ * @param[in]  kp_in      Input keypoints to track
+ * @param[in]  num_kp     Number of input keypoints
+ * @param[in]  num_levels Number of pyramid levels (typically 3-4)
+ * @param[in]  sigma      Gaussian sigma for pyramid pre-blur
+ * @param[out] tracks     Output array of lk_track_t (must be allocated by
+ *                        caller, same size as num_kp)
+ */
+void image_lk_track(const image_t *img0,
+                    const image_t *img1,
+                    const keypoint_t *kp_in,
+                    const int num_kp,
+                    const int num_levels,
+                    const float sigma,
+                    lk_track_t *tracks) {
+  assert(img0 != NULL);
+  assert(img1 != NULL);
+  assert(kp_in != NULL);
+  assert(num_kp > 0);
+  assert(num_levels > 0);
+  assert(sigma > 0.0f);
+  assert(tracks != NULL);
+
+  // Build pyramids
+  image_t **pyr0;
+  image_t **pyr1;
+  int pyr0_count, pyr1_count;
+  image_gaussian_pyramid(img0, num_levels, sigma, &pyr0, &pyr0_count);
+  image_gaussian_pyramid(img1, num_levels, sigma, &pyr1, &pyr1_count);
+
+  int levels = pyr0_count < pyr1_count ? pyr0_count : pyr1_count;
+
+  const int window_size = 15;
+  const int half_win = window_size / 2;
+  const int max_iters = 20;
+  const float epsilon = 0.01f;
+
+  // Initialize tracks
+  for (int i = 0; i < num_kp; i++) {
+    tracks[i].dx = 0.0f;
+    tracks[i].dy = 0.0f;
+    tracks[i].status = 1;
+  }
+
+  // Process each pyramid level (coarsest to finest)
+  for (int level = levels - 1; level >= 0; level--) {
+    image_t *I0 = pyr0[level];
+    image_t *I1 = pyr1[level];
+    const int w = I0->width;
+    const int h = I0->height;
+    float scale = 1.0f;
+    for (int l = 0; l < level; l++)
+      scale *= 2.0f;
+
+    // Compute gradients on I0
+    const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
+    const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
+    const int c = I0->channels;
+
+    float *Ix = malloc(sizeof(float) * w * h);
+    float *Iy = malloc(sizeof(float) * w * h);
+
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        float gx = 0.0f;
+        float gy = 0.0f;
+        for (int ky = -1; ky <= 1; ky++) {
+          for (int kx = -1; kx <= 1; kx++) {
+            int sx = x + kx;
+            int sy = y + ky;
+            if (sx < 0)
+              sx = 0;
+            if (sx >= w)
+              sx = w - 1;
+            if (sy < 0)
+              sy = 0;
+            if (sy >= h)
+              sy = h - 1;
+            float val = (float) I0->data[(sy * w + sx) * c];
+            gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
+            gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
+          }
+        }
+        Ix[y * w + x] = gx;
+        Iy[y * w + x] = gy;
+      }
+    }
+
+    // Track each keypoint
+    for (int i = 0; i < num_kp; i++) {
+      float dx = tracks[i].dx;
+      float dy = tracks[i].dy;
+      float ox = kp_in[i].x / scale;
+      float oy = kp_in[i].y / scale;
+      float px = ox + dx / scale;
+      float py = oy + dy / scale;
+
+      int level_ok = 1;
+      for (int iter = 0; iter < max_iters; iter++) {
+        float A00 = 0, A01 = 0, A11 = 0;
+        float b0 = 0, b1 = 0;
+
+        for (int wy = -half_win; wy <= half_win; wy++) {
+          for (int wx = -half_win; wx <= half_win; wx++) {
+            // I0 at template position, I1 at warped position
+            float sx0 = ox + (float) wx;
+            float sy0 = oy + (float) wy;
+            float sx1 = px + (float) wx;
+            float sy1 = py + (float) wy;
+
+            if (sx1 < 1.0f || sx1 >= w - 2.0f || sy1 < 1.0f || sy1 >= h - 2.0f)
+              continue;
+            if (sx0 < 0.0f || sx0 >= w || sy0 < 0.0f || sy0 >= h)
+              continue;
+
+            uint8_t t0 = image_bilinear_sample(I0, sx0, sy0, 0);
+            uint8_t t1 = image_bilinear_sample(I1, sx1, sy1, 0);
+            float it = (float) t1 - (float) t0;
+
+            int ix = (int) sx1;
+            int iy = (int) sy1;
+            float ix_val = Ix[iy * w + ix];
+            float iy_val = Iy[iy * w + ix];
+
+            A00 += ix_val * ix_val;
+            A01 += ix_val * iy_val;
+            A11 += iy_val * iy_val;
+            b0 += ix_val * it;
+            b1 += iy_val * it;
+          }
+        }
+
+        // Solve 2x2 system: [A00 A01; A01 A11] * [du; dv] = [-b0; -b1]
+        float det = A00 * A11 - A01 * A01;
+        if (fabsf(det) < 1e-6f) {
+          level_ok = 0;
+          break;
+        }
+
+        float inv_det = 1.0f / det;
+        float du = -(A11 * b0 - A01 * b1) * inv_det;
+        float dv = -(-A01 * b0 + A00 * b1) * inv_det;
+
+        px += du;
+        py += dv;
+
+        if (fabsf(du) + fabsf(dv) < epsilon)
+          break;
+      }
+
+      if (!level_ok) {
+        continue;
+      }
+
+      // Check bounds
+      if (px < 0.0f || px >= w || py < 0.0f || py >= h) {
+        continue;
+      }
+
+      tracks[i].dx = px * scale - (float) kp_in[i].x;
+      tracks[i].dy = py * scale - (float) kp_in[i].y;
+    }
+
+    free(Ix);
+    free(Iy);
+  }
+
+  // Free pyramids
+  for (int i = 0; i < pyr0_count; i++)
+    image_free(pyr0[i]);
+  free(pyr0);
+  for (int i = 0; i < pyr1_count; i++)
+    image_free(pyr1[i]);
+  free(pyr1);
 }
 
 /////////////

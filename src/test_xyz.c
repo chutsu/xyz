@@ -1695,37 +1695,32 @@ int test_image_sobel(void) {
 }
 
 int test_image_harris(void) {
-  // Create a white filled rectangle on black background -> 4 corners
   image_t *img = image_malloc(20, 20, 3);
   image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
 
-  darray_t *corners = image_harris(img, 0.04f, 3, 1.0f, 1e6f);
-  MU_ASSERT(corners != NULL);
-  MU_ASSERT(corners->end >= 4);
+  keypoint_t *corners;
+  int count;
+  image_harris(img, 0.04f, 3, 1.0f, 1e6f, &corners, &count);
+  MU_ASSERT(count >= 4);
 
-  // Check that corners exist near the 4 expected positions
   int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
-  for (int i = 0; i < corners->end; i++) {
-    keypoint_t *kp = (keypoint_t *) darray_get(corners, i);
-    if (abs(kp->x - 5) <= 2 && abs(kp->y - 5) <= 2)
+  for (int i = 0; i < count; i++) {
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 5) <= 2)
       found_tl = 1;
-    if (abs(kp->x - 14) <= 2 && abs(kp->y - 5) <= 2)
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 5) <= 2)
       found_tr = 1;
-    if (abs(kp->x - 5) <= 2 && abs(kp->y - 14) <= 2)
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 14) <= 2)
       found_bl = 1;
-    if (abs(kp->x - 14) <= 2 && abs(kp->y - 14) <= 2)
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 14) <= 2)
       found_br = 1;
-    MU_ASSERT(kp->score > 0);
+    MU_ASSERT(corners[i].score > 0);
   }
   MU_ASSERT(found_tl);
   MU_ASSERT(found_tr);
   MU_ASSERT(found_bl);
   MU_ASSERT(found_br);
 
-  for (int i = 0; i < corners->end; i++) {
-    free(darray_get(corners, i));
-  }
-  darray_destroy(corners);
+  free(corners);
   image_free(img);
   return 0;
 }
@@ -1734,32 +1729,29 @@ int test_image_good_features(void) {
   image_t *img = image_malloc(20, 20, 3);
   image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
 
-  darray_t *corners = image_good_features(img, 3, 1.0f, 1e4f);
-  MU_ASSERT(corners != NULL);
-  MU_ASSERT(corners->end >= 4);
+  keypoint_t *corners;
+  int count;
+  image_good_features(img, 3, 1.0f, 1e4f, &corners, &count);
+  MU_ASSERT(count >= 4);
 
   int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
-  for (int i = 0; i < corners->end; i++) {
-    keypoint_t *kp = (keypoint_t *) darray_get(corners, i);
-    if (abs(kp->x - 5) <= 2 && abs(kp->y - 5) <= 2)
+  for (int i = 0; i < count; i++) {
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 5) <= 2)
       found_tl = 1;
-    if (abs(kp->x - 14) <= 2 && abs(kp->y - 5) <= 2)
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 5) <= 2)
       found_tr = 1;
-    if (abs(kp->x - 5) <= 2 && abs(kp->y - 14) <= 2)
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 14) <= 2)
       found_bl = 1;
-    if (abs(kp->x - 14) <= 2 && abs(kp->y - 14) <= 2)
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 14) <= 2)
       found_br = 1;
-    MU_ASSERT(kp->score > 0);
+    MU_ASSERT(corners[i].score > 0);
   }
   MU_ASSERT(found_tl);
   MU_ASSERT(found_tr);
   MU_ASSERT(found_bl);
   MU_ASSERT(found_br);
 
-  for (int i = 0; i < corners->end; i++) {
-    free(darray_get(corners, i));
-  }
-  darray_destroy(corners);
+  free(corners);
   image_free(img);
   return 0;
 }
@@ -1769,11 +1761,172 @@ int test_image_harris_no_corners(void) {
   color_t gray = COLOR_GRAY;
   image_fill(img, gray);
 
-  darray_t *corners = image_harris(img, 0.04f, 3, 1.0f, 1e6f);
-  MU_ASSERT(corners != NULL);
-  MU_ASSERT(corners->end == 0);
+  keypoint_t *corners;
+  int count;
+  image_harris(img, 0.04f, 3, 1.0f, 1e6f, &corners, &count);
+  MU_ASSERT(count == 0);
 
-  darray_destroy(corners);
+  free(corners);
+  image_free(img);
+  return 0;
+}
+
+int test_image_downsample_2x(void) {
+  image_t *img = image_malloc(4, 4, 1);
+  for (int i = 0; i < 16; i++)
+    img->data[i] = (uint8_t) (i * 10);
+
+  image_t *small = image_downsample_2x(img);
+  MU_ASSERT(small != NULL);
+  MU_ASSERT(small->width == 2);
+  MU_ASSERT(small->height == 2);
+  MU_ASSERT(small->channels == 1);
+
+  // Verify each pixel is the average of a 2x2 block
+  float expected0 = (0 + 10 + 40 + 50) / 4.0f;
+  MU_ASSERT(small->data[0] == (uint8_t) (expected0 + 0.5f));
+
+  image_free(img);
+  image_free(small);
+  return 0;
+}
+
+int test_image_upsample_2x(void) {
+  image_t *img = image_malloc(2, 2, 1);
+  img->data[0] = 0;
+  img->data[1] = 100;
+  img->data[2] = 200;
+  img->data[3] = 255;
+
+  image_t *big = image_upsample_2x(img);
+  MU_ASSERT(big != NULL);
+  MU_ASSERT(big->width == 4);
+  MU_ASSERT(big->height == 4);
+  MU_ASSERT(big->channels == 1);
+
+  // Corners should match original
+  MU_ASSERT(big->data[0] == 0);
+  MU_ASSERT(big->data[3] == 100);
+  MU_ASSERT(big->data[12] == 200);
+  MU_ASSERT(big->data[15] == 255);
+
+  // Interior pixels should be interpolated (non-zero)
+  MU_ASSERT(big->data[5] > 0);
+
+  image_free(img);
+  image_free(big);
+  return 0;
+}
+
+int test_image_gaussian_pyramid(void) {
+  image_t *img = image_malloc(16, 16, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  image_t **levels;
+  int count;
+  image_gaussian_pyramid(img, 3, 1.0, &levels, &count);
+  MU_ASSERT(count >= 2);
+
+  MU_ASSERT(levels[0]->width == 16);
+  MU_ASSERT(levels[0]->height == 16);
+  MU_ASSERT(levels[1]->width == 8);
+  MU_ASSERT(levels[1]->height == 8);
+
+  for (int i = 0; i < count; i++) {
+    image_free(levels[i]);
+  }
+  free(levels);
+  image_free(img);
+  return 0;
+}
+
+int test_image_laplacian_pyramid(void) {
+  image_t *img = image_malloc(16, 16, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  image_t **levels;
+  int count;
+  image_laplacian_pyramid(img, 3, 1.0, &levels, &count);
+  MU_ASSERT(count >= 2);
+
+  for (int i = 0; i < count; i++) {
+    MU_ASSERT(levels[i]->width > 0);
+    MU_ASSERT(levels[i]->height > 0);
+  }
+
+  MU_ASSERT(levels[count - 1]->width > 0);
+
+  for (int i = 0; i < count; i++) {
+    image_free(levels[i]);
+  }
+  free(levels);
+  image_free(img);
+  return 0;
+}
+
+int test_image_bilinear_sample(void) {
+  image_t *img = image_malloc(4, 4, 1);
+  img->data[0] = 0;
+  img->data[1] = 100;
+  img->data[4] = 200;
+  img->data[5] = 255;
+
+  // Integer coordinates should return exact values
+  MU_ASSERT(image_bilinear_sample(img, 0.0f, 0.0f, 0) == 0);
+  MU_ASSERT(image_bilinear_sample(img, 1.0f, 0.0f, 0) == 100);
+
+  // Midpoint should be average of four neighbors
+  uint8_t mid = image_bilinear_sample(img, 0.5f, 0.5f, 0);
+  float expected = (0 + 100 + 200 + 255) / 4.0f;
+  MU_ASSERT(mid == (uint8_t) (expected + 0.5f));
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_lk_track_translation(void) {
+  image_t *img0 = image_malloc(80, 80, 3);
+  image_draw_rect_fill(img0, 30, 30, 5, 5, COLOR_WHITE);
+
+  image_t *img1 = image_malloc(80, 80, 3);
+  image_draw_rect_fill(img1, 33, 30, 5, 5, COLOR_WHITE);
+
+  keypoint_t kp;
+  kp.x = 32;
+  kp.y = 32;
+  kp.score = 1.0f;
+
+  lk_track_t track;
+
+  image_lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+
+  MU_ASSERT(track.status == 1);
+  MU_ASSERT(fabsf(track.dx - 3.0f) < 1.0f);
+  MU_ASSERT(fabsf(track.dy) < 1.0f);
+
+  image_free(img0);
+  image_free(img1);
+  return 0;
+}
+
+int test_image_lk_track_no_motion(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  keypoint_t kp;
+  kp.x = 10;
+  kp.y = 10;
+  kp.score = 1.0f;
+
+  lk_track_t track;
+  image_lk_track(img, img, &kp, 1, 3, 1.0f, &track);
+
+  MU_ASSERT(track.status == 1);
+  MU_ASSERT(fabsf(track.dx) < 0.5f);
+  MU_ASSERT(fabsf(track.dy) < 0.5f);
+
   image_free(img);
   return 0;
 }
@@ -9636,6 +9789,13 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_harris);
   MU_ADD_TEST(test_image_good_features);
   MU_ADD_TEST(test_image_harris_no_corners);
+  MU_ADD_TEST(test_image_downsample_2x);
+  MU_ADD_TEST(test_image_upsample_2x);
+  MU_ADD_TEST(test_image_gaussian_pyramid);
+  MU_ADD_TEST(test_image_laplacian_pyramid);
+  MU_ADD_TEST(test_image_bilinear_sample);
+  MU_ADD_TEST(test_image_lk_track_translation);
+  MU_ADD_TEST(test_image_lk_track_no_motion);
 
   // MATH
   MU_ADD_TEST(test_min);

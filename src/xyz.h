@@ -1580,16 +1580,52 @@ typedef struct keypoint_t {
   float score;
 } keypoint_t;
 
-darray_t *image_harris(const image_t *img,
-                       const float k,
-                       const int block_size,
-                       const float sigma,
-                       const float threshold);
+void image_harris(const image_t *img,
+                  const float k,
+                  const int block_size,
+                  const float sigma,
+                  const float threshold,
+                  keypoint_t **out,
+                  int *out_count);
 
-darray_t *image_good_features(const image_t *img,
-                              const int block_size,
-                              const float sigma,
-                              const float threshold);
+void image_good_features(const image_t *img,
+                         const int block_size,
+                         const float sigma,
+                         const float threshold,
+                         keypoint_t **out,
+                         int *out_count);
+
+image_t *image_downsample_2x(const image_t *img);
+image_t *image_upsample_2x(const image_t *img);
+void image_gaussian_pyramid(const image_t *img,
+                            const int num_levels,
+                            const float sigma,
+                            image_t ***out,
+                            int *out_count);
+void image_laplacian_pyramid(const image_t *img,
+                             const int num_levels,
+                             const float sigma,
+                             image_t ***out,
+                             int *out_count);
+
+typedef struct lk_track_t {
+  float dx;
+  float dy;
+  int status;
+} lk_track_t;
+
+uint8_t image_bilinear_sample(const image_t *img,
+                              const float x,
+                              const float y,
+                              const int channel);
+
+void image_lk_track(const image_t *img0,
+                    const image_t *img1,
+                    const keypoint_t *kp_in,
+                    const int num_kp,
+                    const int num_levels,
+                    const float sigma,
+                    lk_track_t *tracks);
 
 /////////////
 // PINHOLE //
