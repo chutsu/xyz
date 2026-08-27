@@ -1326,611 +1326,6 @@ int test_tcp_server_setup(void) {
   return 0;
 }
 
-/*******************************************************************************
- * IMAGE
- ******************************************************************************/
-
-int test_image_malloc(void) {
-  image_t *img = image_malloc(10, 20, 3);
-  MU_ASSERT(img != NULL);
-  MU_ASSERT(img->width == 10);
-  MU_ASSERT(img->height == 20);
-  MU_ASSERT(img->channels == 3);
-  MU_ASSERT(img->data != NULL);
-
-  // Verify zero-initialized
-  for (int i = 0; i < 10 * 20 * 3; i++) {
-    MU_ASSERT(img->data[i] == 0);
-  }
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_save_png(void) {
-  image_t *img = image_malloc(4, 4, 3);
-  color_t red = COLOR_RED;
-  image_fill(img, red);
-
-  const char *path = "/tmp/test_image.png";
-  image_save_png(img, path);
-
-  // Reload and verify
-  image_t *loaded = image_load(path);
-  MU_ASSERT(loaded != NULL);
-  MU_ASSERT(loaded->width == 4);
-  MU_ASSERT(loaded->height == 4);
-
-  color_t c;
-  image_get_pixel(loaded, 0, 0, &c);
-  MU_ASSERT(c.r == 255);
-  MU_ASSERT(c.g == 0);
-  MU_ASSERT(c.b == 0);
-
-  image_free(img);
-  image_free(loaded);
-  remove(path);
-  return 0;
-}
-
-int test_image_fill(void) {
-  image_t *img = image_malloc(4, 4, 3);
-  color_t red = COLOR_RED;
-  image_fill(img, red);
-
-  for (int y = 0; y < 4; y++) {
-    for (int x = 0; x < 4; x++) {
-      color_t c;
-      image_get_pixel(img, x, y, &c);
-      MU_ASSERT(c.r == 255);
-      MU_ASSERT(c.g == 0);
-      MU_ASSERT(c.b == 0);
-    }
-  }
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_set_get_pixel(void) {
-  image_t *img = image_malloc(8, 8, 3);
-  color_t green = COLOR_GREEN;
-  image_set_pixel(img, 3, 5, green);
-
-  color_t c;
-  image_get_pixel(img, 3, 5, &c);
-  MU_ASSERT(c.r == 0);
-  MU_ASSERT(c.g == 255);
-  MU_ASSERT(c.b == 0);
-
-  // Out of bounds returns black
-  color_t oob;
-  image_get_pixel(img, -1, 0, &oob);
-  MU_ASSERT(oob.r == 0);
-  MU_ASSERT(oob.g == 0);
-  MU_ASSERT(oob.b == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_line(void) {
-  image_t *img = image_malloc(10, 10, 3);
-  color_t white = COLOR_WHITE;
-  image_draw_line(img, 0, 0, 9, 0, 1, white);
-
-  // Top row should be white
-  for (int x = 0; x < 10; x++) {
-    color_t c;
-    image_get_pixel(img, x, 0, &c);
-    MU_ASSERT(c.r == 255);
-    MU_ASSERT(c.g == 255);
-    MU_ASSERT(c.b == 255);
-  }
-
-  // Row 1 should still be black
-  color_t c;
-  image_get_pixel(img, 0, 1, &c);
-  MU_ASSERT(c.r == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_rect(void) {
-  image_t *img = image_malloc(10, 10, 3);
-  color_t blue = COLOR_BLUE;
-  image_draw_rect(img, 2, 2, 5, 5, blue);
-
-  // Corners should be blue
-  color_t c;
-  image_get_pixel(img, 2, 2, &c);
-  MU_ASSERT(c.b == 255);
-
-  image_get_pixel(img, 6, 2, &c);
-  MU_ASSERT(c.b == 255);
-
-  image_get_pixel(img, 6, 6, &c);
-  MU_ASSERT(c.b == 255);
-
-  image_get_pixel(img, 2, 6, &c);
-  MU_ASSERT(c.b == 255);
-
-  // Interior should be black
-  image_get_pixel(img, 4, 4, &c);
-  MU_ASSERT(c.r == 0);
-  MU_ASSERT(c.g == 0);
-  MU_ASSERT(c.b == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_rect_fill(void) {
-  image_t *img = image_malloc(10, 10, 3);
-  color_t red = COLOR_RED;
-  image_draw_rect_fill(img, 2, 2, 3, 3, red);
-
-  for (int y = 2; y < 5; y++) {
-    for (int x = 2; x < 5; x++) {
-      color_t c;
-      image_get_pixel(img, x, y, &c);
-      MU_ASSERT(c.r == 255);
-    }
-  }
-
-  // Outside should be black
-  color_t c;
-  image_get_pixel(img, 0, 0, &c);
-  MU_ASSERT(c.r == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_circle(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  color_t green = COLOR_GREEN;
-  image_draw_circle(img, 10, 10, 5, 1, green);
-
-  // Center of circle edge should be green
-  color_t c;
-  image_get_pixel(img, 10, 5, &c);
-  MU_ASSERT(c.g == 255);
-
-  // Center should be black (outline only)
-  image_get_pixel(img, 10, 10, &c);
-  MU_ASSERT(c.r == 0);
-  MU_ASSERT(c.g == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_circle_fill(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  color_t blue = COLOR_BLUE;
-  image_draw_circle_fill(img, 10, 10, 5, blue);
-
-  // Center should be blue
-  color_t c;
-  image_get_pixel(img, 10, 10, &c);
-  MU_ASSERT(c.b == 255);
-
-  // Far corner should be black
-  image_get_pixel(img, 0, 0, &c);
-  MU_ASSERT(c.b == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_char(void) {
-  image_t *img = image_malloc(60, 20, 3);
-  color_t white = COLOR_WHITE;
-  image_draw_char(img, 2, 5, 'A', 2, white);
-
-  // 'A' at scale=2: the top center pixel (col=2, row=0) should be lit
-  color_t c;
-  image_get_pixel(img, 2 + 2 * 2, 5 + 0, &c);
-  MU_ASSERT(c.r == 255);
-
-  // Space character should not draw anything
-  image_draw_char(img, 20, 5, ' ', 2, white);
-  image_get_pixel(img, 22, 7, &c);
-  MU_ASSERT(c.r == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_string(void) {
-  image_t *img = image_malloc(200, 30, 3);
-  color_t green = COLOR_GREEN;
-  image_draw_string(img, 5, 5, "ABCDE", 2, green);
-
-  // 'A' at (5,5) scale=2: col=1 row=0 is lit (0x11 bit 0 set)
-  // screen pixel: x=5+1*2=7, y=5+0*2=5
-  color_t c;
-  image_get_pixel(img, 7, 5, &c);
-  MU_ASSERT(c.g == 255);
-
-  image_save_png(img, "/tmp/test_image.png");
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_line_thickness(void) {
-  image_t *img = image_malloc(10, 10, 3);
-  color_t red = COLOR_RED;
-  image_draw_line(img, 0, 5, 9, 5, 3, red);
-
-  // Pixels on the line and neighbors should be red
-  color_t c;
-  image_get_pixel(img, 5, 4, &c);
-  MU_ASSERT(c.r == 255);
-  image_get_pixel(img, 5, 5, &c);
-  MU_ASSERT(c.r == 255);
-  image_get_pixel(img, 5, 6, &c);
-  MU_ASSERT(c.r == 255);
-
-  // 2 pixels away should be black
-  image_get_pixel(img, 5, 3, &c);
-  MU_ASSERT(c.r == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_draw_circle_thickness(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  color_t blue = COLOR_BLUE;
-  image_draw_circle(img, 10, 10, 5, 2, blue);
-
-  // Edge should be blue
-  color_t c;
-  image_get_pixel(img, 10, 5, &c);
-  MU_ASSERT(c.b == 255);
-
-  // Center should be black (outline only)
-  image_get_pixel(img, 10, 10, &c);
-  MU_ASSERT(c.b == 0);
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_to_grayscale(void) {
-  image_t *img = image_malloc(4, 4, 3);
-  color_t red = COLOR_RED;
-  image_fill(img, red);
-
-  image_t *gray = image_to_grayscale(img);
-  MU_ASSERT(gray != NULL);
-  MU_ASSERT(gray->width == 4);
-  MU_ASSERT(gray->height == 4);
-  MU_ASSERT(gray->channels == 1);
-
-  // Y = 0.299 * 255 = 76.245 -> 76
-  for (int i = 0; i < 4 * 4; i++) {
-    MU_ASSERT(gray->data[i] == 76);
-  }
-
-  image_free(img);
-  image_free(gray);
-  return 0;
-}
-
-int test_image_gaussian_blur(void) {
-  // Create 5x5 image with a single bright pixel in the center
-  image_t *img = image_malloc(5, 5, 1);
-  img->data[2 * 5 + 2] = 255;
-
-  image_t *blurred = image_gaussian_blur(img, 3, 1.0);
-  MU_ASSERT(blurred != NULL);
-  MU_ASSERT(blurred->width == 5);
-  MU_ASSERT(blurred->height == 5);
-  MU_ASSERT(blurred->channels == 1);
-
-  // Center should still be the brightest pixel
-  uint8_t center = blurred->data[2 * 5 + 2];
-  MU_ASSERT(center > 0);
-  uint8_t neighbor = blurred->data[2 * 5 + 3];
-  MU_ASSERT(neighbor > 0);
-  MU_ASSERT(center > neighbor);
-
-  image_free(img);
-  image_free(blurred);
-  return 0;
-}
-
-int test_image_threshold(void) {
-  image_t *img = image_malloc(4, 1, 1);
-  img->data[0] = 50;
-  img->data[1] = 100;
-  img->data[2] = 200;
-  img->data[3] = 255;
-
-  image_t *binary = image_threshold(img, 128);
-  MU_ASSERT(binary != NULL);
-  MU_ASSERT(binary->channels == 1);
-
-  MU_ASSERT(binary->data[0] == 0);
-  MU_ASSERT(binary->data[1] == 0);
-  MU_ASSERT(binary->data[2] == 255);
-  MU_ASSERT(binary->data[3] == 255);
-
-  image_free(img);
-  image_free(binary);
-  return 0;
-}
-
-int test_image_sobel(void) {
-  // Left half white, right half black -> strong vertical edge
-  image_t *img = image_malloc(6, 4, 3);
-  for (int y = 0; y < 4; y++) {
-    for (int x = 0; x < 3; x++) {
-      image_set_pixel(img, x, y, COLOR_WHITE);
-    }
-  }
-
-  image_t *edges = image_sobel(img);
-  MU_ASSERT(edges != NULL);
-  MU_ASSERT(edges->channels == 1);
-
-  // Edge pixels at x=2 (white side) and x=3 (black side) should have high
-  // magnitude
-  uint8_t left_edge = edges->data[2 * 6 + 2];
-  uint8_t right_edge = edges->data[2 * 6 + 3];
-  MU_ASSERT(left_edge > 100);
-  MU_ASSERT(right_edge > 100);
-
-  // Interior of the white region should be near zero
-  uint8_t interior = edges->data[2 * 6 + 0];
-  MU_ASSERT(interior < 10);
-
-  image_free(img);
-  image_free(edges);
-  return 0;
-}
-
-int test_image_harris(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
-
-  keypoint_t *corners;
-  int count;
-  image_harris(img, 0.04f, 3, 1.0f, 1e6f, &corners, &count);
-  MU_ASSERT(count >= 4);
-
-  int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
-  for (int i = 0; i < count; i++) {
-    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 5) <= 2)
-      found_tl = 1;
-    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 5) <= 2)
-      found_tr = 1;
-    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 14) <= 2)
-      found_bl = 1;
-    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 14) <= 2)
-      found_br = 1;
-    MU_ASSERT(corners[i].score > 0);
-  }
-  MU_ASSERT(found_tl);
-  MU_ASSERT(found_tr);
-  MU_ASSERT(found_bl);
-  MU_ASSERT(found_br);
-
-  free(corners);
-  image_free(img);
-  return 0;
-}
-
-int test_image_good_features(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
-
-  keypoint_t *corners;
-  int count;
-  image_good_features(img, 3, 1.0f, 1e4f, &corners, &count);
-  MU_ASSERT(count >= 4);
-
-  int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
-  for (int i = 0; i < count; i++) {
-    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 5) <= 2)
-      found_tl = 1;
-    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 5) <= 2)
-      found_tr = 1;
-    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 14) <= 2)
-      found_bl = 1;
-    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 14) <= 2)
-      found_br = 1;
-    MU_ASSERT(corners[i].score > 0);
-  }
-  MU_ASSERT(found_tl);
-  MU_ASSERT(found_tr);
-  MU_ASSERT(found_bl);
-  MU_ASSERT(found_br);
-
-  free(corners);
-  image_free(img);
-  return 0;
-}
-
-int test_image_harris_no_corners(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  color_t gray = COLOR_GRAY;
-  image_fill(img, gray);
-
-  keypoint_t *corners;
-  int count;
-  image_harris(img, 0.04f, 3, 1.0f, 1e6f, &corners, &count);
-  MU_ASSERT(count == 0);
-
-  free(corners);
-  image_free(img);
-  return 0;
-}
-
-int test_image_downsample_2x(void) {
-  image_t *img = image_malloc(4, 4, 1);
-  for (int i = 0; i < 16; i++)
-    img->data[i] = (uint8_t) (i * 10);
-
-  image_t *small = image_downsample_2x(img);
-  MU_ASSERT(small != NULL);
-  MU_ASSERT(small->width == 2);
-  MU_ASSERT(small->height == 2);
-  MU_ASSERT(small->channels == 1);
-
-  // Verify each pixel is the average of a 2x2 block
-  float expected0 = (0 + 10 + 40 + 50) / 4.0f;
-  MU_ASSERT(small->data[0] == (uint8_t) (expected0 + 0.5f));
-
-  image_free(img);
-  image_free(small);
-  return 0;
-}
-
-int test_image_upsample_2x(void) {
-  image_t *img = image_malloc(2, 2, 1);
-  img->data[0] = 0;
-  img->data[1] = 100;
-  img->data[2] = 200;
-  img->data[3] = 255;
-
-  image_t *big = image_upsample_2x(img);
-  MU_ASSERT(big != NULL);
-  MU_ASSERT(big->width == 4);
-  MU_ASSERT(big->height == 4);
-  MU_ASSERT(big->channels == 1);
-
-  // Corners should match original
-  MU_ASSERT(big->data[0] == 0);
-  MU_ASSERT(big->data[3] == 100);
-  MU_ASSERT(big->data[12] == 200);
-  MU_ASSERT(big->data[15] == 255);
-
-  // Interior pixels should be interpolated (non-zero)
-  MU_ASSERT(big->data[5] > 0);
-
-  image_free(img);
-  image_free(big);
-  return 0;
-}
-
-int test_image_gaussian_pyramid(void) {
-  image_t *img = image_malloc(16, 16, 3);
-  color_t red = COLOR_RED;
-  image_fill(img, red);
-
-  image_t **levels;
-  int count;
-  image_gaussian_pyramid(img, 3, 1.0, &levels, &count);
-  MU_ASSERT(count >= 2);
-
-  MU_ASSERT(levels[0]->width == 16);
-  MU_ASSERT(levels[0]->height == 16);
-  MU_ASSERT(levels[1]->width == 8);
-  MU_ASSERT(levels[1]->height == 8);
-
-  for (int i = 0; i < count; i++) {
-    image_free(levels[i]);
-  }
-  free(levels);
-  image_free(img);
-  return 0;
-}
-
-int test_image_laplacian_pyramid(void) {
-  image_t *img = image_malloc(16, 16, 3);
-  color_t red = COLOR_RED;
-  image_fill(img, red);
-
-  image_t **levels;
-  int count;
-  image_laplacian_pyramid(img, 3, 1.0, &levels, &count);
-  MU_ASSERT(count >= 2);
-
-  for (int i = 0; i < count; i++) {
-    MU_ASSERT(levels[i]->width > 0);
-    MU_ASSERT(levels[i]->height > 0);
-  }
-
-  MU_ASSERT(levels[count - 1]->width > 0);
-
-  for (int i = 0; i < count; i++) {
-    image_free(levels[i]);
-  }
-  free(levels);
-  image_free(img);
-  return 0;
-}
-
-int test_image_bilinear_sample(void) {
-  image_t *img = image_malloc(4, 4, 1);
-  img->data[0] = 0;
-  img->data[1] = 100;
-  img->data[4] = 200;
-  img->data[5] = 255;
-
-  // Integer coordinates should return exact values
-  MU_ASSERT(image_bilinear_sample(img, 0.0f, 0.0f, 0) == 0);
-  MU_ASSERT(image_bilinear_sample(img, 1.0f, 0.0f, 0) == 100);
-
-  // Midpoint should be average of four neighbors
-  uint8_t mid = image_bilinear_sample(img, 0.5f, 0.5f, 0);
-  float expected = (0 + 100 + 200 + 255) / 4.0f;
-  MU_ASSERT(mid == (uint8_t) (expected + 0.5f));
-
-  image_free(img);
-  return 0;
-}
-
-int test_image_lk_track_translation(void) {
-  image_t *img0 = image_malloc(80, 80, 3);
-  image_draw_rect_fill(img0, 30, 30, 5, 5, COLOR_WHITE);
-
-  image_t *img1 = image_malloc(80, 80, 3);
-  image_draw_rect_fill(img1, 33, 30, 5, 5, COLOR_WHITE);
-
-  keypoint_t kp;
-  kp.x = 32;
-  kp.y = 32;
-  kp.score = 1.0f;
-
-  lk_track_t track;
-
-  image_lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
-
-  MU_ASSERT(track.status == 1);
-  MU_ASSERT(fabsf(track.dx - 3.0f) < 1.0f);
-  MU_ASSERT(fabsf(track.dy) < 1.0f);
-
-  image_free(img0);
-  image_free(img1);
-  return 0;
-}
-
-int test_image_lk_track_no_motion(void) {
-  image_t *img = image_malloc(20, 20, 3);
-  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
-
-  keypoint_t kp;
-  kp.x = 10;
-  kp.y = 10;
-  kp.score = 1.0f;
-
-  lk_track_t track;
-  image_lk_track(img, img, &kp, 1, 3, 1.0f, &track);
-
-  MU_ASSERT(track.status == 1);
-  MU_ASSERT(fabsf(track.dx) < 0.5f);
-  MU_ASSERT(fabsf(track.dy) < 0.5f);
-
-  image_free(img);
-  return 0;
-}
-
 /******************************************************************************
  * MATH
  ******************************************************************************/
@@ -4272,13 +3667,606 @@ int test_mav_waypoints(void) {
  * COMPUTER-VISION
  ******************************************************************************/
 
-int test_image_setup(void) { return 0; }
+int test_image_malloc(void) {
+  image_t *img = image_malloc(10, 20, 3);
+  MU_ASSERT(img != NULL);
+  MU_ASSERT(img->width == 10);
+  MU_ASSERT(img->height == 20);
+  MU_ASSERT(img->channels == 3);
+  MU_ASSERT(img->data != NULL);
 
-int test_image_load(void) { return 0; }
+  // Verify zero-initialized
+  for (int i = 0; i < 10 * 20 * 3; i++) {
+    MU_ASSERT(img->data[i] == 0);
+  }
 
-int test_image_print_properties(void) { return 0; }
+  image_free(img);
+  return 0;
+}
 
-int test_image_free(void) { return 0; }
+int test_image_save_png(void) {
+  image_t *img = image_malloc(4, 4, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  const char *path = "/tmp/test_image.png";
+  image_save_png(img, path);
+
+  // Reload and verify
+  image_t *loaded = image_load(path);
+  MU_ASSERT(loaded != NULL);
+  MU_ASSERT(loaded->width == 4);
+  MU_ASSERT(loaded->height == 4);
+
+  color_t c;
+  image_get_pixel(loaded, 0, 0, &c);
+  MU_ASSERT(c.r == 255);
+  MU_ASSERT(c.g == 0);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  image_free(loaded);
+  remove(path);
+  return 0;
+}
+
+int test_image_fill(void) {
+  image_t *img = image_malloc(4, 4, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 4; x++) {
+      color_t c;
+      image_get_pixel(img, x, y, &c);
+      MU_ASSERT(c.r == 255);
+      MU_ASSERT(c.g == 0);
+      MU_ASSERT(c.b == 0);
+    }
+  }
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_set_get_pixel(void) {
+  image_t *img = image_malloc(8, 8, 3);
+  color_t green = COLOR_GREEN;
+  image_set_pixel(img, 3, 5, green);
+
+  color_t c;
+  image_get_pixel(img, 3, 5, &c);
+  MU_ASSERT(c.r == 0);
+  MU_ASSERT(c.g == 255);
+  MU_ASSERT(c.b == 0);
+
+  // Out of bounds returns black
+  color_t oob;
+  image_get_pixel(img, -1, 0, &oob);
+  MU_ASSERT(oob.r == 0);
+  MU_ASSERT(oob.g == 0);
+  MU_ASSERT(oob.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_line(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t white = COLOR_WHITE;
+  image_draw_line(img, 0, 0, 9, 0, 1, white);
+
+  // Top row should be white
+  for (int x = 0; x < 10; x++) {
+    color_t c;
+    image_get_pixel(img, x, 0, &c);
+    MU_ASSERT(c.r == 255);
+    MU_ASSERT(c.g == 255);
+    MU_ASSERT(c.b == 255);
+  }
+
+  // Row 1 should still be black
+  color_t c;
+  image_get_pixel(img, 0, 1, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_rect(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t blue = COLOR_BLUE;
+  image_draw_rect(img, 2, 2, 5, 5, blue);
+
+  // Corners should be blue
+  color_t c;
+  image_get_pixel(img, 2, 2, &c);
+  MU_ASSERT(c.b == 255);
+
+  image_get_pixel(img, 6, 2, &c);
+  MU_ASSERT(c.b == 255);
+
+  image_get_pixel(img, 6, 6, &c);
+  MU_ASSERT(c.b == 255);
+
+  image_get_pixel(img, 2, 6, &c);
+  MU_ASSERT(c.b == 255);
+
+  // Interior should be black
+  image_get_pixel(img, 4, 4, &c);
+  MU_ASSERT(c.r == 0);
+  MU_ASSERT(c.g == 0);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_rect_fill(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t red = COLOR_RED;
+  image_draw_rect_fill(img, 2, 2, 3, 3, red);
+
+  for (int y = 2; y < 5; y++) {
+    for (int x = 2; x < 5; x++) {
+      color_t c;
+      image_get_pixel(img, x, y, &c);
+      MU_ASSERT(c.r == 255);
+    }
+  }
+
+  // Outside should be black
+  color_t c;
+  image_get_pixel(img, 0, 0, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_circle(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t green = COLOR_GREEN;
+  image_draw_circle(img, 10, 10, 5, 1, green);
+
+  // Center of circle edge should be green
+  color_t c;
+  image_get_pixel(img, 10, 5, &c);
+  MU_ASSERT(c.g == 255);
+
+  // Center should be black (outline only)
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.r == 0);
+  MU_ASSERT(c.g == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_circle_fill(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t blue = COLOR_BLUE;
+  image_draw_circle_fill(img, 10, 10, 5, blue);
+
+  // Center should be blue
+  color_t c;
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.b == 255);
+
+  // Far corner should be black
+  image_get_pixel(img, 0, 0, &c);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_char(void) {
+  image_t *img = image_malloc(60, 20, 3);
+  color_t white = COLOR_WHITE;
+  image_draw_char(img, 2, 5, 'A', 2, white);
+
+  // 'A' at scale=2: the top center pixel (col=2, row=0) should be lit
+  color_t c;
+  image_get_pixel(img, 2 + 2 * 2, 5 + 0, &c);
+  MU_ASSERT(c.r == 255);
+
+  // Space character should not draw anything
+  image_draw_char(img, 20, 5, ' ', 2, white);
+  image_get_pixel(img, 22, 7, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_string(void) {
+  image_t *img = image_malloc(200, 30, 3);
+  color_t green = COLOR_GREEN;
+  image_draw_string(img, 5, 5, "ABCDE", 2, green);
+
+  // 'A' at (5,5) scale=2: col=1 row=0 is lit (0x11 bit 0 set)
+  // screen pixel: x=5+1*2=7, y=5+0*2=5
+  color_t c;
+  image_get_pixel(img, 7, 5, &c);
+  MU_ASSERT(c.g == 255);
+
+  image_save_png(img, "/tmp/test_image.png");
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_line_thickness(void) {
+  image_t *img = image_malloc(10, 10, 3);
+  color_t red = COLOR_RED;
+  image_draw_line(img, 0, 5, 9, 5, 3, red);
+
+  // Pixels on the line and neighbors should be red
+  color_t c;
+  image_get_pixel(img, 5, 4, &c);
+  MU_ASSERT(c.r == 255);
+  image_get_pixel(img, 5, 5, &c);
+  MU_ASSERT(c.r == 255);
+  image_get_pixel(img, 5, 6, &c);
+  MU_ASSERT(c.r == 255);
+
+  // 2 pixels away should be black
+  image_get_pixel(img, 5, 3, &c);
+  MU_ASSERT(c.r == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_draw_circle_thickness(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t blue = COLOR_BLUE;
+  image_draw_circle(img, 10, 10, 5, 2, blue);
+
+  // Edge should be blue
+  color_t c;
+  image_get_pixel(img, 10, 5, &c);
+  MU_ASSERT(c.b == 255);
+
+  // Center should be black (outline only)
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.b == 0);
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_to_grayscale(void) {
+  image_t *img = image_malloc(4, 4, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  image_t *gray = image_to_grayscale(img);
+  MU_ASSERT(gray != NULL);
+  MU_ASSERT(gray->width == 4);
+  MU_ASSERT(gray->height == 4);
+  MU_ASSERT(gray->channels == 1);
+
+  // Y = 0.299 * 255 = 76.245 -> 76
+  for (int i = 0; i < 4 * 4; i++) {
+    MU_ASSERT(gray->data[i] == 76);
+  }
+
+  image_free(img);
+  image_free(gray);
+  return 0;
+}
+
+int test_image_gaussian_blur(void) {
+  // Create 5x5 image with a single bright pixel in the center
+  image_t *img = image_malloc(5, 5, 1);
+  img->data[2 * 5 + 2] = 255;
+
+  image_t *blurred = image_gaussian_blur(img, 3, 1.0);
+  MU_ASSERT(blurred != NULL);
+  MU_ASSERT(blurred->width == 5);
+  MU_ASSERT(blurred->height == 5);
+  MU_ASSERT(blurred->channels == 1);
+
+  // Center should still be the brightest pixel
+  uint8_t center = blurred->data[2 * 5 + 2];
+  MU_ASSERT(center > 0);
+  uint8_t neighbor = blurred->data[2 * 5 + 3];
+  MU_ASSERT(neighbor > 0);
+  MU_ASSERT(center > neighbor);
+
+  image_free(img);
+  image_free(blurred);
+  return 0;
+}
+
+int test_image_threshold(void) {
+  image_t *img = image_malloc(4, 1, 1);
+  img->data[0] = 50;
+  img->data[1] = 100;
+  img->data[2] = 200;
+  img->data[3] = 255;
+
+  image_t *binary = image_threshold(img, 128);
+  MU_ASSERT(binary != NULL);
+  MU_ASSERT(binary->channels == 1);
+
+  MU_ASSERT(binary->data[0] == 0);
+  MU_ASSERT(binary->data[1] == 0);
+  MU_ASSERT(binary->data[2] == 255);
+  MU_ASSERT(binary->data[3] == 255);
+
+  image_free(img);
+  image_free(binary);
+  return 0;
+}
+
+int test_image_sobel(void) {
+  // Left half white, right half black -> strong vertical edge
+  image_t *img = image_malloc(6, 4, 3);
+  for (int y = 0; y < 4; y++) {
+    for (int x = 0; x < 3; x++) {
+      image_set_pixel(img, x, y, COLOR_WHITE);
+    }
+  }
+
+  image_t *edges = image_sobel(img);
+  MU_ASSERT(edges != NULL);
+  MU_ASSERT(edges->channels == 1);
+
+  // Edge pixels at x=2 (white side) and x=3 (black side) should have high
+  // magnitude
+  uint8_t left_edge = edges->data[2 * 6 + 2];
+  uint8_t right_edge = edges->data[2 * 6 + 3];
+  MU_ASSERT(left_edge > 100);
+  MU_ASSERT(right_edge > 100);
+
+  // Interior of the white region should be near zero
+  uint8_t interior = edges->data[2 * 6 + 0];
+  MU_ASSERT(interior < 10);
+
+  image_free(img);
+  image_free(edges);
+  return 0;
+}
+
+int test_image_harris(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  keypoint_t *corners;
+  int count;
+  image_harris(img, 0.04f, 3, 1.0f, 1e6f, &corners, &count);
+  MU_ASSERT(count >= 4);
+
+  int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
+  for (int i = 0; i < count; i++) {
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 5) <= 2)
+      found_tl = 1;
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 5) <= 2)
+      found_tr = 1;
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 14) <= 2)
+      found_bl = 1;
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 14) <= 2)
+      found_br = 1;
+    MU_ASSERT(corners[i].score > 0);
+  }
+  MU_ASSERT(found_tl);
+  MU_ASSERT(found_tr);
+  MU_ASSERT(found_bl);
+  MU_ASSERT(found_br);
+
+  free(corners);
+  image_free(img);
+  return 0;
+}
+
+int test_image_good_features(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  keypoint_t *corners;
+  int count;
+  image_good_features(img, 3, 1.0f, 1e4f, &corners, &count);
+  MU_ASSERT(count >= 4);
+
+  int found_tl = 0, found_tr = 0, found_bl = 0, found_br = 0;
+  for (int i = 0; i < count; i++) {
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 5) <= 2)
+      found_tl = 1;
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 5) <= 2)
+      found_tr = 1;
+    if (abs(corners[i].x - 5) <= 2 && abs(corners[i].y - 14) <= 2)
+      found_bl = 1;
+    if (abs(corners[i].x - 14) <= 2 && abs(corners[i].y - 14) <= 2)
+      found_br = 1;
+    MU_ASSERT(corners[i].score > 0);
+  }
+  MU_ASSERT(found_tl);
+  MU_ASSERT(found_tr);
+  MU_ASSERT(found_bl);
+  MU_ASSERT(found_br);
+
+  free(corners);
+  image_free(img);
+  return 0;
+}
+
+int test_image_harris_no_corners(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  color_t gray = COLOR_GRAY;
+  image_fill(img, gray);
+
+  keypoint_t *corners;
+  int count;
+  image_harris(img, 0.04f, 3, 1.0f, 1e6f, &corners, &count);
+  MU_ASSERT(count == 0);
+
+  free(corners);
+  image_free(img);
+  return 0;
+}
+
+int test_image_downsample_2x(void) {
+  image_t *img = image_malloc(4, 4, 1);
+  for (int i = 0; i < 16; i++)
+    img->data[i] = (uint8_t) (i * 10);
+
+  image_t *small = image_downsample_2x(img);
+  MU_ASSERT(small != NULL);
+  MU_ASSERT(small->width == 2);
+  MU_ASSERT(small->height == 2);
+  MU_ASSERT(small->channels == 1);
+
+  // Verify each pixel is the average of a 2x2 block
+  float expected0 = (0 + 10 + 40 + 50) / 4.0f;
+  MU_ASSERT(small->data[0] == (uint8_t) (expected0 + 0.5f));
+
+  image_free(img);
+  image_free(small);
+  return 0;
+}
+
+int test_image_upsample_2x(void) {
+  image_t *img = image_malloc(2, 2, 1);
+  img->data[0] = 0;
+  img->data[1] = 100;
+  img->data[2] = 200;
+  img->data[3] = 255;
+
+  image_t *big = image_upsample_2x(img);
+  MU_ASSERT(big != NULL);
+  MU_ASSERT(big->width == 4);
+  MU_ASSERT(big->height == 4);
+  MU_ASSERT(big->channels == 1);
+
+  // Corners should match original
+  MU_ASSERT(big->data[0] == 0);
+  MU_ASSERT(big->data[3] == 100);
+  MU_ASSERT(big->data[12] == 200);
+  MU_ASSERT(big->data[15] == 255);
+
+  // Interior pixels should be interpolated (non-zero)
+  MU_ASSERT(big->data[5] > 0);
+
+  image_free(img);
+  image_free(big);
+  return 0;
+}
+
+int test_image_gaussian_pyramid(void) {
+  image_t *img = image_malloc(16, 16, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  image_t **levels;
+  int count;
+  image_gaussian_pyramid(img, 3, 1.0, &levels, &count);
+  MU_ASSERT(count >= 2);
+
+  MU_ASSERT(levels[0]->width == 16);
+  MU_ASSERT(levels[0]->height == 16);
+  MU_ASSERT(levels[1]->width == 8);
+  MU_ASSERT(levels[1]->height == 8);
+
+  for (int i = 0; i < count; i++) {
+    image_free(levels[i]);
+  }
+  free(levels);
+  image_free(img);
+  return 0;
+}
+
+int test_image_laplacian_pyramid(void) {
+  image_t *img = image_malloc(16, 16, 3);
+  color_t red = COLOR_RED;
+  image_fill(img, red);
+
+  image_t **levels;
+  int count;
+  image_laplacian_pyramid(img, 3, 1.0, &levels, &count);
+  MU_ASSERT(count >= 2);
+
+  for (int i = 0; i < count; i++) {
+    MU_ASSERT(levels[i]->width > 0);
+    MU_ASSERT(levels[i]->height > 0);
+  }
+
+  MU_ASSERT(levels[count - 1]->width > 0);
+
+  for (int i = 0; i < count; i++) {
+    image_free(levels[i]);
+  }
+  free(levels);
+  image_free(img);
+  return 0;
+}
+
+int test_image_bilinear_sample(void) {
+  image_t *img = image_malloc(4, 4, 1);
+  img->data[0] = 0;
+  img->data[1] = 100;
+  img->data[4] = 200;
+  img->data[5] = 255;
+
+  // Integer coordinates should return exact values
+  MU_ASSERT(image_bilinear_sample(img, 0.0f, 0.0f, 0) == 0);
+  MU_ASSERT(image_bilinear_sample(img, 1.0f, 0.0f, 0) == 100);
+
+  // Midpoint should be average of four neighbors
+  uint8_t mid = image_bilinear_sample(img, 0.5f, 0.5f, 0);
+  float expected = (0 + 100 + 200 + 255) / 4.0f;
+  MU_ASSERT(mid == (uint8_t) (expected + 0.5f));
+
+  image_free(img);
+  return 0;
+}
+
+int test_image_lk_track_translation(void) {
+  image_t *img0 = image_malloc(80, 80, 3);
+  image_draw_rect_fill(img0, 30, 30, 5, 5, COLOR_WHITE);
+
+  image_t *img1 = image_malloc(80, 80, 3);
+  image_draw_rect_fill(img1, 33, 30, 5, 5, COLOR_WHITE);
+
+  keypoint_t kp;
+  kp.x = 32;
+  kp.y = 32;
+  kp.score = 1.0f;
+
+  lk_track_t track;
+
+  image_lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+
+  MU_ASSERT(track.status == 1);
+  MU_ASSERT(fabsf(track.dx - 3.0f) < 1.0f);
+  MU_ASSERT(fabsf(track.dy) < 1.0f);
+
+  image_free(img0);
+  image_free(img1);
+  return 0;
+}
+
+int test_image_lk_track_no_motion(void) {
+  image_t *img = image_malloc(20, 20, 3);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  keypoint_t kp;
+  kp.x = 10;
+  kp.y = 10;
+  kp.score = 1.0f;
+
+  lk_track_t track;
+  image_lk_track(img, img, &kp, 1, 3, 1.0f, &track);
+
+  MU_ASSERT(track.status == 1);
+  MU_ASSERT(fabsf(track.dx) < 0.5f);
+  MU_ASSERT(fabsf(track.dy) < 0.5f);
+
+  image_free(img);
+  return 0;
+}
 
 int test_pinhole_focal(void) {
   const real_t focal = pinhole_focal(640, 90.0);
@@ -9768,35 +9756,6 @@ void test_suite(void) {
   // NETWORK
   MU_ADD_TEST(test_tcp_server_setup);
 
-  // IMAGE
-  MU_ADD_TEST(test_image_malloc);
-  MU_ADD_TEST(test_image_save_png);
-  MU_ADD_TEST(test_image_fill);
-  MU_ADD_TEST(test_image_set_get_pixel);
-  MU_ADD_TEST(test_image_draw_line);
-  MU_ADD_TEST(test_image_draw_rect);
-  MU_ADD_TEST(test_image_draw_rect_fill);
-  MU_ADD_TEST(test_image_draw_circle);
-  MU_ADD_TEST(test_image_draw_circle_fill);
-  MU_ADD_TEST(test_image_draw_char);
-  MU_ADD_TEST(test_image_draw_string);
-  MU_ADD_TEST(test_image_draw_line_thickness);
-  MU_ADD_TEST(test_image_draw_circle_thickness);
-  MU_ADD_TEST(test_image_to_grayscale);
-  MU_ADD_TEST(test_image_gaussian_blur);
-  MU_ADD_TEST(test_image_threshold);
-  MU_ADD_TEST(test_image_sobel);
-  MU_ADD_TEST(test_image_harris);
-  MU_ADD_TEST(test_image_good_features);
-  MU_ADD_TEST(test_image_harris_no_corners);
-  MU_ADD_TEST(test_image_downsample_2x);
-  MU_ADD_TEST(test_image_upsample_2x);
-  MU_ADD_TEST(test_image_gaussian_pyramid);
-  MU_ADD_TEST(test_image_laplacian_pyramid);
-  MU_ADD_TEST(test_image_bilinear_sample);
-  MU_ADD_TEST(test_image_lk_track_translation);
-  MU_ADD_TEST(test_image_lk_track_no_motion);
-
   // MATH
   MU_ADD_TEST(test_min);
   MU_ADD_TEST(test_max);
@@ -9945,10 +9904,33 @@ void test_suite(void) {
 
   // COMPUTER-VISION
   // -- Image
-  MU_ADD_TEST(test_image_setup);
-  MU_ADD_TEST(test_image_load);
-  MU_ADD_TEST(test_image_print_properties);
-  MU_ADD_TEST(test_image_free);
+  MU_ADD_TEST(test_image_malloc);
+  MU_ADD_TEST(test_image_save_png);
+  MU_ADD_TEST(test_image_fill);
+  MU_ADD_TEST(test_image_set_get_pixel);
+  MU_ADD_TEST(test_image_draw_line);
+  MU_ADD_TEST(test_image_draw_rect);
+  MU_ADD_TEST(test_image_draw_rect_fill);
+  MU_ADD_TEST(test_image_draw_circle);
+  MU_ADD_TEST(test_image_draw_circle_fill);
+  MU_ADD_TEST(test_image_draw_char);
+  MU_ADD_TEST(test_image_draw_string);
+  MU_ADD_TEST(test_image_draw_line_thickness);
+  MU_ADD_TEST(test_image_draw_circle_thickness);
+  MU_ADD_TEST(test_image_to_grayscale);
+  MU_ADD_TEST(test_image_gaussian_blur);
+  MU_ADD_TEST(test_image_threshold);
+  MU_ADD_TEST(test_image_sobel);
+  MU_ADD_TEST(test_image_harris);
+  MU_ADD_TEST(test_image_good_features);
+  MU_ADD_TEST(test_image_harris_no_corners);
+  MU_ADD_TEST(test_image_downsample_2x);
+  MU_ADD_TEST(test_image_upsample_2x);
+  MU_ADD_TEST(test_image_gaussian_pyramid);
+  MU_ADD_TEST(test_image_laplacian_pyramid);
+  MU_ADD_TEST(test_image_bilinear_sample);
+  MU_ADD_TEST(test_image_lk_track_translation);
+  MU_ADD_TEST(test_image_lk_track_no_motion);
   // -- Pinhole
   MU_ADD_TEST(test_pinhole_focal);
   MU_ADD_TEST(test_pinhole_K);

@@ -1563,6 +1563,7 @@ void image_draw_string(image_t *img,
                        const char *str,
                        const int scale,
                        const color_t color);
+
 image_t *image_convolve(const image_t *img,
                         const float *kernel,
                         const int kernel_w,
