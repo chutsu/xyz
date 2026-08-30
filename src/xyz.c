@@ -761,8 +761,9 @@ int mkdir_p(const char *path, const mode_t mode) {
   int status = 0;
 
   // Skip leading slashes
-  while (*p == '/')
+  while (*p == '/') {
     p++;
+  }
 
   for (; *p; p++) {
     if (*p == '/') {
@@ -8080,8 +8081,9 @@ image_t *image_to_grayscale(const image_t *img) {
     int idx = i * img->channels;
     float y = 0.299f * img->data[idx + 0] + 0.587f * img->data[idx + 1] +
               0.114f * img->data[idx + 2];
-    if (y > 255.0f)
+    if (y > 255.0f) {
       y = 255.0f;
+    }
     out->data[i] = (uint8_t) (y + 0.5f);
   }
 
@@ -8575,22 +8577,28 @@ image_t *image_convolve(const image_t *img,
                coordinates to the nearest edge (replicate border). */
             int src_x = x + kx - kx_radius;
             int src_y = y + ky - ky_radius;
-            if (src_x < 0)
+            if (src_x < 0) {
               src_x = 0;
-            if (src_x >= img->width)
+            }
+            if (src_x >= img->width) {
               src_x = img->width - 1;
-            if (src_y < 0)
+            }
+            if (src_y < 0) {
               src_y = 0;
-            if (src_y >= img->height)
+            }
+            if (src_y >= img->height) {
               src_y = img->height - 1;
+            }
             int idx = (src_y * img->width + src_x) * channels + c;
             sum += kernel[ky * kernel_w + kx] * (float) img->data[idx];
           }
         }
-        if (sum < 0.0f)
+        if (sum < 0.0f) {
           sum = 0.0f;
-        if (sum > 255.0f)
+        }
+        if (sum > 255.0f) {
           sum = 255.0f;
+        }
         int out_idx = (y * img->width + x) * channels + c;
         out->data[out_idx] = (uint8_t) (sum + 0.5f);
       }
@@ -8697,22 +8705,27 @@ image_t *image_sobel(const image_t *img) {
         for (int kx = -1; kx <= 1; kx++) {
           int src_x = x + kx;
           int src_y = y + ky;
-          if (src_x < 0)
+          if (src_x < 0) {
             src_x = 0;
-          if (src_x >= w)
+          }
+          if (src_x >= w) {
             src_x = w - 1;
-          if (src_y < 0)
+          }
+          if (src_y < 0) {
             src_y = 0;
-          if (src_y >= h)
+          }
+          if (src_y >= h) {
             src_y = h - 1;
+          }
           float val = (float) gray->data[src_y * w + src_x];
           gx += gx_kern[ky + 1][kx + 1] * val;
           gy += gy_kern[ky + 1][kx + 1] * val;
         }
       }
       float mag = sqrtf(gx * gx + gy * gy);
-      if (mag > 255.0f)
+      if (mag > 255.0f) {
         mag = 255.0f;
+      }
       out->data[y * w + x] = (uint8_t) (mag + 0.5f);
     }
   }
@@ -8738,14 +8751,18 @@ static void convolve_f32(const float *src,
         for (int kx = 0; kx < ksize; kx++) {
           int sx = x + kx - radius;
           int sy = y + ky - radius;
-          if (sx < 0)
+          if (sx < 0) {
             sx = 0;
-          if (sx >= w)
+          }
+          if (sx >= w) {
             sx = w - 1;
-          if (sy < 0)
+          }
+          if (sy < 0) {
             sy = 0;
-          if (sy >= h)
+          }
+          if (sy >= h) {
             sy = h - 1;
+          }
           sum += kernel[ky * ksize + kx] * src[sy * w + sx];
         }
       }
@@ -8801,14 +8818,18 @@ void image_harris(const image_t *img,
         for (int kx = -1; kx <= 1; kx++) {
           int sx = x + kx;
           int sy = y + ky;
-          if (sx < 0)
+          if (sx < 0) {
             sx = 0;
-          if (sx >= w)
+          }
+          if (sx >= w) {
             sx = w - 1;
-          if (sy < 0)
+          }
+          if (sy < 0) {
             sy = 0;
-          if (sy >= h)
+          }
+          if (sy >= h) {
             sy = h - 1;
+          }
           float val = (float) gray->data[sy * w + sx];
           gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
           gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
@@ -8834,8 +8855,9 @@ void image_harris(const image_t *img,
   free(iy);
 
   int ksize = (int) (6.0f * sigma) | 1;
-  if (ksize < 3)
+  if (ksize < 3) {
     ksize = 3;
+  }
   const int kr = ksize / 2;
   const float s2 = 2.0f * sigma * sigma;
   float kernel[ksize * ksize];
@@ -8881,16 +8903,19 @@ void image_harris(const image_t *img,
   for (int y = radius; y < h - radius; y++) {
     for (int x = radius; x < w - radius; x++) {
       float r = R[y * w + x];
-      if (r <= threshold)
+      if (r <= threshold) {
         continue;
+      }
 
       int is_max = 1;
       for (int dy = -radius; dy <= radius && is_max; dy++) {
         for (int dx = -radius; dx <= radius && is_max; dx++) {
-          if (dy == 0 && dx == 0)
+          if (dy == 0 && dx == 0) {
             continue;
-          if (R[(y + dy) * w + (x + dx)] >= r)
+          }
+          if (R[(y + dy) * w + (x + dx)] >= r) {
             is_max = 0;
+          }
         }
       }
 
@@ -8957,14 +8982,18 @@ void image_good_features(const image_t *img,
         for (int kx = -1; kx <= 1; kx++) {
           int sx = x + kx;
           int sy = y + ky;
-          if (sx < 0)
+          if (sx < 0) {
             sx = 0;
-          if (sx >= w)
+          }
+          if (sx >= w) {
             sx = w - 1;
-          if (sy < 0)
+          }
+          if (sy < 0) {
             sy = 0;
-          if (sy >= h)
+          }
+          if (sy >= h) {
             sy = h - 1;
+          }
           float val = (float) gray->data[sy * w + sx];
           gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
           gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
@@ -8990,8 +9019,9 @@ void image_good_features(const image_t *img,
   free(iy);
 
   int ksize = (int) (6.0f * sigma) | 1;
-  if (ksize < 3)
+  if (ksize < 3) {
     ksize = 3;
+  }
   const int kr = ksize / 2;
   const float s2 = 2.0f * sigma * sigma;
   float kernel[ksize * ksize];
@@ -9026,8 +9056,9 @@ void image_good_features(const image_t *img,
     float trace = a + d;
     float det = a * d - b * b;
     float disc = trace * trace - 4.0f * det;
-    if (disc < 0.0f)
+    if (disc < 0.0f) {
       disc = 0.0f;
+    }
     R[i] = (trace - sqrtf(disc)) * 0.5f;
   }
 
@@ -9043,16 +9074,19 @@ void image_good_features(const image_t *img,
   for (int y = radius; y < h - radius; y++) {
     for (int x = radius; x < w - radius; x++) {
       float r = R[y * w + x];
-      if (r <= threshold)
+      if (r <= threshold) {
         continue;
+      }
 
       int is_max = 1;
       for (int dy = -radius; dy <= radius && is_max; dy++) {
         for (int dx = -radius; dx <= radius && is_max; dx++) {
-          if (dy == 0 && dx == 0)
+          if (dy == 0 && dx == 0) {
             continue;
-          if (R[(y + dy) * w + (x + dx)] >= r)
+          }
+          if (R[(y + dy) * w + (x + dx)] >= r) {
             is_max = 0;
+          }
         }
       }
 
@@ -9141,10 +9175,12 @@ image_t *image_upsample_2x(const image_t *img) {
       int y0 = (int) fy;
       int x1 = x0 + 1;
       int y1 = y0 + 1;
-      if (x1 >= img->width)
+      if (x1 >= img->width) {
         x1 = img->width - 1;
-      if (y1 >= img->height)
+      }
+      if (y1 >= img->height) {
         y1 = img->height - 1;
+      }
 
       float dx = fx - (float) x0;
       float dy = fy - (float) y0;
@@ -9158,10 +9194,12 @@ image_t *image_upsample_2x(const image_t *img) {
         float val = v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) +
                     v01 * (1 - dx) * dy + v11 * dx * dy;
 
-        if (val < 0.0f)
+        if (val < 0.0f) {
           val = 0.0f;
-        if (val > 255.0f)
+        }
+        if (val > 255.0f) {
           val = 255.0f;
+        }
         out->data[(y * out_w + x) * c + ch] = (uint8_t) (val + 0.5f);
       }
     }
@@ -9198,14 +9236,14 @@ void image_gaussian_pyramid(const image_t *img,
   image_t **buf = malloc(sizeof(image_t *) * capacity);
 
   image_t *current = image_malloc(img->width, img->height, img->channels);
-  memcpy(current->data,
-         img->data,
-         (size_t) img->width * img->height * img->channels);
+  const size_t num_pixels = (size_t) img->width * img->height * img->channels;
+  memcpy(current->data, img->data, num_pixels);
   buf[count++] = current;
 
   int ksize = (int) (6.0f * sigma) | 1;
-  if (ksize < 3)
+  if (ksize < 3) {
     ksize = 3;
+  }
 
   for (int level = 1; level < num_levels; level++) {
     image_t *blurred = image_gaussian_blur(current, ksize, sigma);
@@ -9273,10 +9311,12 @@ void image_laplacian_pyramid(const image_t *img,
 
     for (int j = 0; j < w * h * c; j++) {
       int val = (int) g_i->data[j] - (int) up->data[j];
-      if (val < 0)
+      if (val < 0) {
         val = 0;
-      if (val > 255)
+      }
+      if (val > 255) {
         val = 255;
+      }
       diff->data[j] = (uint8_t) val;
     }
 
@@ -9321,29 +9361,39 @@ uint8_t image_bilinear_sample(const image_t *img,
   int x1 = x0 + 1;
   int y1 = y0 + 1;
 
-  if (x0 < 0)
+  if (x0 < 0) {
     x0 = 0;
-  if (y0 < 0)
+  }
+  if (y0 < 0) {
     y0 = 0;
-  if (x1 >= img->width)
+  }
+  if (x1 >= img->width) {
     x1 = img->width - 1;
-  if (y1 >= img->height)
+  }
+  if (y1 >= img->height) {
     y1 = img->height - 1;
-  if (x0 >= img->width)
+  }
+  if (x0 >= img->width) {
     x0 = img->width - 1;
-  if (y0 >= img->height)
+  }
+  if (y0 >= img->height) {
     y0 = img->height - 1;
+  }
 
   float dx = x - (float) x0;
   float dy = y - (float) y0;
-  if (dx < 0.0f)
+  if (dx < 0.0f) {
     dx = 0.0f;
-  if (dx > 1.0f)
+  }
+  if (dx > 1.0f) {
     dx = 1.0f;
-  if (dy < 0.0f)
+  }
+  if (dy < 0.0f) {
     dy = 0.0f;
-  if (dy > 1.0f)
+  }
+  if (dy > 1.0f) {
     dy = 1.0f;
+  }
 
   const int c = img->channels;
   float v00 = (float) img->data[(y0 * img->width + x0) * c + channel];
@@ -9354,10 +9404,12 @@ uint8_t image_bilinear_sample(const image_t *img,
   float val = v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) +
               v01 * (1 - dx) * dy + v11 * dx * dy;
 
-  if (val < 0.0f)
+  if (val < 0.0f) {
     val = 0.0f;
-  if (val > 255.0f)
+  }
+  if (val > 255.0f) {
     val = 255.0f;
+  }
   return (uint8_t) (val + 0.5f);
 }
 
@@ -9419,8 +9471,9 @@ void image_lk_track(const image_t *img0,
     const int w = I0->width;
     const int h = I0->height;
     float scale = 1.0f;
-    for (int l = 0; l < level; l++)
+    for (int l = 0; l < level; l++) {
       scale *= 2.0f;
+    }
 
     // Compute gradients on I0
     const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
@@ -9438,14 +9491,18 @@ void image_lk_track(const image_t *img0,
           for (int kx = -1; kx <= 1; kx++) {
             int sx = x + kx;
             int sy = y + ky;
-            if (sx < 0)
+            if (sx < 0) {
               sx = 0;
-            if (sx >= w)
+            }
+            if (sx >= w) {
               sx = w - 1;
-            if (sy < 0)
+            }
+            if (sy < 0) {
               sy = 0;
-            if (sy >= h)
+            }
+            if (sy >= h) {
               sy = h - 1;
+            }
             float val = (float) I0->data[(sy * w + sx) * c];
             gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
             gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
@@ -9478,10 +9535,13 @@ void image_lk_track(const image_t *img0,
             float sx1 = px + (float) wx;
             float sy1 = py + (float) wy;
 
-            if (sx1 < 1.0f || sx1 >= w - 2.0f || sy1 < 1.0f || sy1 >= h - 2.0f)
+            if (sx1 < 1.0f || sx1 >= w - 2.0f || sy1 < 1.0f ||
+                sy1 >= h - 2.0f) {
               continue;
-            if (sx0 < 0.0f || sx0 >= w || sy0 < 0.0f || sy0 >= h)
+            }
+            if (sx0 < 0.0f || sx0 >= w || sy0 < 0.0f || sy0 >= h) {
               continue;
+            }
 
             uint8_t t0 = image_bilinear_sample(I0, sx0, sy0, 0);
             uint8_t t1 = image_bilinear_sample(I1, sx1, sy1, 0);
@@ -9514,8 +9574,9 @@ void image_lk_track(const image_t *img0,
         px += du;
         py += dv;
 
-        if (fabsf(du) + fabsf(dv) < epsilon)
+        if (fabsf(du) + fabsf(dv) < epsilon) {
           break;
+        }
       }
 
       if (!level_ok) {
@@ -9536,11 +9597,13 @@ void image_lk_track(const image_t *img0,
   }
 
   // Free pyramids
-  for (int i = 0; i < pyr0_count; i++)
+  for (int i = 0; i < pyr0_count; i++) {
     image_free(pyr0[i]);
+  }
   free(pyr0);
-  for (int i = 0; i < pyr1_count; i++)
+  for (int i = 0; i < pyr1_count; i++) {
     image_free(pyr1[i]);
+  }
   free(pyr1);
 }
 
@@ -12917,8 +12980,9 @@ typedef struct {
  * @param[in]     n   Number of elements in `arr`
  */
 void voxel_radix_sort(voxel_kv_t *arr, const int n) {
-  if (n <= 1)
+  if (n <= 1) {
     return;
+  }
 
   const int radix_bits = 8;
   const int radix = 1 << radix_bits;
