@@ -8041,7 +8041,6 @@ image_t *image_load(const char *file_path) {
   int img_w = 0;
   int img_h = 0;
   int img_c = 0;
-  stbi_set_flip_vertically_on_load(1);
   uint8_t *data = stbi_load(file_path, &img_w, &img_h, &img_c, 0);
   if (!data) {
     FATAL("Failed to load image file: [%s]", file_path);
@@ -8236,13 +8235,15 @@ void image_draw_rect(image_t *img,
                      const int y,
                      const int w,
                      const int h,
+                     const int thickness,
                      const color_t color) {
   assert(img != NULL);
+  assert(thickness > 0);
 
-  image_draw_line(img, x, y, x + w - 1, y, 1, color);
-  image_draw_line(img, x + w - 1, y, x + w - 1, y + h - 1, 1, color);
-  image_draw_line(img, x + w - 1, y + h - 1, x, y + h - 1, 1, color);
-  image_draw_line(img, x, y + h - 1, x, y, 1, color);
+  image_draw_line(img, x, y, x + w - 1, y, thickness, color);
+  image_draw_line(img, x + w - 1, y, x + w - 1, y + h - 1, thickness, color);
+  image_draw_line(img, x + w - 1, y + h - 1, x, y + h - 1, thickness, color);
+  image_draw_line(img, x, y + h - 1, x, y, thickness, color);
 }
 
 /**
@@ -8599,7 +8600,7 @@ image_t *image_convolve(const image_t *img,
         if (sum > 255.0f) {
           sum = 255.0f;
         }
-        int out_idx = (y * img->width + x) * channels + c;
+        const int out_idx = (y * img->width + x) * channels + c;
         out->data[out_idx] = (uint8_t) (sum + 0.5f);
       }
 
@@ -8633,6 +8634,7 @@ image_t *image_gaussian_blur(const image_t *img,
   float kernel[size * size];
   float sum = 0.0f;
 
+  const float k = 1.0 / sqrt(2.0 * M_PI * sigma * sigma);
   for (int y = -radius; y <= radius; y++) {
     for (int x = -radius; x <= radius; x++) {
       float val = expf(-(float) (x * x + y * y) / s2);
@@ -8771,29 +8773,42 @@ static void convolve_f32(const float *src,
   }
 }
 
-/**
- * Detect corners using the Harris corner response function.
- *
- * Computes the structure tensor M = [[Ix^2, IxIy],[IxIy, Iy^2]] with Gaussian
- * weighting, then evaluates R = det(M) - k * trace(M)^2. Pixels where R >
- * threshold and R is a local maximum in a block_size neighborhood are returned
- * as keypoints.
- *
- * @param[in] img         Input image (any channel count)
- * @param[in] k           Harris free parameter (typically 0.04)
- * @param[in] block_size  Neighborhood size for non-maximum suppression
- * @param[in] sigma       Gaussian sigma for structure tensor windowing
- * @param[in] threshold   Minimum R value to accept as a corner
- * @param[out] out        Heap-allocated array of keypoint_t (caller must free)
- * @param[out] out_count  Number of keypoints returned
- */
-void image_harris(const image_t *img,
-                  const float k,
-                  const int block_size,
-                  const float sigma,
-                  const float threshold,
-                  keypoint_t **out,
-                  int *out_count) {
+typedef float (*corner_response_fn)(const float Sxx,
+                                    const float Sxy,
+                                    const float Syy,
+                                    const float k);
+
+static float harris_response(const float Sxx,
+                             const float Sxy,
+                             const float Syy,
+                             const float k) {
+  float det = Sxx * Syy - Sxy * Sxy;
+  float trace = Sxx + Syy;
+  return det - k * trace * trace;
+}
+
+static float min_eigenvalue_response(const float Sxx,
+                                     const float Sxy,
+                                     const float Syy,
+                                     const float k) {
+  (void) k;
+  float trace = Sxx + Syy;
+  float det = Sxx * Syy - Sxy * Sxy;
+  float disc = trace * trace - 4.0f * det;
+  if (disc < 0.0f) {
+    disc = 0.0f;
+  }
+  return (trace - sqrtf(disc)) * 0.5f;
+}
+
+static void detect_keypoints(const image_t *img,
+                             const float k,
+                             const int block_size,
+                             const float sigma,
+                             const float threshold,
+                             keypoint_t **out,
+                             int *out_count,
+                             const corner_response_fn response) {
   assert(img != NULL);
   assert(block_size > 0 && (block_size & 1) == 1);
   assert(sigma > 0.0f);
@@ -8803,13 +8818,11 @@ void image_harris(const image_t *img,
   const int w = gray->width;
   const int h = gray->height;
   const int n = w * h;
-
-  float *ix = malloc(sizeof(float) * n);
-  float *iy = malloc(sizeof(float) * n);
-
   const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
   const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
 
+  float *ix = malloc(sizeof(float) * n);
+  float *iy = malloc(sizeof(float) * n);
   for (int y = 0; y < h; y++) {
     for (int x = 0; x < w; x++) {
       float gx = 0.0f;
@@ -8839,7 +8852,6 @@ void image_harris(const image_t *img,
       iy[y * w + x] = gy;
     }
   }
-
   image_free(gray);
 
   float *ixx = malloc(sizeof(float) * n);
@@ -8850,7 +8862,6 @@ void image_harris(const image_t *img,
     ixy[i] = ix[i] * iy[i];
     iyy[i] = iy[i] * iy[i];
   }
-
   free(ix);
   free(iy);
 
@@ -8879,18 +8890,14 @@ void image_harris(const image_t *img,
   convolve_f32(ixx, Sxx, w, h, kernel, ksize);
   convolve_f32(ixy, Sxy, w, h, kernel, ksize);
   convolve_f32(iyy, Syy, w, h, kernel, ksize);
-
   free(ixx);
   free(ixy);
   free(iyy);
 
   float *R = malloc(sizeof(float) * n);
   for (int i = 0; i < n; i++) {
-    float det = Sxx[i] * Syy[i] - Sxy[i] * Sxy[i];
-    float trace = Sxx[i] + Syy[i];
-    R[i] = det - k * trace * trace;
+    R[i] = response(Sxx[i], Sxy[i], Syy[i], k);
   }
-
   free(Sxx);
   free(Sxy);
   free(Syy);
@@ -8938,6 +8945,33 @@ void image_harris(const image_t *img,
 }
 
 /**
+ * Detect corners using the Harris corner response function.
+ *
+ * Computes the structure tensor M = [[Ix^2, IxIy],[IxIy, Iy^2]] with Gaussian
+ * weighting, then evaluates R = det(M) - k * trace(M)^2. Pixels where R >
+ * threshold and R is a local maximum in a block_size neighborhood are returned
+ * as keypoints.
+ *
+ * @param[in] img         Input image (any channel count)
+ * @param[in] k           Harris free parameter (typically 0.04)
+ * @param[in] block_size  Neighborhood size for non-maximum suppression
+ * @param[in] sigma       Gaussian sigma for structure tensor windowing
+ * @param[in] threshold   Minimum R value to accept as a corner
+ * @param[out] out        Heap-allocated array of keypoint_t (caller must free)
+ * @param[out] out_count  Number of keypoints returned
+ */
+void image_harris(const image_t *img,
+                  const float k,
+                  const int block_size,
+                  const float sigma,
+                  const float threshold,
+                  keypoint_t **out,
+                  int *out_count) {
+  detect_keypoints(img, k, block_size, sigma, threshold, out, out_count,
+                   harris_response);
+}
+
+/**
  * Detect corners using Shi-Tomasi's "Good Features to Track".
  *
  * Computes the structure tensor M = [[Ix^2, IxIy],[IxIy, Iy^2]] with Gaussian
@@ -8958,154 +8992,8 @@ void image_good_features(const image_t *img,
                          const float threshold,
                          keypoint_t **out,
                          int *out_count) {
-  assert(img != NULL);
-  assert(block_size > 0 && (block_size & 1) == 1);
-  assert(sigma > 0.0f);
-  assert(out != NULL && out_count != NULL);
-
-  image_t *gray = image_to_grayscale(img);
-  const int w = gray->width;
-  const int h = gray->height;
-  const int n = w * h;
-
-  float *ix = malloc(sizeof(float) * n);
-  float *iy = malloc(sizeof(float) * n);
-
-  const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
-  const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
-
-  for (int y = 0; y < h; y++) {
-    for (int x = 0; x < w; x++) {
-      float gx = 0.0f;
-      float gy = 0.0f;
-      for (int ky = -1; ky <= 1; ky++) {
-        for (int kx = -1; kx <= 1; kx++) {
-          int sx = x + kx;
-          int sy = y + ky;
-          if (sx < 0) {
-            sx = 0;
-          }
-          if (sx >= w) {
-            sx = w - 1;
-          }
-          if (sy < 0) {
-            sy = 0;
-          }
-          if (sy >= h) {
-            sy = h - 1;
-          }
-          float val = (float) gray->data[sy * w + sx];
-          gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
-          gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
-        }
-      }
-      ix[y * w + x] = gx;
-      iy[y * w + x] = gy;
-    }
-  }
-
-  image_free(gray);
-
-  float *ixx = malloc(sizeof(float) * n);
-  float *ixy = malloc(sizeof(float) * n);
-  float *iyy = malloc(sizeof(float) * n);
-  for (int i = 0; i < n; i++) {
-    ixx[i] = ix[i] * ix[i];
-    ixy[i] = ix[i] * iy[i];
-    iyy[i] = iy[i] * iy[i];
-  }
-
-  free(ix);
-  free(iy);
-
-  int ksize = (int) (6.0f * sigma) | 1;
-  if (ksize < 3) {
-    ksize = 3;
-  }
-  const int kr = ksize / 2;
-  const float s2 = 2.0f * sigma * sigma;
-  float kernel[ksize * ksize];
-  float ksum = 0.0f;
-  for (int ky = -kr; ky <= kr; ky++) {
-    for (int kx = -kr; kx <= kr; kx++) {
-      float val = expf(-(float) (kx * kx + ky * ky) / s2);
-      kernel[(ky + kr) * ksize + (kx + kr)] = val;
-      ksum += val;
-    }
-  }
-  for (int i = 0; i < ksize * ksize; i++) {
-    kernel[i] /= ksum;
-  }
-
-  float *Sxx = malloc(sizeof(float) * n);
-  float *Sxy = malloc(sizeof(float) * n);
-  float *Syy = malloc(sizeof(float) * n);
-  convolve_f32(ixx, Sxx, w, h, kernel, ksize);
-  convolve_f32(ixy, Sxy, w, h, kernel, ksize);
-  convolve_f32(iyy, Syy, w, h, kernel, ksize);
-
-  free(ixx);
-  free(ixy);
-  free(iyy);
-
-  float *R = malloc(sizeof(float) * n);
-  for (int i = 0; i < n; i++) {
-    float a = Sxx[i];
-    float b = Sxy[i];
-    float d = Syy[i];
-    float trace = a + d;
-    float det = a * d - b * b;
-    float disc = trace * trace - 4.0f * det;
-    if (disc < 0.0f) {
-      disc = 0.0f;
-    }
-    R[i] = (trace - sqrtf(disc)) * 0.5f;
-  }
-
-  free(Sxx);
-  free(Sxy);
-  free(Syy);
-
-  int radius = block_size / 2;
-  int capacity = 64;
-  int count = 0;
-  keypoint_t *buf = malloc(sizeof(keypoint_t) * capacity);
-
-  for (int y = radius; y < h - radius; y++) {
-    for (int x = radius; x < w - radius; x++) {
-      float r = R[y * w + x];
-      if (r <= threshold) {
-        continue;
-      }
-
-      int is_max = 1;
-      for (int dy = -radius; dy <= radius && is_max; dy++) {
-        for (int dx = -radius; dx <= radius && is_max; dx++) {
-          if (dy == 0 && dx == 0) {
-            continue;
-          }
-          if (R[(y + dy) * w + (x + dx)] >= r) {
-            is_max = 0;
-          }
-        }
-      }
-
-      if (is_max) {
-        if (count >= capacity) {
-          capacity *= 2;
-          buf = realloc(buf, sizeof(keypoint_t) * capacity);
-        }
-        buf[count].x = x;
-        buf[count].y = y;
-        buf[count].score = r;
-        count++;
-      }
-    }
-  }
-
-  free(R);
-  *out = buf;
-  *out_count = count;
+  detect_keypoints(img, 0.0f, block_size, sigma, threshold, out, out_count,
+                   min_eigenvalue_response);
 }
 
 /**

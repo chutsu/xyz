@@ -1534,6 +1534,7 @@ void image_draw_rect(image_t *img,
                      const int y,
                      const int w,
                      const int h,
+                     const int thickness,
                      const color_t color);
 void image_draw_rect_fill(image_t *img,
                           const int x,

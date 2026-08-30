@@ -3685,28 +3685,43 @@ int test_image_malloc(void) {
 }
 
 int test_image_save_png(void) {
-  image_t *img = image_malloc(4, 4, 3);
+  const int w = 20;
+  const int h = 20;
+  image_t *img = image_malloc(w, h, 3);
   color_t red = COLOR_RED;
-  image_fill(img, red);
+  color_t white = COLOR_WHITE;
+  image_fill(img, white);
 
-  const char *path = "/tmp/test_image.png";
-  image_save_png(img, path);
+  // Draw a triangle outline
+  image_draw_line(img, 2, 17, 17, 2, 1, red);
+  image_draw_line(img, 17, 17, 17, 2, 1, red);
+  image_draw_line(img, 2, 17, 17, 17, 1, red);
+
+  const char *image_path = "/tmp/test_image.png";
+  image_save_png(img, image_path);
 
   // Reload and verify
-  image_t *loaded = image_load(path);
+  image_t *loaded = image_load(image_path);
   MU_ASSERT(loaded != NULL);
-  MU_ASSERT(loaded->width == 4);
-  MU_ASSERT(loaded->height == 4);
+  MU_ASSERT(loaded->width == w);
+  MU_ASSERT(loaded->height == h);
 
+  // Background should be white
   color_t c;
   image_get_pixel(loaded, 0, 0, &c);
+  MU_ASSERT(c.r == 255);
+  MU_ASSERT(c.g == 255);
+  MU_ASSERT(c.b == 255);
+
+  // Triangle vertex should be red (top-left origin, no vertical flip)
+  image_get_pixel(loaded, 2, 17, &c);
   MU_ASSERT(c.r == 255);
   MU_ASSERT(c.g == 0);
   MU_ASSERT(c.b == 0);
 
   image_free(img);
   image_free(loaded);
-  remove(path);
+  remove(image_path);
   return 0;
 }
 
@@ -3777,7 +3792,7 @@ int test_image_draw_line(void) {
 int test_image_draw_rect(void) {
   image_t *img = image_malloc(10, 10, 3);
   color_t blue = COLOR_BLUE;
-  image_draw_rect(img, 2, 2, 5, 5, blue);
+  image_draw_rect(img, 2, 2, 5, 5, 1, blue);
 
   // Corners should be blue
   color_t c;
@@ -4056,6 +4071,9 @@ int test_image_harris(void) {
   MU_ASSERT(found_tr);
   MU_ASSERT(found_bl);
   MU_ASSERT(found_br);
+
+  // image_save_png(img, "/tmp/xyz_test_image_harris-before.png");
+  // image_save_png(, "/tmp/xyz_test_image_harris-after.png");
 
   free(corners);
   image_free(img);
@@ -10079,7 +10097,7 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_cube3d);
   // MU_ADD_TEST(test_gl_axes3d);
   // MU_ADD_TEST(test_gl_grid3d);
-  // MU_ADD_TEST(test_gl_image);
+  MU_ADD_TEST(test_gl_image);
   // MU_ADD_TEST(test_gl_text);
   // MU_ADD_TEST(test_sandbox);
 #endif
