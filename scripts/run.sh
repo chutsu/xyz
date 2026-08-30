@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-TARGET="dev"
+TARGET="dev.0"
 DEBUG="gdb -ex=run -ex=bt -ex=quit --args"
 PROFILE_RECORD="perf record -g --call-graph=dwarf"
 PROFILE_ANNOTATE="perf annotate --stdio > profile.txt"
@@ -26,8 +26,6 @@ run_memcheck() {
 ###############################################################################
 
 run_script() {
-  TARGET="dev"
-
   tmux send-keys -t $TARGET -R C-l C-m
   tmux send-keys -t $TARGET -R "\
     cd $HOME/code/xyz \
@@ -46,8 +44,8 @@ run_script() {
 ###############################################################################
 
 run_all_tests() {
-  tmux send-keys -t dev -R C-l C-m
-  tmux send-keys -t dev -R "\
+  tmux send-keys -t "$TARGET" -R C-l C-m
+  tmux send-keys -t "$TARGET" -R "\
     cd ~/code/xyz/src \
       && clear \
       && make test_xyz -j \
@@ -56,7 +54,6 @@ run_all_tests() {
 }
 
 run_test() {
-  TARGET="dev"
   DEBUG="gdb -ex=run -ex=bt -ex=quit --args"
   PROFILE_RECORD="perf record -g --call-graph=dwarf"
   PROFILE_ANNOTATE="perf annotate --stdio > profile.txt"
@@ -135,20 +132,6 @@ run_test() {
 # run_test test_xyz test_hm_set_and_get
 ## XYZ-NETWORK
 # run_test test_xyz test_tcp_server_setup
-## XYZ-IMAGE
-# run_test test_xyz test_image_malloc
-# run_test test_xyz test_image_save_png
-# run_test test_xyz test_image_fill
-# run_test test_xyz test_image_set_get_pixel
-# run_test test_xyz test_image_draw_line
-# run_test test_xyz test_image_draw_rect
-# run_test test_xyz test_image_draw_rect_fill
-# run_test test_xyz test_image_draw_circle
-# run_test test_xyz test_image_draw_circle_fill
-# run_test test_xyz test_image_draw_char
-# run_test test_xyz test_image_draw_string
-# run_test test_xyz test_image_draw_line_thickness
-# run_test test_xyz test_image_draw_circle_thickness
 ## XYZ-MATH
 # run_test test_xyz test_min
 # run_test test_xyz test_max
@@ -237,10 +220,25 @@ run_test() {
 # run_test test_xyz test_mav_pos_ctrl
 # run_test test_xyz test_mav_waypoints
 ## XYZ-COMPUTER-VISION
-# run_test test_xyz test_image_setup
-# run_test test_xyz test_image_load
-# run_test test_xyz test_image_print_properties
-# run_test test_xyz test_image_free
+# run_test test_xyz test_image_malloc
+# run_test test_xyz test_image_save_png
+# run_test test_xyz test_image_fill
+# run_test test_xyz test_image_set_get_pixel
+# run_test test_xyz test_image_draw_line
+# run_test test_xyz test_image_draw_rect
+# run_test test_xyz test_image_draw_rect_fill
+# run_test test_xyz test_image_draw_circle
+# run_test test_xyz test_image_draw_circle_fill
+# run_test test_xyz test_image_draw_char
+# run_test test_xyz test_image_draw_string
+# run_test test_xyz test_image_draw_line_thickness
+# run_test test_xyz test_image_draw_circle_thickness
+# run_test test_xyz test_image_to_grayscale
+# run_test test_xyz test_image_threshold
+# run_test test_xyz test_image_gaussian_blur
+# run_test test_xyz test_image_sobel
+# run_test test_xyz test_image_harris
+# run_test test_xyz test_image_good_features
 # run_test test_xyz test_radtan4_distort
 # run_test test_xyz test_radtan4_undistort
 # run_test test_xyz test_radtan4_point_jacobian
@@ -266,7 +264,7 @@ run_test() {
 # run_test test_xyz test_homography_pose
 # run_test test_xyz test_p3p_kneip
 # run_test test_xyz test_solvepnp
-run_test test_xyz test_hedborg_essential_matrix
+# run_test test_xyz test_hedborg_essential_matrix
 ## XYZ-APRILGRID
 # run_test test_xyz test_aprilgrid_malloc_and_free
 # run_test test_xyz test_aprilgrid_center
@@ -348,33 +346,33 @@ run_test test_xyz test_hedborg_essential_matrix
 # run_test test_xyz test_kitti_raw_load
 
 # XYZ-GUI
-# run_test test_gui
-# run_test test_gui test_gl_zeros
-# run_test test_gui test_gl_ones
-# run_test test_gui test_gl_eye
-# run_test test_gui test_gl_matf_set
-# run_test test_gui test_gl_matf_val
-# run_test test_gui test_gl_transpose
-# run_test test_gui test_gl_equals
-# run_test test_gui test_gl_vec3_cross
-# run_test test_gui test_gl_dot
-# run_test test_gui test_gl_norm
-# run_test test_gui test_gl_normalize
-# run_test test_gui test_gl_perspective
-# run_test test_gui test_gl_lookat
-# run_test test_gui test_gl_shader_compile
-# run_test test_gui test_gl_shaders_link
-# run_test test_gui test_gl_prog_setup
-# run_test test_gui test_gl_camera_setup
-# run_test test_gui test_gui
-# run_test test_gui test_gl_rect
-# run_test test_gui test_gl_points3d
-# run_test test_gui test_gl_line3d
-# run_test test_gui test_gl_cube3d
-# run_test test_gui test_gl_axes3d
-# run_test test_gui test_gl_grid3d
-# run_test test_gui test_gl_image
-# run_test test_gui test_gl_text
+# run_test test_xyz
+# run_test test_xyz test_gl_zeros
+# run_test test_xyz test_gl_ones
+# run_test test_xyz test_gl_eye
+# run_test test_xyz test_gl_matf_set
+# run_test test_xyz test_gl_matf_val
+# run_test test_xyz test_gl_transpose
+# run_test test_xyz test_gl_equals
+# run_test test_xyz test_gl_vec3_cross
+# run_test test_xyz test_gl_dot
+# run_test test_xyz test_gl_norm
+# run_test test_xyz test_gl_normalize
+# run_test test_xyz test_gl_perspective
+# run_test test_xyz test_gl_lookat
+# run_test test_xyz test_gl_shader_compile
+# run_test test_xyz test_gl_shaders_link
+# run_test test_xyz test_gl_prog_setup
+# run_test test_xyz test_gl_camera_setup
+# run_test test_xyz test_gui
+# run_test test_xyz test_gl_rect
+# run_test test_xyz test_gl_points3d
+# run_test test_xyz test_gl_line3d
+# run_test test_xyz test_gl_cube3d
+# run_test test_xyz test_gl_axes3d
+# run_test test_xyz test_gl_grid3d
+run_test test_xyz test_gl_image
+# run_test test_xyz test_gl_text
 # run_test test_imshow
 
 # XYZ-SE
