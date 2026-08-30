@@ -1510,6 +1510,7 @@ typedef struct image_t {
 image_t *image_malloc(const int width, const int height, const int channels);
 void image_free(image_t *img);
 image_t *image_load(const char *file_path);
+image_t *image_to_grayscale(const image_t *img);
 void image_save_png(const image_t *img, const char *file_path);
 void image_print(const image_t *img);
 void image_fill(image_t *img, const color_t color);
@@ -1568,7 +1569,6 @@ image_t *image_convolve(const image_t *img,
                         const float *kernel,
                         const int kernel_w,
                         const int kernel_h);
-image_t *image_to_grayscale(const image_t *img);
 image_t *image_gaussian_blur(const image_t *img,
                              const int size,
                              const float sigma);

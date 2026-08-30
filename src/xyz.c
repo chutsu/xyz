@@ -8055,6 +8055,40 @@ image_t *image_load(const char *file_path) {
 }
 
 /**
+ * Convert an image to single-channel grayscale.
+ *
+ * If the image is already 1-channel, a copy is returned. Otherwise, luminance
+ * is computed using ITU-R BT.601 weights: Y = 0.299*R + 0.587*G + 0.114*B.
+ *
+ * @param[in] img  Input image (1, 3, or 4 channels)
+ * @returns  Heap-allocated 1-channel image (caller must free with image_free)
+ */
+image_t *image_to_grayscale(const image_t *img) {
+  assert(img != NULL);
+
+  if (img->channels == 1) {
+    image_t *out = image_malloc(img->width, img->height, 1);
+    memcpy(out->data, img->data, (size_t) img->width * img->height);
+    return out;
+  }
+
+  assert(img->channels == 3 || img->channels == 4);
+
+  image_t *out = image_malloc(img->width, img->height, 1);
+  const int n = img->width * img->height;
+  for (int i = 0; i < n; i++) {
+    int idx = i * img->channels;
+    float y = 0.299f * img->data[idx + 0] + 0.587f * img->data[idx + 1] +
+              0.114f * img->data[idx + 2];
+    if (y > 255.0f)
+      y = 255.0f;
+    out->data[i] = (uint8_t) (y + 0.5f);
+  }
+
+  return out;
+}
+
+/**
  * Save `img` to a PNG file at `file_path`.
  */
 void image_save_png(const image_t *img, const char *file_path) {
@@ -8500,17 +8534,20 @@ void image_draw_string(image_t *img,
 }
 
 /**
- * Apply a 2D convolution kernel to `img` and return a new image.
+ * Apply a 2D convolution to an image.
  *
- * The convolution is performed per-channel with the same kernel. Boundary
- * pixels are handled by clamping coordinates to the image edges (replicate
- * border).
+ * Slides `kernel` (a `kernel_w` x `kernel_h` matrix, both odd) over every
+ * output pixel and accumulates the dot product of the kernel with the
+ * corresponding input neighborhood. Pixels that fall outside the image are
+ * handled with replicate border clamping (coordinates clamped to the edge) so
+ * the output has the same dimensions as the input. Results are clamped to the
+ * valid 8-bit range [0, 255] with rounding, applied per channel.
  *
- * @param[in] img       Input image
- * @param[in] kernel    Row-major float array of size kernel_w * kernel_h
- * @param[in] kernel_w  Kernel width (must be odd and > 0)
- * @param[in] kernel_h  Kernel height (must be odd and > 0)
- * @returns  Heap-allocated output image (caller must free with image_free)
+ * @param[in] img        Input image (any channel count)
+ * @param[in] kernel     Row-major `kernel_w * kernel_h` convolution kernel
+ * @param[in] kernel_w   Kernel width, must be odd and > 0
+ * @param[in] kernel_h   Kernel height, must be odd and > 0
+ * @returns  Heap-allocated convolved image (caller must free with image_free)
  */
 image_t *image_convolve(const image_t *img,
                         const float *kernel,
@@ -8530,9 +8567,12 @@ image_t *image_convolve(const image_t *img,
   for (int y = 0; y < img->height; y++) {
     for (int x = 0; x < img->width; x++) {
       for (int c = 0; c < channels; c++) {
+
         float sum = 0.0f;
         for (int ky = 0; ky < kernel_h; ky++) {
           for (int kx = 0; kx < kernel_w; kx++) {
+            /* Kernel is centered via radius offsets; clamp off-image
+               coordinates to the nearest edge (replicate border). */
             int src_x = x + kx - kx_radius;
             int src_y = y + ky - ky_radius;
             if (src_x < 0)
@@ -8554,42 +8594,9 @@ image_t *image_convolve(const image_t *img,
         int out_idx = (y * img->width + x) * channels + c;
         out->data[out_idx] = (uint8_t) (sum + 0.5f);
       }
-    }
-  }
 
-  return out;
-}
-
-/**
- * Convert an image to single-channel grayscale.
- *
- * If the image is already 1-channel, a copy is returned. Otherwise, luminance
- * is computed using ITU-R BT.601 weights: Y = 0.299*R + 0.587*G + 0.114*B.
- *
- * @param[in] img  Input image (1, 3, or 4 channels)
- * @returns  Heap-allocated 1-channel image (caller must free with image_free)
- */
-image_t *image_to_grayscale(const image_t *img) {
-  assert(img != NULL);
-
-  if (img->channels == 1) {
-    image_t *out = image_malloc(img->width, img->height, 1);
-    memcpy(out->data, img->data, (size_t) img->width * img->height);
-    return out;
-  }
-
-  assert(img->channels == 3 || img->channels == 4);
-
-  image_t *out = image_malloc(img->width, img->height, 1);
-  const int n = img->width * img->height;
-  for (int i = 0; i < n; i++) {
-    int idx = i * img->channels;
-    float y = 0.299f * img->data[idx + 0] + 0.587f * img->data[idx + 1] +
-              0.114f * img->data[idx + 2];
-    if (y > 255.0f)
-      y = 255.0f;
-    out->data[i] = (uint8_t) (y + 0.5f);
-  }
+    } // for width
+  }   // for height
 
   return out;
 }
@@ -8612,11 +8619,12 @@ image_t *image_gaussian_blur(const image_t *img,
   assert(size > 0 && (size & 1) == 1);
   assert(sigma > 0.0f);
 
+  // Create gaussian blur kernel
   const int radius = size / 2;
   const float s2 = 2.0f * sigma * sigma;
-
   float kernel[size * size];
   float sum = 0.0f;
+
   for (int y = -radius; y <= radius; y++) {
     for (int x = -radius; x <= radius; x++) {
       float val = expf(-(float) (x * x + y * y) / s2);
@@ -8628,8 +8636,7 @@ image_t *image_gaussian_blur(const image_t *img,
     kernel[i] /= sum;
   }
 
-  image_t *out = image_convolve(img, kernel, size, size);
-  return out;
+  return image_convolve(img, kernel, size, size);
 }
 
 /**
