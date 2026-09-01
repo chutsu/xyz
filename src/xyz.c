@@ -8778,6 +8778,16 @@ typedef float (*corner_response_fn)(const float Sxx,
                                     const float Syy,
                                     const float k);
 
+/**
+ * Harris corner response: det(M) - k * trace(M)^2.
+ *
+ * Uses the structure tensor M = [[Sxx, Sxy],[Sxy, Syy]]. A flat region has
+ * near-zero gradient (det ~ 0, trace ~ 0), an edge has strong gradient in only
+ * one direction (det ~ 0 but trace large), and a corner has strong gradients in
+ * both directions (det large). The response R = det - k * trace^2 therefore
+ * suppresses flat regions and edges while highlighting corners, where k is a
+ * tuning constant (typically 0.04-0.06).
+ */
 static float harris_response(const float Sxx,
                              const float Sxy,
                              const float Syy,
@@ -8787,6 +8797,25 @@ static float harris_response(const float Sxx,
   return det - k * trace * trace;
 }
 
+/**
+ * Shi-Tomasi corner response: the minimum eigenvalue of the structure tensor.
+ *
+ * The eigenvalues of M = [[Sxx, Sxy],[Sxy, Syy]] are the roots of the
+ * characteristic polynomial:
+ *
+ *   det(M - lambda * I) = 0
+ *   (Sxx - lambda)(Syy - lambda) - Sxy^2 = 0
+ *   lambda^2 - trace*lambda + det = 0
+ *
+ * with trace = Sxx + Syy and det = Sxx*Syy - Sxy^2. Using the quadratic
+ * formula, the two roots are:
+ *
+ *   lambda1 = (trace + sqrt(trace^2 - 4*det)) / 2
+ *   lambda2 = (trace - sqrt(trace^2 - 4*det)) / 2
+ *
+ * which are the larger and smaller eigenvalues respectively (trace >= 0).
+ * The minus sign below therefore selects min(lambda1, lambda2).
+ */
 static float min_eigenvalue_response(const float Sxx,
                                      const float Sxy,
                                      const float Syy,
