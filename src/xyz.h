@@ -1511,6 +1511,7 @@ image_t *image_malloc(const int width, const int height, const int channels);
 void image_free(image_t *img);
 image_t *image_load(const char *file_path);
 image_t *image_to_grayscale(const image_t *img);
+image_t *image_to_rgb(const image_t *img);
 void image_save_png(const image_t *img, const char *file_path);
 void image_print(const image_t *img);
 void image_fill(image_t *img, const color_t color);
@@ -1582,6 +1583,12 @@ typedef struct keypoint_t {
   float score;
 } keypoint_t;
 
+void image_draw_points(image_t *img,
+                       const keypoint_t *points,
+                       const int num_points,
+                       const int radius,
+                       const color_t color);
+
 void image_harris(const image_t *img,
                   const float k,
                   const int block_size,
@@ -1621,13 +1628,13 @@ uint8_t image_bilinear_sample(const image_t *img,
                               const float y,
                               const int channel);
 
-void image_lk_track(const image_t *img0,
-                    const image_t *img1,
-                    const keypoint_t *kp_in,
-                    const int num_kp,
-                    const int num_levels,
-                    const float sigma,
-                    lk_track_t *tracks);
+void lk_track(const image_t *img0,
+              const image_t *img1,
+              const keypoint_t *kp_in,
+              const int num_kp,
+              const int num_levels,
+              const float sigma,
+              lk_track_t *tracks);
 
 /////////////
 // PINHOLE //

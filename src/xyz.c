@@ -1,5 +1,7 @@
 #include "xyz.h"
 
+#include <strings.h>
+
 #ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -8090,14 +8092,59 @@ image_t *image_to_grayscale(const image_t *img) {
 }
 
 /**
+ * Convert a single-channel (mono/grayscale) image to an RGB image.
+ *
+ * Each gray value is replicated across the R, G, and B channels. If the image
+ * is already 3-channel, a copy is returned.
+ *
+ * @param[in] img  Input image (1 or 3 channels)
+ * @returns  Heap-allocated 3-channel image (caller must free with image_free)
+ */
+image_t *image_to_rgb(const image_t *img) {
+  assert(img != NULL);
+
+  const int n = img->width * img->height;
+
+  if (img->channels == 3) {
+    image_t *out = image_malloc(img->width, img->height, 3);
+    memcpy(out->data, img->data, (size_t) n * 3);
+    return out;
+  }
+
+  assert(img->channels == 1);
+
+  image_t *out = image_malloc(img->width, img->height, 3);
+  for (int i = 0; i < n; i++) {
+    const uint8_t v = img->data[i];
+    out->data[i * 3 + 0] = v;
+    out->data[i * 3 + 1] = v;
+    out->data[i * 3 + 2] = v;
+  }
+
+  return out;
+}
+
+/**
  * Save `img` to a PNG file at `file_path`.
+ *
+ * If `file_path` does not already end with a ".png" extension, one is
+ * appended.
  */
 void image_save_png(const image_t *img, const char *file_path) {
   assert(img != NULL);
   assert(file_path != NULL);
 
+  char path[4096] = {0};
+  const size_t len = strlen(file_path);
+  const bool has_png_ext = len >= 4 && strncasecmp(file_path + len - 4, ".png", 4) == 0;
+  if (has_png_ext) {
+    snprintf(path, sizeof(path), "%s", file_path);
+  } else {
+    snprintf(path, sizeof(path), "%s.png", file_path);
+  }
+
   int stride = img->width * img->channels;
-  stbi_write_png(file_path,
+  stbi_write_png(path,
                  img->width,
                  img->height,
                  img->channels,
@@ -8330,6 +8377,24 @@ void image_draw_circle_fill(image_t *img,
         image_set_pixel(img, cx + x, cy + y, color);
       }
     }
+  }
+}
+
+/**
+ * Draw each point in `points` as a filled circle centered on its (x, y)
+ * coordinate using image_draw_circle_fill.
+ */
+void image_draw_points(image_t *img,
+                       const keypoint_t *points,
+                       const int num_points,
+                       const int radius,
+                       const color_t color) {
+  assert(img != NULL);
+  assert(points != NULL || num_points == 0);
+  assert(radius > 0);
+
+  for (int i = 0; i < num_points; i++) {
+    image_draw_circle_fill(img, points[i].x, points[i].y, radius, color);
   }
 }
 
@@ -8634,7 +8699,6 @@ image_t *image_gaussian_blur(const image_t *img,
   float kernel[size * size];
   float sum = 0.0f;
 
-  const float k = 1.0 / sqrt(2.0 * M_PI * sigma * sigma);
   for (int y = -radius; y <= radius; y++) {
     for (int x = -radius; x <= radius; x++) {
       float val = expf(-(float) (x * x + y * y) / s2);
@@ -8996,7 +9060,13 @@ void image_harris(const image_t *img,
                   const float threshold,
                   keypoint_t **out,
                   int *out_count) {
-  detect_keypoints(img, k, block_size, sigma, threshold, out, out_count,
+  detect_keypoints(img,
+                   k,
+                   block_size,
+                   sigma,
+                   threshold,
+                   out,
+                   out_count,
                    harris_response);
 }
 
@@ -9021,7 +9091,13 @@ void image_good_features(const image_t *img,
                          const float threshold,
                          keypoint_t **out,
                          int *out_count) {
-  detect_keypoints(img, 0.0f, block_size, sigma, threshold, out, out_count,
+  detect_keypoints(img,
+                   0.0f,
+                   block_size,
+                   sigma,
+                   threshold,
+                   out,
+                   out_count,
                    min_eigenvalue_response);
 }
 
@@ -9345,13 +9421,13 @@ uint8_t image_bilinear_sample(const image_t *img,
  * @param[out] tracks     Output array of lk_track_t (must be allocated by
  *                        caller, same size as num_kp)
  */
-void image_lk_track(const image_t *img0,
-                    const image_t *img1,
-                    const keypoint_t *kp_in,
-                    const int num_kp,
-                    const int num_levels,
-                    const float sigma,
-                    lk_track_t *tracks) {
+void lk_track(const image_t *img0,
+              const image_t *img1,
+              const keypoint_t *kp_in,
+              const int num_kp,
+              const int num_levels,
+              const float sigma,
+              lk_track_t *tracks) {
   assert(img0 != NULL);
   assert(img1 != NULL);
   assert(kp_in != NULL);

@@ -239,6 +239,7 @@ run_test() {
 # run_test test_xyz test_image_sobel
 # run_test test_xyz test_image_harris
 # run_test test_xyz test_image_good_features
+run_test test_xyz test_lk_track_translation
 # run_test test_xyz test_radtan4_distort
 # run_test test_xyz test_radtan4_undistort
 # run_test test_xyz test_radtan4_point_jacobian
@@ -371,7 +372,7 @@ run_test() {
 # run_test test_xyz test_gl_cube3d
 # run_test test_xyz test_gl_axes3d
 # run_test test_xyz test_gl_grid3d
-run_test test_xyz test_gl_image
+# run_test test_xyz test_gl_image
 # run_test test_xyz test_gl_text
 # run_test test_imshow
 

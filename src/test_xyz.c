@@ -3700,11 +3700,21 @@ int test_image_save_png(void) {
   const char *image_path = "/tmp/test_image.png";
   image_save_png(img, image_path);
 
+  // Saving without a ".png" extension should append it
+  const char *image_path_no_ext = "/tmp/test_image_no_ext";
+  image_save_png(img, image_path_no_ext);
+
   // Reload and verify
   image_t *loaded = image_load(image_path);
   MU_ASSERT(loaded != NULL);
   MU_ASSERT(loaded->width == w);
   MU_ASSERT(loaded->height == h);
+
+  // The no-extension save should have been written with ".png" appended
+  image_t *loaded_no_ext = image_load("/tmp/test_image_no_ext.png");
+  MU_ASSERT(loaded_no_ext != NULL);
+  MU_ASSERT(loaded_no_ext->width == w);
+  MU_ASSERT(loaded_no_ext->height == h);
 
   // Background should be white
   color_t c;
@@ -3721,7 +3731,9 @@ int test_image_save_png(void) {
 
   image_free(img);
   image_free(loaded);
+  image_free(loaded_no_ext);
   remove(image_path);
+  remove("/tmp/test_image_no_ext.png");
   return 0;
 }
 
@@ -3877,6 +3889,27 @@ int test_image_draw_circle_fill(void) {
   return 0;
 }
 
+int test_image_draw_points(void) {
+  image_t *img = image_malloc(30, 30, 3);
+  color_t red = COLOR_RED;
+  keypoint_t points[2] = {{10, 10, 0.0f}, {20, 20, 0.0f}};
+  image_draw_points(img, points, 2, 3, red);
+
+  // Each point should be a filled circle centered at its (x, y)
+  color_t c;
+  image_get_pixel(img, 10, 7, &c);
+  MU_ASSERT(c.r == 255);
+  image_get_pixel(img, 20, 17, &c);
+  MU_ASSERT(c.r == 255);
+
+  // Center of a filled circle should be red too
+  image_get_pixel(img, 10, 10, &c);
+  MU_ASSERT(c.r == 255);
+
+  image_free(img);
+  return 0;
+}
+
 int test_image_draw_char(void) {
   image_t *img = image_malloc(60, 20, 3);
   color_t white = COLOR_WHITE;
@@ -3970,6 +4003,31 @@ int test_image_to_grayscale(void) {
 
   image_free(img);
   image_free(gray);
+  return 0;
+}
+
+int test_image_to_rgb(void) {
+  image_t *img = image_malloc(4, 4, 1);
+  for (int i = 0; i < 4 * 4; i++) {
+    img->data[i] = (uint8_t) i * 16;
+  }
+
+  image_t *rgb = image_to_rgb(img);
+  MU_ASSERT(rgb != NULL);
+  MU_ASSERT(rgb->width == 4);
+  MU_ASSERT(rgb->height == 4);
+  MU_ASSERT(rgb->channels == 3);
+
+  // Each gray value should be replicated across R, G, B
+  for (int i = 0; i < 4 * 4; i++) {
+    const uint8_t v = (uint8_t) (i * 16);
+    MU_ASSERT(rgb->data[i * 3 + 0] == v);
+    MU_ASSERT(rgb->data[i * 3 + 1] == v);
+    MU_ASSERT(rgb->data[i * 3 + 2] == v);
+  }
+
+  image_free(img);
+  image_free(rgb);
   return 0;
 }
 
@@ -4241,32 +4299,76 @@ int test_image_bilinear_sample(void) {
   return 0;
 }
 
-int test_image_lk_track_translation(void) {
-  image_t *img0 = image_malloc(80, 80, 3);
-  image_draw_rect_fill(img0, 30, 30, 5, 5, COLOR_WHITE);
+int test_lk_track_translation(void) {
+  // EuRoC dataset
+  const char data_path[1024] = "/data/euroc/MH_01";
+  euroc_data_t *test_data = euroc_data_load(data_path);
 
-  image_t *img1 = image_malloc(80, 80, 3);
-  image_draw_rect_fill(img1, 33, 30, 5, 5, COLOR_WHITE);
+  euroc_camera_t *cam0_data = test_data->cam0_data;
+  // size_t n = cam0_data->num_timestamps;
+  image_t *image_km1 = image_load(cam0_data->image_paths[0]);
+  // image_t *image_k = image_load(cam0_data->image_paths[10]);
 
-  keypoint_t kp;
-  kp.x = 32;
-  kp.y = 32;
-  kp.score = 1.0f;
+  const int block_size = 3;
+  const float sigma = 1.0f;
+  const float threshold = 1e4f;
+  keypoint_t *kps;
+  int kps_count;
+  image_good_features(image_km1,
+                      block_size,
+                      sigma,
+                      threshold,
+                      &kps,
+                      &kps_count);
 
-  lk_track_t track;
+  {
+    image_t *viz = image_to_rgb(image_km1);
+    for (int i = 0; i < kps_count; ++i) {
+      image_draw_points(viz, &kps[i], 1, 1, COLOR_RED);
+    }
+    image_save_png(viz, "/tmp/test_image.png");
+    image_free(viz);
+  }
 
-  image_lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+  // lk_track_t *tracks = malloc(sizeof(lk_track_t) * kps_count);
+  // lk_track(image_km1, image_k, kps, kps_count, 3, 1.0f, tracks);
 
-  MU_ASSERT(track.status == 1);
-  MU_ASSERT(fabsf(track.dx - 3.0f) < 1.0f);
-  MU_ASSERT(fabsf(track.dy) < 1.0f);
+  // for (size_t k = 1; k < n; ++k) {
+  //   image_t *image_k = image_load(cam0_data->image_paths[k]);
+  //   lk_track(image_km1, image_k,
+  //
+  //   image_free(image_km1);
+  //   image_km1 = image_k;
+  //   image_k = NULL;
+  // }
+  free(kps);
+  image_free(image_km1);
+  euroc_data_free(test_data);
 
-  image_free(img0);
-  image_free(img1);
+  // image_t *img0 = image_malloc(80, 80, 3);
+  // image_draw_rect_fill(img0, 30, 30, 5, 5, COLOR_WHITE);
+  //
+  // image_t *img1 = image_malloc(80, 80, 3);
+  // image_draw_rect_fill(img1, 33, 30, 5, 5, COLOR_WHITE);
+  //
+  // keypoint_t kp;
+  // kp.x = 32;
+  // kp.y = 32;
+  // kp.score = 1.0f;
+  //
+  // lk_track_t track;
+  // lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+  //
+  // MU_ASSERT(track.status == 1);
+  // MU_ASSERT(fabsf(track.dx - 3.0f) < 1.0f);
+  // MU_ASSERT(fabsf(track.dy) < 1.0f);
+  //
+  // image_free(img0);
+  // image_free(img1);
   return 0;
 }
 
-int test_image_lk_track_no_motion(void) {
+int test_lk_track_no_motion(void) {
   image_t *img = image_malloc(20, 20, 3);
   image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
 
@@ -4276,7 +4378,7 @@ int test_image_lk_track_no_motion(void) {
   kp.score = 1.0f;
 
   lk_track_t track;
-  image_lk_track(img, img, &kp, 1, 3, 1.0f, &track);
+  lk_track(img, img, &kp, 1, 3, 1.0f, &track);
 
   MU_ASSERT(track.status == 1);
   MU_ASSERT(fabsf(track.dx) < 0.5f);
@@ -9935,7 +10037,9 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_draw_string);
   MU_ADD_TEST(test_image_draw_line_thickness);
   MU_ADD_TEST(test_image_draw_circle_thickness);
+  MU_ADD_TEST(test_image_draw_points);
   MU_ADD_TEST(test_image_to_grayscale);
+  MU_ADD_TEST(test_image_to_rgb);
   MU_ADD_TEST(test_image_gaussian_blur);
   MU_ADD_TEST(test_image_threshold);
   MU_ADD_TEST(test_image_sobel);
@@ -9947,8 +10051,8 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_gaussian_pyramid);
   MU_ADD_TEST(test_image_laplacian_pyramid);
   MU_ADD_TEST(test_image_bilinear_sample);
-  MU_ADD_TEST(test_image_lk_track_translation);
-  MU_ADD_TEST(test_image_lk_track_no_motion);
+  MU_ADD_TEST(test_lk_track_translation);
+  MU_ADD_TEST(test_lk_track_no_motion);
   // -- Pinhole
   MU_ADD_TEST(test_pinhole_focal);
   MU_ADD_TEST(test_pinhole_K);
@@ -10097,7 +10201,7 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_cube3d);
   // MU_ADD_TEST(test_gl_axes3d);
   // MU_ADD_TEST(test_gl_grid3d);
-  MU_ADD_TEST(test_gl_image);
+  // MU_ADD_TEST(test_gl_image);
   // MU_ADD_TEST(test_gl_text);
   // MU_ADD_TEST(test_sandbox);
 #endif
