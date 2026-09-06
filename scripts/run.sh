@@ -99,6 +99,9 @@ run_test() {
 # run_test test_xyz test_darray_update
 # run_test test_xyz test_darray_remove
 # run_test test_xyz test_darray_expand_and_contract
+# run_test test_xyz test_darray_pop_empty
+# run_test test_xyz test_darray_last_empty
+# run_test test_xyz test_darray_set_advances_end
 ## XYZ-LIST
 # run_test test_xyz test_list_malloc_and_free
 # run_test test_xyz test_list_push_pop
@@ -106,6 +109,8 @@ run_test() {
 # run_test test_xyz test_list_unshift
 # run_test test_xyz test_list_remove
 # run_test test_xyz test_list_remove_destroy
+# run_test test_xyz test_list_remove_destroy_not_found
+# run_test test_xyz test_list_pop_front
 ## XYZ-RED-BLACK-TREE
 # run_test test_xyz test_rbt_node_malloc_and_free
 # run_test test_xyz test_rbt_node_min_max
@@ -130,6 +135,8 @@ run_test() {
 ## XYZ-HASHMAP
 # run_test test_xyz test_hm_malloc_and_free
 # run_test test_xyz test_hm_set_and_get
+# run_test test_xyz test_hm_double_hash
+# run_test test_xyz test_hm_expand
 ## XYZ-NETWORK
 # run_test test_xyz test_tcp_server_setup
 ## XYZ-MATH
@@ -165,6 +172,9 @@ run_test() {
 # run_test test_xyz test_mat_col_set
 # run_test test_xyz test_mat_block_get
 # run_test test_xyz test_mat_block_set
+# run_test test_xyz test_mat_block_add
+# run_test test_xyz test_mat_block_sub
+# run_test test_xyz test_mat_col_get
 # run_test test_xyz test_mat_diag_get
 # run_test test_xyz test_mat_diag_set
 # run_test test_xyz test_mat_triu
@@ -174,21 +184,67 @@ run_test() {
 # run_test test_xyz test_mat_add
 # run_test test_xyz test_mat_sub
 # run_test test_xyz test_mat_scale
+# run_test test_xyz test_mat_malloc
+# run_test test_xyz test_mat_cmp
+# run_test test_xyz test_mat_equals
+# run_test test_xyz test_mat_save_and_load
+# run_test test_xyz test_mat3_copy
+# run_test test_xyz test_mat3_add
+# run_test test_xyz test_mat3_sub
 # run_test test_xyz test_vec_add
 # run_test test_xyz test_vec_sub
+# run_test test_xyz test_vec_malloc
+# run_test test_xyz test_vec_copy
+# run_test test_xyz test_vec_equals
+# run_test test_xyz test_vec_min
+# run_test test_xyz test_vec_max
+# run_test test_xyz test_vec_range
+# run_test test_xyz test_vec_scale
+# run_test test_xyz test_vec_norm
+# run_test test_xyz test_vec_normalize
+# run_test test_xyz test_vec3_copy
+# run_test test_xyz test_vec3_add
+# run_test test_xyz test_vec3_sub
+# run_test test_xyz test_vec3_scale
+# run_test test_xyz test_vec3_dot
+# run_test test_xyz test_vec3_cross
+# run_test test_xyz test_vec3_norm
+# run_test test_xyz test_vec3_normalize
 # run_test test_xyz test_dot
-# run_test test_xyz test_bdiag_inv
-# run_test test_xyz test_hat
+# run_test test_xyz test_dotf
+# run_test test_xyz test_dot3
+# run_test test_xyz test_dot_XtAX
+# run_test test_xyz test_dot_XAXt
+# run_test test_xyz test_skew
+# run_test test_xyz test_antiskew
+# run_test test_xyz test_fwdsubs
+# run_test test_xyz test_bwdsubs
+# run_test test_xyz test_enforce_spd
+# run_test test_xyz test_eyef
+# run_test test_xyz test_onesf
+# run_test test_xyz test_zerosf
+# run_test test_xyz test_skewf
+# run_test test_xyz test_antiskewf
+# run_test test_xyz test_fwdsubsf
+# run_test test_xyz test_bwdsubsf
+# run_test test_xyz test_enforce_spdf
+# run_test test_xyz test_bdiag_inv_sub
+# run_test test_xyz test_bdiag_dot
+# run_test test_xyz test_check_inv
+# run_test test_xyz test_check_Axb
 # run_test test_xyz test_check_jacobian
 # run_test test_xyz test_svd
 # run_test test_xyz test_pinv
 # run_test test_xyz test_svd_det
+# run_test test_xyz test_svd_rank
 # run_test test_xyz test_chol
 # run_test test_xyz test_chol_solve
 # run_test test_xyz test_qr
 # run_test test_xyz test_eig_sym
 # run_test test_xyz test_eig_inv
+# run_test test_xyz test_eig_rank
 # run_test test_xyz test_schur_complement
+# run_test test_xyz test_shannon_entropy
 ## XYZ-SUITE-SPARSE
 # run_test test_xyz test_suitesparse_chol_solve
 ## XYZ-TRANSFORMS
@@ -220,6 +276,7 @@ run_test() {
 # run_test test_xyz test_mav_pos_ctrl
 # run_test test_xyz test_mav_waypoints
 ## XYZ-COMPUTER-VISION
+# -- Image
 # run_test test_xyz test_image_malloc
 # run_test test_xyz test_image_save_png
 # run_test test_xyz test_image_fill
@@ -233,37 +290,54 @@ run_test() {
 # run_test test_xyz test_image_draw_string
 # run_test test_xyz test_image_draw_line_thickness
 # run_test test_xyz test_image_draw_circle_thickness
+# run_test test_xyz test_image_draw_points
 # run_test test_xyz test_image_to_grayscale
-# run_test test_xyz test_image_threshold
+# run_test test_xyz test_image_to_rgb
 # run_test test_xyz test_image_gaussian_blur
+# run_test test_xyz test_image_threshold
 # run_test test_xyz test_image_sobel
 # run_test test_xyz test_image_harris
 # run_test test_xyz test_image_good_features
-run_test test_xyz test_lk_track_translation
-# run_test test_xyz test_radtan4_distort
-# run_test test_xyz test_radtan4_undistort
-# run_test test_xyz test_radtan4_point_jacobian
-# run_test test_xyz test_radtan4_params_jacobian
-# run_test test_xyz test_equi4_distort
-# run_test test_xyz test_equi4_undistort
-# run_test test_xyz test_equi4_point_jacobian
-# run_test test_xyz test_equi4_params_jacobian
+# run_test test_xyz test_image_harris_no_corners
+# run_test test_xyz test_image_downsample_2x
+# run_test test_xyz test_image_upsample_2x
+# run_test test_xyz test_image_gaussian_pyramid
+# run_test test_xyz test_image_laplacian_pyramid
+# run_test test_xyz test_image_bilinear_sample
+# run_test test_xyz test_lk_track_translation
+# run_test test_xyz test_lk_track_no_motion
+# -- Pinhole
 # run_test test_xyz test_pinhole_focal
 # run_test test_xyz test_pinhole_K
 # run_test test_xyz test_pinhole_projection_matrix
 # run_test test_xyz test_pinhole_project
 # run_test test_xyz test_pinhole_point_jacobian
 # run_test test_xyz test_pinhole_params_jacobian
+# -- Radtan4
+# run_test test_xyz test_radtan4_distort
+# run_test test_xyz test_radtan4_undistort
+# run_test test_xyz test_radtan4_point_jacobian
+# run_test test_xyz test_radtan4_params_jacobian
+# -- Equi4
+# run_test test_xyz test_equi4_distort
+# run_test test_xyz test_equi4_undistort
+# run_test test_xyz test_equi4_point_jacobian
+# run_test test_xyz test_equi4_params_jacobian
+# -- Pinhole-Radtan4
 # run_test test_xyz test_pinhole_radtan4_project
 # run_test test_xyz test_pinhole_radtan4_project_jacobian
 # run_test test_xyz test_pinhole_radtan4_params_jacobian
+# -- Pinhole-Equi4
 # run_test test_xyz test_pinhole_equi4_project
 # run_test test_xyz test_pinhole_equi4_project_jacobian
 # run_test test_xyz test_pinhole_equi4_params_jacobian
+# -- Geometry
+# run_test test_xyz test_aa2rot
+# run_test test_xyz test_decompose_essential_matrix
+# run_test test_xyz test_sampson_distance
 # run_test test_xyz test_linear_triangulation
 # run_test test_xyz test_homography_find
 # run_test test_xyz test_homography_pose
-# run_test test_xyz test_p3p_kneip
 # run_test test_xyz test_solvepnp
 # run_test test_xyz test_hedborg_essential_matrix
 ## XYZ-APRILGRID
@@ -276,16 +350,8 @@ run_test test_xyz test_lk_track_translation
 # run_test test_xyz test_aprilgrid_save_and_load
 # run_test test_xyz test_aprilgrid_detector_detect
 ## XYZ-STATE-ESTIMATION
-# run_test test_xyz test_pose
-# run_test test_xyz test_extrinsics
-# run_test test_xyz test_fiducial
-# run_test test_xyz test_fiducial_buffer
-# run_test test_xyz test_imu_biases
 # run_test test_xyz test_feature
-# run_test test_xyz test_features
-# run_test test_xyz test_time_delay
-# run_test test_xyz test_joint
-# run_test test_xyz test_camera_params
+# run_test test_xyz test_camera
 # run_test test_xyz test_triangulate_batch
 # run_test test_xyz test_pose_factor
 # run_test test_xyz test_ba_factor
@@ -304,25 +370,21 @@ run_test test_xyz test_lk_track_translation
 # run_test test_xyz test_calib_imucam_factor
 # run_test test_xyz test_marg_factor
 # run_test test_xyz test_save_and_load_poses
-# run_test test_xyz test_assoc_pose_data
 # run_test test_xyz test_solver_setup
-# run_test test_xyz test_solver_eval
 # run_test test_xyz test_inertial_odometry_batch
 # run_test test_xyz test_bundle_adjustment
-## XYZ-TIMELINE
-# run_test test_xyz test_timeline
 ## XYZ-MORTON-CODES
-# run_test test_xyz test_morton_codes
-# run_test test_xyz test_voxel_downsample
+# run_test test_xyz test_morton_codes_3d
 ## XYZ-POINT CLOUD
 # run_test test_xyz test_umeyama
+## XYZ-VOXEL
+# run_test test_xyz test_voxel_downsample
 ## XYZ-OCTREE
 # run_test test_xyz test_octree_node
 # run_test test_xyz test_octree_node_check_point
 # run_test test_xyz test_octree
 # run_test test_xyz test_octree_get_points
 ## XYZ-KD-TREE
-# run_test test_xyz test_sort
 # run_test test_xyz test_kdtree_node
 # run_test test_xyz test_kdtree
 # run_test test_xyz test_kdtree_nn
@@ -345,40 +407,28 @@ run_test test_xyz test_lk_track_translation
 # run_test test_xyz test_kitti_velodyne_load
 # run_test test_xyz test_kitti_calib_load
 # run_test test_xyz test_kitti_raw_load
-
-# XYZ-GUI
-# run_test test_xyz
+## XYZ-OPENGL
 # run_test test_xyz test_gl_zeros
 # run_test test_xyz test_gl_ones
 # run_test test_xyz test_gl_eye
-# run_test test_xyz test_gl_matf_set
-# run_test test_xyz test_gl_matf_val
-# run_test test_xyz test_gl_transpose
 # run_test test_xyz test_gl_equals
+# run_test test_xyz test_gl_mat_set
+# run_test test_xyz test_gl_mat_val
+# run_test test_xyz test_gl_transpose
 # run_test test_xyz test_gl_vec3_cross
 # run_test test_xyz test_gl_dot
 # run_test test_xyz test_gl_norm
 # run_test test_xyz test_gl_normalize
 # run_test test_xyz test_gl_perspective
+# run_test test_xyz test_gl_ortho
 # run_test test_xyz test_gl_lookat
-# run_test test_xyz test_gl_shader_compile
-# run_test test_xyz test_gl_shaders_link
-# run_test test_xyz test_gl_prog_setup
+# run_test test_xyz test_gl_compile
+# run_test test_xyz test_gl_link
+# run_test test_xyz test_gl_shader
 # run_test test_xyz test_gl_camera_setup
+# run_test test_xyz test_gl_model_load
 # run_test test_xyz test_gui
-# run_test test_xyz test_gl_rect
-# run_test test_xyz test_gl_points3d
-# run_test test_xyz test_gl_line3d
-# run_test test_xyz test_gl_cube3d
-# run_test test_xyz test_gl_axes3d
-# run_test test_xyz test_gl_grid3d
-# run_test test_xyz test_gl_image
-# run_test test_xyz test_gl_text
-# run_test test_imshow
 
-# XYZ-SE
-# run_test test_se
-# run_test test_se test_icp
-# run_test test_se test_kitti
+run_test test_xyz test_sandbox
 
 # make tools

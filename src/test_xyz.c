@@ -9788,7 +9788,7 @@ int test_gl_text(void) {
 
 // TEST SANDBOX //////////////////////////////////////////////////////////////
 
-int test_sandbox(void) {
+int test_gui_sandbox(void) {
   GLFWwindow *window = test_setup();
 
   // // Render loop
@@ -9803,6 +9803,32 @@ int test_sandbox(void) {
 
   // Clean up
   test_teardown(window);
+
+  return 0;
+}
+
+int test_sandbox(void) {
+  const char data_path[1024] = "/data/euroc/MH_01";
+  euroc_data_t *test_data = euroc_data_load(data_path);
+
+  euroc_camera_t *cam0_data = test_data->cam0_data;
+  image_t *image = image_load(cam0_data->image_paths[0]);
+  imagef32_t *imagef32 = image_to_float(image);
+
+  imagef32_t *grad_x = imagef32_malloc(image->width, image->height, 1);
+  imagef32_t *grad_y = imagef32_malloc(image->width, image->height, 1);
+  imagef32_t *grad_mag = imagef32_malloc(image->width, image->height, 1);
+  imagef32_central_gradients(imagef32, grad_x, grad_y, grad_mag);
+
+  imagef32_save_png(grad_x, "/tmp/grad_x.png");
+  imagef32_save_png(grad_y, "/tmp/grad_y.png");
+  imagef32_save_png(grad_mag, "/tmp/grad_mag.png");
+
+  imagef32_free(grad_x);
+  imagef32_free(grad_y);
+  imagef32_free(grad_mag);
+  imagef32_free(imagef32);
+  image_free(image);
 
   return 0;
 }
@@ -10203,7 +10229,8 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_grid3d);
   // MU_ADD_TEST(test_gl_image);
   // MU_ADD_TEST(test_gl_text);
-  // MU_ADD_TEST(test_sandbox);
+  // MU_ADD_TEST(test_gui_sandbox);
 #endif
+  MU_ADD_TEST(test_sandbox);
 }
 MU_RUN_TESTS(test_suite)

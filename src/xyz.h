@@ -1500,6 +1500,20 @@ typedef struct color_t {
 #define COLOR_TURQUOISE ((color_t){64, 224, 208})
 #define COLOR_CRIMSON ((color_t){220, 20, 60})
 
+//////////////
+// KEYPOINT //
+//////////////
+
+typedef struct keypoint_t {
+  int x;
+  int y;
+  float score;
+} keypoint_t;
+
+////////////
+// IMAGE  //
+////////////
+
 typedef struct image_t {
   int width;
   int height;
@@ -1507,11 +1521,20 @@ typedef struct image_t {
   uint8_t *data;
 } image_t;
 
+typedef struct imagef32_t {
+  int width;
+  int height;
+  int channels;
+  float *data;
+} imagef32_t;
+
+
 image_t *image_malloc(const int width, const int height, const int channels);
 void image_free(image_t *img);
 image_t *image_load(const char *file_path);
 image_t *image_to_grayscale(const image_t *img);
 image_t *image_to_rgb(const image_t *img);
+imagef32_t *image_to_float(const image_t *img);
 void image_save_png(const image_t *img, const char *file_path);
 void image_print(const image_t *img);
 void image_fill(image_t *img, const color_t color);
@@ -1577,12 +1600,6 @@ image_t *image_gaussian_blur(const image_t *img,
 image_t *image_threshold(const image_t *img, const uint8_t threshold);
 image_t *image_sobel(const image_t *img);
 
-typedef struct keypoint_t {
-  int x;
-  int y;
-  float score;
-} keypoint_t;
-
 void image_draw_points(image_t *img,
                        const keypoint_t *points,
                        const int num_points,
@@ -1635,6 +1652,17 @@ void lk_track(const image_t *img0,
               const int num_levels,
               const float sigma,
               lk_track_t *tracks);
+
+imagef32_t *imagef32_malloc(const int width,
+                            const int height,
+                            const int channels);
+void imagef32_free(imagef32_t *img);
+image_t *imagef32_to_image(const imagef32_t *img);
+void imagef32_save_png(const imagef32_t *img, const char *file_path);
+void imagef32_central_gradients(const imagef32_t *image,
+                                imagef32_t *grad_x,
+                                imagef32_t *grad_y,
+                                imagef32_t *grad_mag);
 
 /////////////
 // PINHOLE //

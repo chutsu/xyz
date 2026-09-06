@@ -8125,6 +8125,26 @@ image_t *image_to_rgb(const image_t *img) {
 }
 
 /**
+ * Convert an image to a floating-point image.
+ *
+ * Each 8-bit pixel/channel value is kept as its raw value (0-255).
+ *
+ * @param[in] img  Input image
+ * @returns  Heap-allocated floating-point image (free with imagef32_free)
+ */
+imagef32_t *image_to_float(const image_t *img) {
+  assert(img != NULL);
+
+  imagef32_t *out = imagef32_malloc(img->width, img->height, img->channels);
+  const int n = img->width * img->height * img->channels;
+  for (int i = 0; i < n; i++) {
+    out->data[i] = (float) img->data[i];
+  }
+
+  return out;
+}
+
+/**
  * Save `img` to a PNG file at `file_path`.
  *
  * If `file_path` does not already end with a ".png" extension, one is
@@ -8136,7 +8156,8 @@ void image_save_png(const image_t *img, const char *file_path) {
 
   char path[4096] = {0};
   const size_t len = strlen(file_path);
-  const bool has_png_ext = len >= 4 && strncasecmp(file_path + len - 4, ".png", 4) == 0;
+  const bool has_png_ext =
+      len >= 4 && strncasecmp(file_path + len - 4, ".png", 4) == 0;
   if (has_png_ext) {
     snprintf(path, sizeof(path), "%s", file_path);
   } else {
@@ -9598,6 +9619,141 @@ void lk_track(const image_t *img0,
     image_free(pyr1[i]);
   }
   free(pyr1);
+}
+
+///////////////////
+// IMAGE FLOAT32 //
+///////////////////
+
+/**
+ * Allocate a floating-point image.
+ */
+imagef32_t *imagef32_malloc(const int width,
+                            const int height,
+                            const int channels) {
+  assert(width > 0);
+  assert(height > 0);
+  assert(channels == 1 || channels == 3 || channels == 4);
+
+  imagef32_t *img = malloc(sizeof(imagef32_t));
+  img->width = width;
+  img->height = height;
+  img->channels = channels;
+  img->data = calloc((size_t) width * height * channels, sizeof(float));
+  return img;
+}
+
+/**
+ * Free a floating-point image.
+ */
+void imagef32_free(imagef32_t *img) {
+  assert(img != NULL);
+  free(img->data);
+  free(img);
+}
+
+
+/**
+ * Convert a floating-point image back to an 8-bit image.
+ *
+ * Values are clamped to [0, 255]. Values outside that range are saturated at
+ * the bounds, and fractional values are rounded to the nearest integer.
+ *
+ * @param[in] img  Input floating-point image
+ * @returns  Heap-allocated 8-bit image (free with image_free)
+ */
+image_t *imagef32_to_image(const imagef32_t *img) {
+  assert(img != NULL);
+
+  image_t *out = image_malloc(img->width, img->height, img->channels);
+  const int n = img->width * img->height * img->channels;
+  for (int i = 0; i < n; i++) {
+    float v = img->data[i];
+    if (v < 0.0f) {
+      v = 0.0f;
+    } else if (v > 255.0f) {
+      v = 255.0f;
+    }
+    out->data[i] = (uint8_t) (v + 0.5f);
+  }
+
+  return out;
+}
+
+/**
+ * Save a floating-point image to a PNG file at `file_path`.
+ *
+ * Values are clamped to [0, 255] and rounded to the nearest integer before
+ * writing. If `file_path` does not already end with a ".png" extension, one
+ * is appended.
+ *
+ * @param[in] img  Input floating-point image
+ * @param[in] file_path  Output PNG path
+ */
+void imagef32_save_png(const imagef32_t *img, const char *file_path) {
+  assert(img != NULL);
+  assert(file_path != NULL);
+
+  image_t *tmp = imagef32_to_image(img);
+  image_save_png(tmp, file_path);
+  image_free(tmp);
+}
+
+/**
+ * Compute the central-difference image gradients.
+ *
+ * For each interior pixel, the x and y gradients are computed with central
+ * differences using a 3x3 neighbourhood:
+ *
+ *   gx = 0.5 * (I[x+1] - I[x-1])
+ *   gy = 0.5 * (I[y+1] - I[y-1])
+ *
+ * The gradient magnitude is computed as `sqrt(gx^2 + gy^2)`. Border pixels
+ * have their gradients and magnitude set to zero.
+ *
+ * @param[in]  image     Input single-channel float image
+ * @param[out] grad_x    Output x-gradient (same dims as `image`)
+ * @param[out] grad_y    Output y-gradient (same dims as `image`)
+ * @param[out] grad_mag  Output gradient magnitude (same dims as `image`)
+ */
+void imagef32_central_gradients(const imagef32_t *image,
+                                imagef32_t *grad_x,
+                                imagef32_t *grad_y,
+                                imagef32_t *grad_mag) {
+  // Setup
+  const int w = image->width;
+  const int h = image->height;
+
+  // Zero out borders
+  for (int x = 0; x < w; ++x) {
+    grad_x->data[x] = 0.0f;
+    grad_x->data[(h - 1) * w + x] = 0.0f;
+    grad_y->data[x] = 0.0f;
+    grad_y->data[(h - 1) * w + x] = 0.0f;
+  }
+  for (int y = 0; y < h; ++y) {
+    grad_x->data[y * w] = 0.0f;
+    grad_x->data[y * w + (w - 1)] = 0.0f;
+    grad_y->data[y * w] = 0.0f;
+    grad_y->data[y * w + (w - 1)] = 0.0f;
+  }
+
+  // Inner pixels: 0.5 * (I[x+1] - I[x-1])
+  for (int y = 1; y < h - 1; ++y) {
+    const float *row_prev = &image->data[(y - 1) * w];
+    const float *row_curr = &image->data[y * w];
+    const float *row_next = &image->data[(y + 1) * w];
+
+    for (int x = 1; x < w - 1; ++x) {
+      const int idx = y * w + x;
+      const float gx = 0.5f * (row_curr[x + 1] - row_curr[x - 1]);
+      const float gy = 0.5f * (row_next[x] - row_prev[x]);
+
+      grad_x->data[idx] = gx;
+      grad_y->data[idx] = gy;
+      grad_mag->data[idx] = sqrtf(gx * gx + gy * gy);
+    }
+  }
 }
 
 /////////////
