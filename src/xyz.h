@@ -1531,6 +1531,7 @@ typedef struct imagef32_t {
 
 image_t *image_malloc(const int width, const int height, const int channels);
 void image_free(image_t *img);
+image_t *image_clone(const image_t *img);
 image_t *image_load(const char *file_path);
 image_t *image_to_grayscale(const image_t *img);
 image_t *image_to_rgb(const image_t *img);
@@ -1657,6 +1658,7 @@ imagef32_t *imagef32_malloc(const int width,
                             const int height,
                             const int channels);
 void imagef32_free(imagef32_t *img);
+imagef32_t *imagef32_clone(const imagef32_t *img);
 image_t *imagef32_to_image(const imagef32_t *img);
 void imagef32_save_png(const imagef32_t *img, const char *file_path);
 void imagef32_central_gradients(const imagef32_t *image,

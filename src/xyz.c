@@ -8034,6 +8034,21 @@ void image_free(image_t *img) {
 }
 
 /**
+ * Deep copy an image.
+ *
+ * @param[in] img  Input image
+ * @returns  Heap-allocated copy (free with image_free)
+ */
+image_t *image_clone(const image_t *img) {
+  assert(img != NULL);
+
+  image_t *out = image_malloc(img->width, img->height, img->channels);
+  const size_t n = (size_t) img->width * img->height * img->channels;
+  memcpy(out->data, img->data, n * sizeof(uint8_t));
+  return out;
+}
+
+/**
  * Load image at `file_path`.
  * @returns Heap allocated image
  */
@@ -9650,6 +9665,21 @@ void imagef32_free(imagef32_t *img) {
   assert(img != NULL);
   free(img->data);
   free(img);
+}
+
+/**
+ * Deep copy a floating-point image.
+ *
+ * @param[in] img  Input floating-point image
+ * @returns  Heap-allocated copy (free with imagef32_free)
+ */
+imagef32_t *imagef32_clone(const imagef32_t *img) {
+  assert(img != NULL);
+
+  imagef32_t *out = imagef32_malloc(img->width, img->height, img->channels);
+  const size_t n = (size_t) img->width * img->height * img->channels;
+  memcpy(out->data, img->data, n * sizeof(float));
+  return out;
 }
 
 
