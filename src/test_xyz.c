@@ -9807,6 +9807,191 @@ int test_gui_sandbox(void) {
   return 0;
 }
 
+// Helper: Comparator for qsort to find median gradient
+static int float_compare(const void *a, const void *b) {
+  float fa = *(const float *) a;
+  float fb = *(const float *) b;
+  return (fa > fb) - (fa < fb);
+}
+
+/**
+ * Compute gradient-based residual weights for the 8 points of the DSO
+ * pattern centred at (px, py).
+ *
+ * For each pattern point, the weight is computed from the local gradient
+ * magnitude using the DSO soft-saturation model:
+ *
+ *   w_p = c^2 / (c^2 + ||grad||^2)
+ *
+ * where `c^2 = 50`. Points that fall outside the image bounds receive a
+ * weight of zero.
+ *
+ * @param[in]  px       Centre x coordinate
+ * @param[in]  py       Centre y coordinate
+ * @param[in]  grad_x   Pre-allocated x-gradient image (width * height)
+ * @param[in]  grad_y   Pre-allocated y-gradient image (width * height)
+ * @param[in]  width    Image width
+ * @param[in]  height   Image height
+ * @param[out] weights  Output weight for each of the 8 pattern points
+ */
+void evaluate_pattern_weights(int px,
+                              int py,
+                              const float *grad_x,
+                              const float *grad_y,
+                              int width,
+                              int height,
+                              float weights[8]) {
+  const float c_squared = 50.0f; // Soft saturation constant
+  static const int PATTERN_OFFSETS[8][2] = {
+      {0, 0},   // Center
+      {0, -2},  // Top
+      {-1, -1}, // Top-Left
+      {1, -1},  // Top-Right
+      {-2, 0},  // Left
+      {2, 0},   // Right
+      {-1, 1},  // Bottom-Left
+      {0, 2}    // Bottom
+  };
+
+  for (int i = 0; i < 8; ++i) {
+    int nx = px + PATTERN_OFFSETS[i][0];
+    int ny = py + PATTERN_OFFSETS[i][1];
+
+    // Boundary check
+    if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+      weights[i] = 0.0f;
+      continue;
+    }
+
+    int idx = ny * width + nx;
+    float gx = grad_x[idx];
+    float gy = grad_y[idx];
+    float grad_sq = gx * gx + gy * gy;
+
+    // DSO gradient-based residual weighting: w_p = c^2 / (c^2 + ||grad||^2)
+    weights[i] = c_squared / (c_squared + grad_sq);
+  }
+}
+
+/**
+ * Select up to `max_points` candidate keypoints from a gradient magnitude
+ * image using a hierarchical block-based thresholding scheme.
+ *
+ * Per-pixel gradient magnitudes are evaluated against a per-32x32-block
+ * adaptive threshold (block median + G_MIN). Candidate points are selected
+ * greedily from blocks of decreasing size, with the strongest gradient in
+ * each block chosen first.
+ *
+ * @param[in]  grad_mag    Single-channel gradient magnitude image
+ * @param[in]  width       Image width
+ * @param[in]  height      Image height
+ * @param[out] out_points  Pre-allocated array (at least `max_points`) of
+ *                         selected keypoints, each with score from grad_mag
+ * @param[in]  max_points  Maximum number of points to select
+ * @returns  Number of selected keypoints
+ */
+int select_candidate_points(const float *grad_mag,
+                            int width,
+                            int height,
+                            keypoint_t *out_points,
+                            int max_points) {
+  // Configuration constants
+  const int BLOCK_SIZE_L0 = 32;
+  const int BLOCK_SIZE_L1 = 16;
+  const int BLOCK_SIZE_L2 = 8;
+  const float G_MIN = 7.0f;
+
+  int grid_cols = width / BLOCK_SIZE_L0;
+  int grid_rows = height / BLOCK_SIZE_L0;
+  int total_blocks = grid_cols * grid_rows;
+
+  float *block_thresholds = (float *) malloc(total_blocks * sizeof(float));
+  float patch_buffer[BLOCK_SIZE_L0 * BLOCK_SIZE_L0];
+
+  // Compute median gradient per 32x32 block
+  for (int r = 0; r < grid_rows; ++r) {
+    for (int c = 0; c < grid_cols; ++c) {
+      int count = 0;
+      for (int py = 0; py < BLOCK_SIZE_L0; ++py) {
+        for (int px = 0; px < BLOCK_SIZE_L0; ++px) {
+          int img_x = c * BLOCK_SIZE_L0 + px;
+          int img_y = r * BLOCK_SIZE_L0 + py;
+          patch_buffer[count++] = grad_mag[img_y * width + img_x];
+        }
+      }
+
+      qsort(patch_buffer, count, sizeof(float), float_compare);
+      float g_median = patch_buffer[count / 2];
+      block_thresholds[r * grid_cols + c] = g_median + G_MIN;
+    }
+  }
+
+  // Track selected pixels to avoid duplicates
+  bool *selected_map = (bool *) calloc(width * height, sizeof(bool));
+  int point_count = 0;
+
+  int sub_sizes[3] = {BLOCK_SIZE_L0, BLOCK_SIZE_L1, BLOCK_SIZE_L2};
+  float factors[3] = {1.0f, 0.75f, 0.5f};
+
+  // Hierarchical passes
+  for (int pass = 0; pass < 3; ++pass) {
+    int curr_size = sub_sizes[pass];
+    float factor = factors[pass];
+
+    for (int y = 0; y <= height - curr_size; y += curr_size) {
+      for (int x = 0; x <= width - curr_size; x += curr_size) {
+
+        if (point_count >= max_points)
+          goto cleanup;
+
+        int parent_r = y / BLOCK_SIZE_L0;
+        int parent_c = x / BLOCK_SIZE_L0;
+
+        // Clamp parent index for frame edge remainder pixels
+        if (parent_r >= grid_rows) {
+          parent_r = grid_rows - 1;
+        }
+        if (parent_c >= grid_cols) {
+          parent_c = grid_cols - 1;
+        }
+
+        float thresh =
+            block_thresholds[parent_r * grid_cols + parent_c] * factor;
+
+        float best_grad = -1.0f;
+        int best_x = -1, best_y = -1;
+
+        for (int py = y; py < y + curr_size; ++py) {
+          for (int px = x; px < x + curr_size; ++px) {
+            int idx = py * width + px;
+            float g = grad_mag[idx];
+
+            if (g > thresh && g > best_grad && !selected_map[idx]) {
+              best_grad = g;
+              best_x = px;
+              best_y = py;
+            }
+          }
+        }
+
+        if (best_x != -1) {
+          int idx = best_y * width + best_x;
+          selected_map[idx] = true;
+          out_points[point_count].x = best_x;
+          out_points[point_count].y = best_y;
+          out_points[point_count].score = best_grad;
+          point_count++;
+        }
+      }
+    }
+  }
+
+cleanup:
+  free(block_thresholds);
+  free(selected_map);
+  return point_count;
+}
+
 int test_sandbox(void) {
   const char data_path[1024] = "/data/euroc/MH_01";
   euroc_data_t *test_data = euroc_data_load(data_path);
@@ -9819,6 +10004,33 @@ int test_sandbox(void) {
   imagef32_t *grad_y = imagef32_malloc(image->width, image->height, 1);
   imagef32_t *grad_mag = imagef32_malloc(image->width, image->height, 1);
   imagef32_central_gradients(imagef32, grad_x, grad_y, grad_mag);
+
+  int max_points = 2000;
+  keypoint_t *out_points = malloc(sizeof(keypoint_t) * max_points);
+  int num_selected = select_candidate_points(grad_mag->data,
+                                             grad_mag->width,
+                                             grad_mag->height,
+                                             out_points,
+                                             max_points);
+
+  for (int i = 0; i < (num_selected < 3 ? num_selected : 3); ++i) {
+    keypoint_t kp = out_points[i];
+    float pattern_weights[8];
+
+    evaluate_pattern_weights(kp.x,
+                             kp.y,
+                             grad_x->data,
+                             grad_y->data,
+                             grad_mag->width,
+                             grad_mag->height,
+                             pattern_weights);
+
+    printf("   - Point %d at (%d, %d) | Weights: [", i, kp.x, kp.y);
+    for (int k = 0; k < 8; ++k) {
+      printf("%.3f%s", pattern_weights[k], (k < 7) ? ", " : "");
+    }
+    printf("]\n");
+  }
 
   imagef32_save_png(grad_x, "/tmp/grad_x.png");
   imagef32_save_png(grad_y, "/tmp/grad_y.png");

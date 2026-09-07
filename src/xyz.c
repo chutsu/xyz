@@ -8451,12 +8451,12 @@ void image_draw_points(image_t *img,
 //   Col 4 (0x7E = 0b01111110): rows 1-5 on
 //
 //   Rendered:
-//     .XXX.
-//     X...X
-//     X...X
-//     XXXXX
-//     X...X
-//     X...X
+//     .xxx.
+//     x...x
+//     x...x
+//     xxxxx
+//     x...x
+//     x...x
 //     .....
 //
 // Each byte maps to a column of pixels like this:
@@ -9681,7 +9681,6 @@ imagef32_t *imagef32_clone(const imagef32_t *img) {
   memcpy(out->data, img->data, n * sizeof(float));
   return out;
 }
-
 
 /**
  * Convert a floating-point image back to an 8-bit image.
