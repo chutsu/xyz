@@ -9450,58 +9450,44 @@ uint8_t image_bilinear_sample(const image_t *img,
  * @param[in] y    Sample y coordinate
  * @returns  Interpolated value
  */
-float imagef32_bilinear_sample(const imagef32_t *img, const float x,
+float imagef32_bilinear_sample(const imagef32_t *img,
+                               const float x,
                                const float y) {
   assert(img != NULL);
   assert(img->channels == 1);
 
-  int x0 = (int) x;
-  int y0 = (int) y;
+  const int w = img->width;
+  const int h = img->height;
+
+  // Degenerate images are a single pixel, return it directly.
+  if (w < 2 || h < 2) {
+    return img->data[0];
+  }
+
+  // Clamp the sample coordinate so x0/x1 and y0/y1 stay in-bounds and
+  // dx/dy fall in [0, 1] -- branchless (SSE min/max), no per-corner ifs.
+  float cx = fminf(fmaxf(x, 0.5f), (float) w - 1.5f);
+  float cy = fminf(fmaxf(y, 0.5f), (float) h - 1.5f);
+
+  int x0 = (int) cx;
+  int y0 = (int) cy;
   int x1 = x0 + 1;
   int y1 = y0 + 1;
 
-  if (x0 < 0) {
-    x0 = 0;
-  }
-  if (y0 < 0) {
-    y0 = 0;
-  }
-  if (x1 >= img->width) {
-    x1 = img->width - 1;
-  }
-  if (y1 >= img->height) {
-    y1 = img->height - 1;
-  }
-  if (x0 >= img->width) {
-    x0 = img->width - 1;
-  }
-  if (y0 >= img->height) {
-    y0 = img->height - 1;
-  }
+  float dx = cx - (float) x0;
+  float dy = cy - (float) y0;
 
-  float dx = x - (float) x0;
-  float dy = y - (float) y0;
-  if (dx < 0.0f) {
-    dx = 0.0f;
-  }
-  if (dx > 1.0f) {
-    dx = 1.0f;
-  }
-  if (dy < 0.0f) {
-    dy = 0.0f;
-  }
-  if (dy > 1.0f) {
-    dy = 1.0f;
-  }
+  float v00 = img->data[y0 * w + x0];
+  float v10 = img->data[y0 * w + x1];
+  float v01 = img->data[y1 * w + x0];
+  float v11 = img->data[y1 * w + x1];
 
-  float v00 = img->data[y0 * img->width + x0];
-  float v10 = img->data[y0 * img->width + x1];
-  float v01 = img->data[y1 * img->width + x0];
-  float v11 = img->data[y1 * img->width + x1];
-
-  return v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) +
-         v01 * (1 - dx) * dy + v11 * dx * dy;
+  return v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) + v01 * (1 - dx) * dy +
+         v11 * dx * dy;
 }
+
+static void imagef32_central_gradients_interleaved(const imagef32_t *image,
+                                                   float *gxy);
 
 /**
  * Track keypoints from img0 to img1 using pyramidal Lucas-Kanade.
@@ -9569,12 +9555,12 @@ void lk_track(const image_t *img0,
 
     // Spatial gradient is taken from the second (target) image, since the
     // linearisation of I1 around the current warped position is what drives
-    // the Gauss-Newton update in the forward-additive formulation.
+    // the Gauss-Newton update in the forward-additive formulation. Gradients
+    // are stored interleaved as [gx, gy] pairs so both components are sampled
+    // with a single bilinear interpolation.
     imagef32_t *img1 = image_to_float(pyr1[level]);
-    imagef32_t *Ix = imagef32_malloc(w, h, 1);
-    imagef32_t *Iy = imagef32_malloc(w, h, 1);
-    imagef32_t *Imag = imagef32_malloc(w, h, 1);
-    imagef32_central_gradients(img1, Ix, Iy, Imag);
+    float *gxy = malloc(sizeof(float) * 2 * w * h);
+    imagef32_central_gradients_interleaved(img1, gxy);
 
     // Track each keypoint
     for (int i = 0; i < num_kp; i++) {
@@ -9610,9 +9596,23 @@ void lk_track(const image_t *img0,
             uint8_t t1 = image_bilinear_sample(I1, sx1, sy1, 0);
             float it = (float) t1 - (float) t0;
 
-            // Bilinearly interpolate the gradient at the warped position
-            float gx = imagef32_bilinear_sample(Ix, sx1, sy1);
-            float gy = imagef32_bilinear_sample(Iy, sx1, sy1);
+            // Bilinearly interpolate the interleaved [gx, gy] gradient at the
+            // warped position. The bounds checks above guarantee sx1/sy1 are
+            // at least 1px from the border, so no clamping is needed here.
+            int ix = (int) sx1;
+            int iy = (int) sy1;
+            float dxg = sx1 - (float) ix;
+            float dyg = sy1 - (float) iy;
+            const float *p00 = &gxy[2 * (iy * w + ix)];
+            const float *p10 = p00 + 2;
+            const float *p01 = p00 + 2 * w;
+            const float *p11 = p01 + 2;
+            float w00 = (1 - dxg) * (1 - dyg);
+            float w10 = dxg * (1 - dyg);
+            float w01 = (1 - dxg) * dyg;
+            float w11 = dxg * dyg;
+            float gx = w00 * p00[0] + w10 * p10[0] + w01 * p01[0] + w11 * p11[0];
+            float gy = w00 * p00[1] + w10 * p10[1] + w01 * p01[1] + w11 * p11[1];
 
             A00 += gx * gx;
             A01 += gx * gy;
@@ -9654,9 +9654,7 @@ void lk_track(const image_t *img0,
     }
 
     imagef32_free(img1);
-    imagef32_free(Ix);
-    imagef32_free(Iy);
-    imagef32_free(Imag);
+    free(gxy);
   }
 
   // Free pyramids
@@ -9777,44 +9775,68 @@ void imagef32_save_png(const imagef32_t *img, const char *file_path) {
  * @param[out] grad_y    Output y-gradient (same dims as `image`)
  * @param[out] grad_mag  Output gradient magnitude (same dims as `image`)
  */
-void imagef32_central_gradients(const imagef32_t *image,
-                                imagef32_t *grad_x,
-                                imagef32_t *grad_y,
-                                imagef32_t *grad_mag) {
-  // Setup
+/**
+ * Compute central-difference gradients into an interleaved [gx, gy] buffer.
+ *
+ * Border pixels are zeroed. The buffer is 2 * width * height floats laid out
+ * as (gx, gy) pairs per pixel, which lets the caller sample both components
+ * with a single bilinear interpolation.
+ *
+ * @param[in]  image  Input float image (single channel)
+ * @param[out] gxy    Interleaved [gx, gy] gradient buffer (2 * wh floats)
+ */
+static void imagef32_central_gradients_interleaved(const imagef32_t *image,
+                                                   float *gxy) {
   const int w = image->width;
   const int h = image->height;
 
-  // Zero out borders
   for (int x = 0; x < w; ++x) {
-    grad_x->data[x] = 0.0f;
-    grad_x->data[(h - 1) * w + x] = 0.0f;
-    grad_y->data[x] = 0.0f;
-    grad_y->data[(h - 1) * w + x] = 0.0f;
+    gxy[2 * x] = 0.0f;
+    gxy[2 * x + 1] = 0.0f;
+    gxy[2 * ((h - 1) * w + x)] = 0.0f;
+    gxy[2 * ((h - 1) * w + x) + 1] = 0.0f;
   }
   for (int y = 0; y < h; ++y) {
-    grad_x->data[y * w] = 0.0f;
-    grad_x->data[y * w + (w - 1)] = 0.0f;
-    grad_y->data[y * w] = 0.0f;
-    grad_y->data[y * w + (w - 1)] = 0.0f;
+    gxy[2 * (y * w)] = 0.0f;
+    gxy[2 * (y * w) + 1] = 0.0f;
+    gxy[2 * (y * w + (w - 1))] = 0.0f;
+    gxy[2 * (y * w + (w - 1)) + 1] = 0.0f;
   }
 
-  // Inner pixels: 0.5 * (I[x+1] - I[x-1])
   for (int y = 1; y < h - 1; ++y) {
     const float *row_prev = &image->data[(y - 1) * w];
     const float *row_curr = &image->data[y * w];
     const float *row_next = &image->data[(y + 1) * w];
+    float *row_out = &gxy[2 * (y * w)];
 
     for (int x = 1; x < w - 1; ++x) {
-      const int idx = y * w + x;
       const float gx = 0.5f * (row_curr[x + 1] - row_curr[x - 1]);
       const float gy = 0.5f * (row_next[x] - row_prev[x]);
-
-      grad_x->data[idx] = gx;
-      grad_y->data[idx] = gy;
-      grad_mag->data[idx] = sqrtf(gx * gx + gy * gy);
+      row_out[2 * x] = gx;
+      row_out[2 * x + 1] = gy;
     }
   }
+}
+
+void imagef32_central_gradients(const imagef32_t *image,
+                                imagef32_t *grad_x,
+                                imagef32_t *grad_y,
+                                imagef32_t *grad_mag) {
+  const int w = image->width;
+  const int h = image->height;
+
+  float *gxy = malloc(sizeof(float) * 2 * w * h);
+  imagef32_central_gradients_interleaved(image, gxy);
+
+  for (int i = 0; i < w * h; ++i) {
+    const float gx = gxy[2 * i];
+    const float gy = gxy[2 * i + 1];
+    grad_x->data[i] = gx;
+    grad_y->data[i] = gy;
+    grad_mag->data[i] = sqrtf(gx * gx + gy * gy);
+  }
+
+  free(gxy);
 }
 
 /////////////
