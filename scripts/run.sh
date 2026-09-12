@@ -429,6 +429,6 @@ run_test() {
 # run_test test_xyz test_gl_model_load
 # run_test test_xyz test_gui
 
-run_test test_xyz test_sandbox
+run_test test_xyz test_sandbox_optflow
 
 # make tools

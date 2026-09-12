@@ -9891,8 +9891,8 @@ void evaluate_pattern_weights(int px,
  * @returns  Number of selected keypoints
  */
 int select_candidate_points(const float *grad_mag,
-                            int width,
-                            int height,
+                            const int width,
+                            const int height,
                             keypoint_t *out_points,
                             int max_points) {
   // Configuration constants
@@ -9905,10 +9905,10 @@ int select_candidate_points(const float *grad_mag,
   int grid_rows = height / BLOCK_SIZE_L0;
   int total_blocks = grid_cols * grid_rows;
 
-  float *block_thresholds = (float *) malloc(total_blocks * sizeof(float));
+  float *block_thresholds = malloc(sizeof(float) * total_blocks);
   float patch_buffer[BLOCK_SIZE_L0 * BLOCK_SIZE_L0];
 
-  // Compute median gradient per 32x32 block
+  // Compute median gradient per L0 block
   for (int r = 0; r < grid_rows; ++r) {
     for (int c = 0; c < grid_cols; ++c) {
       int count = 0;
@@ -9921,13 +9921,13 @@ int select_candidate_points(const float *grad_mag,
       }
 
       qsort(patch_buffer, count, sizeof(float), float_compare);
-      float g_median = patch_buffer[count / 2];
+      const float g_median = patch_buffer[count / 2];
       block_thresholds[r * grid_cols + c] = g_median + G_MIN;
     }
   }
 
   // Track selected pixels to avoid duplicates
-  bool *selected_map = (bool *) calloc(width * height, sizeof(bool));
+  int *selected_map = calloc(width * height, sizeof(int));
   int point_count = 0;
 
   int sub_sizes[3] = {BLOCK_SIZE_L0, BLOCK_SIZE_L1, BLOCK_SIZE_L2};
@@ -9935,8 +9935,8 @@ int select_candidate_points(const float *grad_mag,
 
   // Hierarchical passes
   for (int pass = 0; pass < 3; ++pass) {
-    int curr_size = sub_sizes[pass];
-    float factor = factors[pass];
+    const int curr_size = sub_sizes[pass];
+    const float factor = factors[pass];
 
     for (int y = 0; y <= height - curr_size; y += curr_size) {
       for (int x = 0; x <= width - curr_size; x += curr_size) {
@@ -9959,8 +9959,8 @@ int select_candidate_points(const float *grad_mag,
             block_thresholds[parent_r * grid_cols + parent_c] * factor;
 
         float best_grad = -1.0f;
-        int best_x = -1, best_y = -1;
-
+        int best_x = -1;
+        int best_y = -1;
         for (int py = y; py < y + curr_size; ++py) {
           for (int px = x; px < x + curr_size; ++px) {
             int idx = py * width + px;
@@ -9992,12 +9992,130 @@ cleanup:
   return point_count;
 }
 
-int test_sandbox(void) {
+int test_sandbox_optflow(void) {
+  const int frame_start = 100;
+  const int num_frames = 20;
+
+  // Setup test data
+  const char data_path[1024] = "/data/euroc/MH_01";
+  euroc_data_t *test_data = euroc_data_load(data_path);
+  euroc_camera_t *cam0_data = test_data->cam0_data;
+
+  // Detect features on the first frame
+  keypoint_t *kps;
+  int kps_count;
+  {
+    image_t *image_0 = image_load(cam0_data->image_paths[frame_start]);
+    const int block_size = 3;
+    const float sigma = 1.0f;
+    const float threshold = 1e4f;
+    image_good_features(image_0,
+                        block_size,
+                        sigma,
+                        threshold,
+                        &kps,
+                        &kps_count);
+    image_t *viz = image_to_rgb(image_0);
+    for (int i = 0; i < kps_count; ++i) {
+      image_draw_points(viz, &kps[i], 1, 1, COLOR_RED);
+    }
+    image_save_png(viz, "/tmp/sandbox/optflow_frame_0.png");
+    image_free(viz);
+    image_free(image_0);
+  }
+
+  // Track features frame-by-frame, chaining positions forward
+  lk_track_t *fwd = malloc(sizeof(lk_track_t) * kps_count);
+  lk_track_t *bwd = malloc(sizeof(lk_track_t) * kps_count);
+  keypoint_t *cur = malloc(sizeof(keypoint_t) * kps_count);
+  keypoint_t *bcur = malloc(sizeof(keypoint_t) * kps_count);
+  float *fx = malloc(sizeof(float) * kps_count);
+  float *fy = malloc(sizeof(float) * kps_count);
+  bool *alive = malloc(sizeof(bool) * kps_count);
+  for (int i = 0; i < kps_count; ++i) {
+    cur[i] = kps[i];
+    fx[i] = (float) kps[i].x;
+    fy[i] = (float) kps[i].y;
+    alive[i] = true;
+  }
+
+  int frame_index = 1;
+  for (int k = frame_start + 1; k < frame_start + num_frames; ++k) {
+    image_t *prev = image_load(cam0_data->image_paths[k - 1]);
+    image_t *curr = image_load(cam0_data->image_paths[k]);
+
+    // Forward tracking prev -> curr
+    lk_track(prev, curr, cur, kps_count, 3, 1.0f, fwd);
+
+    for (int i = 0; i < kps_count; ++i) {
+      if (alive[i] && fwd[i].status == 1) {
+        bcur[i].x = (int) (fx[i] + fwd[i].dx + 0.5f);
+        bcur[i].y = (int) (fy[i] + fwd[i].dy + 0.5f);
+      }
+    }
+
+    // Backward tracking curr -> prev and forward-backward consistency check
+    lk_track(curr, prev, bcur, kps_count, 3, 1.0f, bwd);
+
+    image_t *viz = image_to_rgb(curr);
+    int tracked_count = 0;
+    for (int i = 0; i < kps_count; ++i) {
+      if (!alive[i]) {
+        continue;
+      }
+      if (fwd[i].status == 0 || bwd[i].status == 0) {
+        alive[i] = false;
+        continue;
+      }
+
+      // Round-trip error: following the feature forward and back should
+      // return to where it started
+      float rtx = fwd[i].dx + bwd[i].dx;
+      float rty = fwd[i].dy + bwd[i].dy;
+      if (sqrtf(rtx * rtx + rty * rty) > 1.0f) {
+        alive[i] = false;
+        continue;
+      }
+
+      fx[i] += fwd[i].dx;
+      fy[i] += fwd[i].dy;
+      cur[i].x = (int) (fx[i] + 0.5f);
+      cur[i].y = (int) (fy[i] + 0.5f);
+      tracked_count++;
+      image_draw_points(viz, &cur[i], 1, 1, COLOR_GREEN);
+    }
+    char path[1024];
+    snprintf(path, sizeof(path), "/tmp/sandbox/optflow_frame_%d.png", frame_index++);
+    image_save_png(viz, path);
+    printf("Frame %d: tracked %d/%d keypoints\n", k, tracked_count, kps_count);
+
+    image_free(viz);
+    image_free(prev);
+    image_free(curr);
+  }
+
+  free(alive);
+  free(fx);
+  free(fy);
+  free(cur);
+  free(bcur);
+  free(fwd);
+  free(bwd);
+  free(kps);
+
+  // Clean up
+  euroc_data_free(test_data);
+
+  return 0;
+}
+
+int test_sandbox_direct(void) {
   const char data_path[1024] = "/data/euroc/MH_01";
   euroc_data_t *test_data = euroc_data_load(data_path);
 
   euroc_camera_t *cam0_data = test_data->cam0_data;
   image_t *image = image_load(cam0_data->image_paths[0]);
+  image_t *viz = image_to_rgb(image);
   imagef32_t *imagef32 = image_to_float(image);
 
   imagef32_t *grad_x = imagef32_malloc(image->width, image->height, 1);
@@ -10012,29 +10130,12 @@ int test_sandbox(void) {
                                              grad_mag->height,
                                              out_points,
                                              max_points);
-
-  for (int i = 0; i < (num_selected < 3 ? num_selected : 3); ++i) {
-    keypoint_t kp = out_points[i];
-    float pattern_weights[8];
-
-    evaluate_pattern_weights(kp.x,
-                             kp.y,
-                             grad_x->data,
-                             grad_y->data,
-                             grad_mag->width,
-                             grad_mag->height,
-                             pattern_weights);
-
-    printf("   - Point %d at (%d, %d) | Weights: [", i, kp.x, kp.y);
-    for (int k = 0; k < 8; ++k) {
-      printf("%.3f%s", pattern_weights[k], (k < 7) ? ", " : "");
-    }
-    printf("]\n");
-  }
+  image_draw_points(viz, out_points, num_selected, 2, COLOR_RED);
 
   imagef32_save_png(grad_x, "/tmp/grad_x.png");
   imagef32_save_png(grad_y, "/tmp/grad_y.png");
   imagef32_save_png(grad_mag, "/tmp/grad_mag.png");
+  image_save_png(viz, "/tmp/viz.png");
 
   imagef32_free(grad_x);
   imagef32_free(grad_y);
@@ -10443,6 +10544,7 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_text);
   // MU_ADD_TEST(test_gui_sandbox);
 #endif
-  MU_ADD_TEST(test_sandbox);
+  MU_ADD_TEST(test_sandbox_optflow);
+  MU_ADD_TEST(test_sandbox_direct);
 }
 MU_RUN_TESTS(test_suite)

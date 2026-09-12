@@ -1645,6 +1645,9 @@ uint8_t image_bilinear_sample(const image_t *img,
                               const float x,
                               const float y,
                               const int channel);
+float imagef32_bilinear_sample(const imagef32_t *img,
+                               const float x,
+                               const float y);
 
 void lk_track(const image_t *img0,
               const image_t *img1,

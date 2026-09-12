@@ -9443,6 +9443,67 @@ uint8_t image_bilinear_sample(const image_t *img,
 }
 
 /**
+ * Bilinearly sample a single-channel float image at subpixel coordinates.
+ *
+ * @param[in] img  Input float image (single channel)
+ * @param[in] x    Sample x coordinate
+ * @param[in] y    Sample y coordinate
+ * @returns  Interpolated value
+ */
+float imagef32_bilinear_sample(const imagef32_t *img, const float x,
+                               const float y) {
+  assert(img != NULL);
+  assert(img->channels == 1);
+
+  int x0 = (int) x;
+  int y0 = (int) y;
+  int x1 = x0 + 1;
+  int y1 = y0 + 1;
+
+  if (x0 < 0) {
+    x0 = 0;
+  }
+  if (y0 < 0) {
+    y0 = 0;
+  }
+  if (x1 >= img->width) {
+    x1 = img->width - 1;
+  }
+  if (y1 >= img->height) {
+    y1 = img->height - 1;
+  }
+  if (x0 >= img->width) {
+    x0 = img->width - 1;
+  }
+  if (y0 >= img->height) {
+    y0 = img->height - 1;
+  }
+
+  float dx = x - (float) x0;
+  float dy = y - (float) y0;
+  if (dx < 0.0f) {
+    dx = 0.0f;
+  }
+  if (dx > 1.0f) {
+    dx = 1.0f;
+  }
+  if (dy < 0.0f) {
+    dy = 0.0f;
+  }
+  if (dy > 1.0f) {
+    dy = 1.0f;
+  }
+
+  float v00 = img->data[y0 * img->width + x0];
+  float v10 = img->data[y0 * img->width + x1];
+  float v01 = img->data[y1 * img->width + x0];
+  float v11 = img->data[y1 * img->width + x1];
+
+  return v00 * (1 - dx) * (1 - dy) + v10 * dx * (1 - dy) +
+         v01 * (1 - dx) * dy + v11 * dx * dy;
+}
+
+/**
  * Track keypoints from img0 to img1 using pyramidal Lucas-Kanade.
  *
  * For each keypoint, computes the optical flow by iteratively solving the
@@ -9464,8 +9525,10 @@ void lk_track(const image_t *img0,
               const int num_levels,
               const float sigma,
               lk_track_t *tracks) {
-  assert(img0 != NULL);
-  assert(img1 != NULL);
+  assert(img0 != NULL && img0->channels == 1);
+  assert(img1 != NULL && img1->channels == 1);
+  assert(img0->width == img1->width);
+  assert(img0->height == img1->height);
   assert(kp_in != NULL);
   assert(num_kp > 0);
   assert(num_levels > 0);
@@ -9478,10 +9541,10 @@ void lk_track(const image_t *img0,
   int pyr0_count, pyr1_count;
   image_gaussian_pyramid(img0, num_levels, sigma, &pyr0, &pyr0_count);
   image_gaussian_pyramid(img1, num_levels, sigma, &pyr1, &pyr1_count);
+  assert(pyr0_count == pyr1_count);
+  assert(pyr0_count == num_levels);
 
-  int levels = pyr0_count < pyr1_count ? pyr0_count : pyr1_count;
-
-  const int window_size = 15;
+  const int window_size = 21;
   const int half_win = window_size / 2;
   const int max_iters = 20;
   const float epsilon = 0.01f;
@@ -9494,7 +9557,7 @@ void lk_track(const image_t *img0,
   }
 
   // Process each pyramid level (coarsest to finest)
-  for (int level = levels - 1; level >= 0; level--) {
+  for (int level = num_levels - 1; level >= 0; level--) {
     image_t *I0 = pyr0[level];
     image_t *I1 = pyr1[level];
     const int w = I0->width;
@@ -9504,43 +9567,14 @@ void lk_track(const image_t *img0,
       scale *= 2.0f;
     }
 
-    // Compute gradients on I0
-    const float gx_kern[9] = {-1, 0, 1, -2, 0, 2, -1, 0, 1};
-    const float gy_kern[9] = {-1, -2, -1, 0, 0, 0, 1, 2, 1};
-    const int c = I0->channels;
-
-    float *Ix = malloc(sizeof(float) * w * h);
-    float *Iy = malloc(sizeof(float) * w * h);
-
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        float gx = 0.0f;
-        float gy = 0.0f;
-        for (int ky = -1; ky <= 1; ky++) {
-          for (int kx = -1; kx <= 1; kx++) {
-            int sx = x + kx;
-            int sy = y + ky;
-            if (sx < 0) {
-              sx = 0;
-            }
-            if (sx >= w) {
-              sx = w - 1;
-            }
-            if (sy < 0) {
-              sy = 0;
-            }
-            if (sy >= h) {
-              sy = h - 1;
-            }
-            float val = (float) I0->data[(sy * w + sx) * c];
-            gx += gx_kern[(ky + 1) * 3 + (kx + 1)] * val;
-            gy += gy_kern[(ky + 1) * 3 + (kx + 1)] * val;
-          }
-        }
-        Ix[y * w + x] = gx;
-        Iy[y * w + x] = gy;
-      }
-    }
+    // Spatial gradient is taken from the second (target) image, since the
+    // linearisation of I1 around the current warped position is what drives
+    // the Gauss-Newton update in the forward-additive formulation.
+    imagef32_t *img1 = image_to_float(pyr1[level]);
+    imagef32_t *Ix = imagef32_malloc(w, h, 1);
+    imagef32_t *Iy = imagef32_malloc(w, h, 1);
+    imagef32_t *Imag = imagef32_malloc(w, h, 1);
+    imagef32_central_gradients(img1, Ix, Iy, Imag);
 
     // Track each keypoint
     for (int i = 0; i < num_kp; i++) {
@@ -9576,16 +9610,15 @@ void lk_track(const image_t *img0,
             uint8_t t1 = image_bilinear_sample(I1, sx1, sy1, 0);
             float it = (float) t1 - (float) t0;
 
-            int ix = (int) sx1;
-            int iy = (int) sy1;
-            float ix_val = Ix[iy * w + ix];
-            float iy_val = Iy[iy * w + ix];
+            // Bilinearly interpolate the gradient at the warped position
+            float gx = imagef32_bilinear_sample(Ix, sx1, sy1);
+            float gy = imagef32_bilinear_sample(Iy, sx1, sy1);
 
-            A00 += ix_val * ix_val;
-            A01 += ix_val * iy_val;
-            A11 += iy_val * iy_val;
-            b0 += ix_val * it;
-            b1 += iy_val * it;
+            A00 += gx * gx;
+            A01 += gx * gy;
+            A11 += gy * gy;
+            b0 += gx * it;
+            b1 += gy * it;
           }
         }
 
@@ -9616,23 +9649,22 @@ void lk_track(const image_t *img0,
       if (px < 0.0f || px >= w || py < 0.0f || py >= h) {
         continue;
       }
-
       tracks[i].dx = px * scale - (float) kp_in[i].x;
       tracks[i].dy = py * scale - (float) kp_in[i].y;
     }
 
-    free(Ix);
-    free(Iy);
+    imagef32_free(img1);
+    imagef32_free(Ix);
+    imagef32_free(Iy);
+    imagef32_free(Imag);
   }
 
   // Free pyramids
-  for (int i = 0; i < pyr0_count; i++) {
+  for (int i = 0; i < num_levels; ++i) {
     image_free(pyr0[i]);
-  }
-  free(pyr0);
-  for (int i = 0; i < pyr1_count; i++) {
     image_free(pyr1[i]);
   }
+  free(pyr0);
   free(pyr1);
 }
 
