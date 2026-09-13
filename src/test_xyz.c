@@ -4104,6 +4104,45 @@ int test_image_sobel(void) {
   return 0;
 }
 
+int test_image_histogram_equalize(void) {
+  // Intensities bunched into a narrow range -> low contrast
+  image_t *img = image_malloc(4, 1, 1);
+  img->data[0] = 100;
+  img->data[1] = 105;
+  img->data[2] = 110;
+  img->data[3] = 115;
+
+  image_t *eq = image_histogram_equalize(img);
+  MU_ASSERT(eq != NULL);
+  MU_ASSERT(eq->channels == 1);
+
+  // Darkest input intensity maps to 0, brightest maps to 255, and the
+  // mapping must be monotonically non-decreasing
+  MU_ASSERT(eq->data[0] == 0);
+  MU_ASSERT(eq->data[3] == 255);
+  MU_ASSERT(eq->data[0] <= eq->data[1]);
+  MU_ASSERT(eq->data[1] <= eq->data[2]);
+  MU_ASSERT(eq->data[2] <= eq->data[3]);
+
+  image_free(img);
+  image_free(eq);
+
+  // Constant image (degenerate histogram) must not crash or divide by zero
+  image_t *flat = image_malloc(4, 1, 1);
+  for (int i = 0; i < 4; i++) {
+    flat->data[i] = 42;
+  }
+  image_t *flat_eq = image_histogram_equalize(flat);
+  MU_ASSERT(flat_eq != NULL);
+  for (int i = 0; i < 4; i++) {
+    MU_ASSERT(flat_eq->data[i] == 42);
+  }
+
+  image_free(flat);
+  image_free(flat_eq);
+  return 0;
+}
+
 int test_image_harris(void) {
   image_t *img = image_malloc(20, 20, 3);
   image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
@@ -10403,6 +10442,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_gaussian_blur);
   MU_ADD_TEST(test_image_threshold);
   MU_ADD_TEST(test_image_sobel);
+  MU_ADD_TEST(test_image_histogram_equalize);
   MU_ADD_TEST(test_image_harris);
   MU_ADD_TEST(test_image_good_features);
   MU_ADD_TEST(test_image_harris_no_corners);

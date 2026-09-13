@@ -1600,6 +1600,7 @@ image_t *image_gaussian_blur(const image_t *img,
                              const float sigma);
 image_t *image_threshold(const image_t *img, const uint8_t threshold);
 image_t *image_sobel(const image_t *img);
+image_t *image_histogram_equalize(const image_t *img);
 
 void image_draw_points(image_t *img,
                        const keypoint_t *points,

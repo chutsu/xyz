@@ -8772,6 +8772,66 @@ image_t *image_threshold(const image_t *img, const uint8_t threshold) {
 }
 
 /**
+ * Histogram-equalize a single-channel image.
+ *
+ * Builds the image's intensity histogram, integrates it into a cumulative
+ * distribution function (CDF), then remaps each pixel through the
+ * normalized CDF so the output intensities are spread as evenly as
+ * possible across [0, 255]. This improves contrast in images whose
+ * intensities are bunched into a narrow range.
+ *
+ * @param[in] img  Input image (must be 1-channel)
+ * @returns  Heap-allocated 1-channel equalized image (caller must free)
+ */
+image_t *image_histogram_equalize(const image_t *img) {
+  assert(img != NULL);
+  assert(img->channels == 1);
+
+  const int n = img->width * img->height;
+
+  int hist[256] = {0};
+  for (int i = 0; i < n; i++) {
+    hist[img->data[i]]++;
+  }
+
+  int cdf[256];
+  cdf[0] = hist[0];
+  for (int v = 1; v < 256; v++) {
+    cdf[v] = cdf[v - 1] + hist[v];
+  }
+
+  // Normalizing by the darkest intensity actually present (rather than 0)
+  // ensures that intensity maps to output 0 instead of being pushed up.
+  int cdf_min = 0;
+  for (int v = 0; v < 256; v++) {
+    if (cdf[v] != 0) {
+      cdf_min = cdf[v];
+      break;
+    }
+  }
+
+  uint8_t lut[256];
+  const int denom = n - cdf_min;
+  for (int v = 0; v < 256; v++) {
+    if (denom <= 0) {
+      // Every pixel has the same intensity -- nothing to equalize.
+      lut[v] = (uint8_t) v;
+    } else {
+      const float scaled =
+          ((float) (cdf[v] - cdf_min) / (float) denom) * 255.0f;
+      lut[v] = (uint8_t) (scaled + 0.5f);
+    }
+  }
+
+  image_t *out = image_malloc(img->width, img->height, 1);
+  for (int i = 0; i < n; i++) {
+    out->data[i] = lut[img->data[i]];
+  }
+
+  return out;
+}
+
+/**
  * Sobel edge detection.
  *
  * Converts the input to grayscale (if needed), then applies the horizontal
