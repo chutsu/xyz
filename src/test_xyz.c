@@ -4108,6 +4108,50 @@ int test_image_convolution_fast(void) {
   return 0;
 }
 
+int test_image_convolution_fast2(void) {
+  image_t *img = image_malloc(6, 6, 1);
+  for (int i = 0; i < 6 * 6; i++) {
+    img->data[i] = (uint8_t) ((i * 37) % 256);
+  }
+
+  // 1D Gaussian kernel, matching image_gaussian_blur's construction
+  const int size = 5;
+  const int radius = size / 2;
+  const float sigma = 1.0f;
+  const float s2 = 2.0f * sigma * sigma;
+  float kernel_1d[5];
+  float sum = 0.0f;
+  for (int i = -radius; i <= radius; i++) {
+    const float val = expf(-(float) (i * i) / s2);
+    kernel_1d[i + radius] = val;
+    sum += val;
+  }
+  for (int i = 0; i < size; i++) {
+    kernel_1d[i] /= sum;
+  }
+
+  image_t *fast = image_convolution_fast(img, kernel_1d, size, kernel_1d, size);
+  image_t *fast2 =
+      image_convolution_fast2(img, kernel_1d, size, kernel_1d, size);
+
+  MU_ASSERT(fast != NULL);
+  MU_ASSERT(fast2 != NULL);
+  MU_ASSERT(fast2->width == fast->width);
+  MU_ASSERT(fast2->height == fast->height);
+  MU_ASSERT(fast2->channels == fast->channels);
+
+  // image_convolution_fast2() must match image_convolution_fast() exactly,
+  // since the only difference is parallelizing over rows
+  for (int i = 0; i < 6 * 6; i++) {
+    MU_ASSERT(fast2->data[i] == fast->data[i]);
+  }
+
+  image_free(img);
+  image_free(fast);
+  image_free(fast2);
+  return 0;
+}
+
 int test_image_threshold(void) {
   image_t *img = image_malloc(4, 1, 1);
   img->data[0] = 50;
@@ -4505,6 +4549,100 @@ int test_lk_track_lost(void) {
 
   image_free(img0);
   image_free(img1);
+  return 0;
+}
+
+int test_lk_track2_no_motion(void) {
+  image_t *img = image_malloc(20, 20, 1);
+  image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
+
+  keypoint_t kp;
+  kp.x = 10;
+  kp.y = 10;
+  kp.score = 1.0f;
+
+  keypoint_t kp_out;
+  int status;
+  lk_track2(img, img, &kp, 1, 3, 1.0f, &kp_out, &status);
+
+  MU_ASSERT(status == 1);
+  MU_ASSERT(kp_out.x == kp.x);
+  MU_ASSERT(kp_out.y == kp.y);
+
+  image_free(img);
+  return 0;
+}
+
+int test_lk_track2_lost(void) {
+  // Feature patch exists in img0 but the target image is flat, so the
+  // Lucas-Kanade system is degenerate and the track must be marked dead.
+  image_t *img0 = image_malloc(40, 40, 1);
+  image_draw_rect_fill(img0, 15, 15, 10, 10, COLOR_WHITE);
+
+  image_t *img1 = image_malloc(40, 40, 1);
+
+  keypoint_t kp;
+  kp.x = 20;
+  kp.y = 20;
+  kp.score = 1.0f;
+
+  keypoint_t kp_out;
+  int status;
+  lk_track2(img0, img1, &kp, 1, 3, 1.0f, &kp_out, &status);
+
+  MU_ASSERT(status == 0);
+
+  image_free(img0);
+  image_free(img1);
+  return 0;
+}
+
+int test_lk_track_vs_lk_track2(void) {
+  // lk_track2() only reorders/caches work compared to lk_track() (cached
+  // template patch, inlined I1 sample); it must produce identical results on
+  // real imagery with many keypoints tracked across pyramid levels.
+  const char data_path[1024] = "/data/euroc/MH_01";
+  euroc_data_t *test_data = euroc_data_load(data_path);
+  euroc_camera_t *cam0_data = test_data->cam0_data;
+
+  image_t *img0 = image_load(cam0_data->image_paths[0]);
+  image_t *img1 = image_load(cam0_data->image_paths[1]);
+
+  const int block_size = 3;
+  const float sigma = 1.0f;
+  const float threshold = 1e4f;
+  keypoint_t *kps;
+  int kps_count;
+  image_good_features(img0, block_size, sigma, threshold, &kps, &kps_count);
+  MU_ASSERT(kps_count > 0);
+
+  keypoint_t *kp_out1 = malloc(sizeof(keypoint_t) * kps_count);
+  keypoint_t *kp_out2 = malloc(sizeof(keypoint_t) * kps_count);
+  int *status1 = malloc(sizeof(int) * kps_count);
+  int *status2 = malloc(sizeof(int) * kps_count);
+
+  lk_track(img0, img1, kps, kps_count, 3, sigma, kp_out1, status1);
+  lk_track2(img0, img1, kps, kps_count, 3, sigma, kp_out2, status2);
+
+  int num_tracked = 0;
+  for (int i = 0; i < kps_count; i++) {
+    MU_ASSERT(status1[i] == status2[i]);
+    if (status1[i] == 1) {
+      MU_ASSERT(kp_out1[i].x == kp_out2[i].x);
+      MU_ASSERT(kp_out1[i].y == kp_out2[i].y);
+      num_tracked++;
+    }
+  }
+  MU_ASSERT(num_tracked > 0);
+
+  free(kps);
+  free(kp_out1);
+  free(kp_out2);
+  free(status1);
+  free(status2);
+  image_free(img0);
+  image_free(img1);
+  euroc_data_free(test_data);
   return 0;
 }
 
@@ -10514,6 +10652,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_to_rgb);
   MU_ADD_TEST(test_image_gaussian_blur);
   MU_ADD_TEST(test_image_convolution_fast);
+  MU_ADD_TEST(test_image_convolution_fast2);
   MU_ADD_TEST(test_image_threshold);
   MU_ADD_TEST(test_image_sobel);
   MU_ADD_TEST(test_image_histogram_equalize);
@@ -10528,6 +10667,9 @@ void test_suite(void) {
   MU_ADD_TEST(test_lk_track_translation);
   MU_ADD_TEST(test_lk_track_no_motion);
   MU_ADD_TEST(test_lk_track_lost);
+  MU_ADD_TEST(test_lk_track2_no_motion);
+  MU_ADD_TEST(test_lk_track2_lost);
+  MU_ADD_TEST(test_lk_track_vs_lk_track2);
   // -- Pinhole
   MU_ADD_TEST(test_pinhole_focal);
   MU_ADD_TEST(test_pinhole_K);

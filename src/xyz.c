@@ -8800,6 +8800,91 @@ image_t *image_convolution_fast(const image_t *img,
 }
 
 /**
+ * Separable 2D convolution, parallelized with OpenMP.
+ *
+ * Same algorithm as `image_convolution_fast()` (horizontal pass then vertical
+ * pass, float intermediate), but each pass parallelizes over image rows,
+ * which are independent within a pass.
+ *
+ * @param[in] img       Input image (any channel count)
+ * @param[in] kernel_x  1D horizontal kernel, length kernel_w
+ * @param[in] kernel_w  Horizontal kernel length, must be odd and > 0
+ * @param[in] kernel_y  1D vertical kernel, length kernel_h
+ * @param[in] kernel_h  Vertical kernel length, must be odd and > 0
+ * @returns  Heap-allocated convolved image (caller must free)
+ */
+image_t *image_convolution_fast2(const image_t *img,
+                                 const float *kernel_x,
+                                 const int kernel_w,
+                                 const float *kernel_y,
+                                 const int kernel_h) {
+  assert(img != NULL);
+  assert(kernel_x != NULL && kernel_y != NULL);
+  assert(kernel_w > 0 && (kernel_w & 1) == 1);
+  assert(kernel_h > 0 && (kernel_h & 1) == 1);
+
+  const int w = img->width;
+  const int h = img->height;
+  const int channels = img->channels;
+  const int kx_radius = kernel_w / 2;
+  const int ky_radius = kernel_h / 2;
+
+  // Horizontal pass: img (uint8) -> tmp (float), same dimensions
+  float *tmp = malloc(sizeof(float) * w * h * channels);
+#pragma omp parallel for
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      for (int c = 0; c < channels; c++) {
+        float sum = 0.0f;
+        for (int kx = 0; kx < kernel_w; kx++) {
+          int src_x = x + kx - kx_radius;
+          if (src_x < 0) {
+            src_x = 0;
+          }
+          if (src_x >= w) {
+            src_x = w - 1;
+          }
+          const int idx = (y * w + src_x) * channels + c;
+          sum += kernel_x[kx] * (float) img->data[idx];
+        }
+        tmp[(y * w + x) * channels + c] = sum;
+      }
+    }
+  }
+
+  // Vertical pass: tmp (float) -> out (uint8, clamped to [0, 255])
+  image_t *out = image_malloc(w, h, channels);
+#pragma omp parallel for
+  for (int y = 0; y < h; y++) {
+    for (int x = 0; x < w; x++) {
+      for (int c = 0; c < channels; c++) {
+        float sum = 0.0f;
+        for (int ky = 0; ky < kernel_h; ky++) {
+          int src_y = y + ky - ky_radius;
+          if (src_y < 0) {
+            src_y = 0;
+          }
+          if (src_y >= h) {
+            src_y = h - 1;
+          }
+          sum += kernel_y[ky] * tmp[(src_y * w + x) * channels + c];
+        }
+        if (sum < 0.0f) {
+          sum = 0.0f;
+        }
+        if (sum > 255.0f) {
+          sum = 255.0f;
+        }
+        out->data[(y * w + x) * channels + c] = (uint8_t) (sum + 0.5f);
+      }
+    }
+  }
+
+  free(tmp);
+  return out;
+}
+
+/**
  * Apply Gaussian blur to an image.
  *
  * Builds a Gaussian kernel of the given odd `size` and standard deviation
@@ -9422,8 +9507,25 @@ void image_gaussian_pyramid(const image_t *img,
     ksize = 3;
   }
 
+  // 1D Gaussian kernel: the pre-blur is separable, so it's computed with
+  // image_convolution_fast2() (horizontal + vertical pass) instead of a full
+  // 2D image_gaussian_blur() convolution.
+  const int radius = ksize / 2;
+  const float s2 = 2.0f * sigma * sigma;
+  float *kernel_1d = malloc(sizeof(float) * ksize);
+  float ksum = 0.0f;
+  for (int i = -radius; i <= radius; i++) {
+    const float val = expf(-(float) (i * i) / s2);
+    kernel_1d[i + radius] = val;
+    ksum += val;
+  }
+  for (int i = 0; i < ksize; i++) {
+    kernel_1d[i] /= ksum;
+  }
+
   for (int level = 1; level < num_levels; level++) {
-    image_t *blurred = image_gaussian_blur(current, ksize, sigma);
+    image_t *blurred =
+        image_convolution_fast2(current, kernel_1d, ksize, kernel_1d, ksize);
     image_t *down = image_downsample_2x(blurred);
     image_free(blurred);
 
@@ -9440,6 +9542,7 @@ void image_gaussian_pyramid(const image_t *img,
     current = down;
   }
 
+  free(kernel_1d);
   *out = buf;
   *out_count = count;
 }
@@ -9789,6 +9892,265 @@ void lk_track(const image_t *img0,
             float w10 = dxg * (1 - dyg);
             float w01 = (1 - dxg) * dyg;
             float w11 = dxg * dyg;
+            float gx = w00 * p00[0] + w10 * p10[0] + w01 * p01[0] + w11 * p11[0];
+            float gy = w00 * p00[1] + w10 * p10[1] + w01 * p01[1] + w11 * p11[1];
+
+            A00 += gx * gx;
+            A01 += gx * gy;
+            A11 += gy * gy;
+            b0 += gx * it;
+            b1 += gy * it;
+          }
+        }
+
+        // Solve 2x2 system: [A00 A01; A01 A11] * [du; dv] = [-b0; -b1]
+        float det = A00 * A11 - A01 * A01;
+        if (fabsf(det) < 1e-6f) {
+          level_ok = 0;
+          break;
+        }
+
+        // Calculate optical flow velocity
+        float inv_det = 1.0f / det;
+        float du = -(A11 * b0 - A01 * b1) * inv_det;
+        float dv = -(-A01 * b0 + A00 * b1) * inv_det;
+        px += du;
+        py += dv;
+
+        // Optimization step threshold reached?
+        if (fabsf(du) + fabsf(dv) < epsilon) {
+          break;
+        }
+      }
+
+      // Check tracking
+      if (!level_ok) {
+        status[i] = 0;
+        continue;
+      }
+
+      // Check bounds
+      if (px < 0.0f || px >= w || py < 0.0f || py >= h) {
+        status[i] = 0;
+        continue;
+      }
+
+      // Update track
+      dx[i] = px * scale - (float) kp_in[i].x;
+      dy[i] = py * scale - (float) kp_in[i].y;
+    }
+
+    free(gxy);
+  }
+
+  // Write final tracked positions
+  for (int i = 0; i < num_kp; i++) {
+    kp_out[i].x = (int) (kp_in[i].x + dx[i] + 0.5f);
+    kp_out[i].y = (int) (kp_in[i].y + dy[i] + 0.5f);
+    kp_out[i].score = kp_in[i].score;
+  }
+  free(dx);
+  free(dy);
+
+  // Free pyramids
+  for (int i = 0; i < num_levels; ++i) {
+    image_free(pyr0[i]);
+    image_free(pyr1[i]);
+  }
+  free(pyr0);
+  free(pyr1);
+}
+
+/**
+ * Track keypoints from img0 to img1 using pyramidal Lucas-Kanade.
+ *
+ * Same algorithm as `lk_track()`, but the per-iteration Gauss-Newton inner
+ * loop is optimized: the template patch sampled from `I0` only depends on
+ * the keypoint's fixed template position, not on the warped position being
+ * refined, so `lk_track()` redundantly re-samples it via `image_bilinear_sample()`
+ * on every one of up to `max_iters` iterations. Here it's sampled once per
+ * keypoint per pyramid level before the iteration loop, and the `I1`
+ * intensity sample is inlined (bounds are already guaranteed valid by the
+ * warped-position check, so `image_bilinear_sample()`'s clamping is
+ * redundant) and shares its bilinear weights with the gradient sample
+ * immediately below it.
+ *
+ * @param[in]  img0       Reference image (single-channel)
+ * @param[in]  img1       Target image (single-channel)
+ * @param[in]  kp_in      Input keypoints to track
+ * @param[in]  num_kp     Number of input keypoints
+ * @param[in]  num_levels Number of pyramid levels (typically 3-4)
+ * @param[in]  sigma      Gaussian sigma for pyramid pre-blur
+ * @param[out] kp_out     Output array of tracked keypoint_t positions (must
+ *                        be allocated by caller, same size as num_kp)
+ * @param[out] status     Output array of status flags, 1 if tracked, 0 if
+ *                        lost (must be allocated by caller, same size as
+ *                        num_kp)
+ */
+void lk_track2(const image_t *img0,
+               const image_t *img1,
+               const keypoint_t *kp_in,
+               const int num_kp,
+               const int num_levels,
+               const float sigma,
+               keypoint_t *kp_out,
+               int *status) {
+  assert(img0 != NULL && img0->channels == 1);
+  assert(img1 != NULL && img1->channels == 1);
+  assert(img0->width == img1->width);
+  assert(img0->height == img1->height);
+  assert(kp_in != NULL);
+  assert(num_kp > 0);
+  assert(num_levels > 0);
+  assert(sigma > 0.0f);
+  assert(kp_out != NULL);
+  assert(status != NULL);
+
+  // Build pyramids
+  image_t **pyr0;
+  image_t **pyr1;
+  int pyr0_count, pyr1_count;
+  image_gaussian_pyramid(img0, num_levels, sigma, &pyr0, &pyr0_count);
+  image_gaussian_pyramid(img1, num_levels, sigma, &pyr1, &pyr1_count);
+  assert(pyr0_count == pyr1_count);
+  assert(pyr0_count == num_levels);
+
+  const int window_size = 21;
+  const int half_win = window_size / 2;
+  const int max_iters = 20;
+  const float epsilon = 0.01f;
+  const int patch_len = window_size * window_size;
+
+  // Accumulated displacement per keypoint, carried from coarse to fine
+  // pyramid levels. This is tracked separately from kp_out since kp_out
+  // holds rounded integer positions, which would lose sub-pixel precision
+  // needed by finer levels.
+  float *dx = malloc(sizeof(float) * num_kp);
+  float *dy = malloc(sizeof(float) * num_kp);
+  for (int i = 0; i < num_kp; i++) {
+    dx[i] = 0.0f;
+    dy[i] = 0.0f;
+    status[i] = 1;
+  }
+
+  // Process each pyramid level (coarsest to finest)
+  for (int level = num_levels - 1; level >= 0; level--) {
+    image_t *I0 = pyr0[level];
+    image_t *I1 = pyr1[level];
+    const int w = I0->width;
+    const int h = I0->height;
+    float scale = 1.0f;
+    for (int l = 0; l < level; l++) {
+      scale *= 2.0f;
+    }
+
+    // Spatial gradient is taken from the second (target) image, since the
+    // linearisation of I1 around the current warped position is what drives
+    // the Gauss-Newton update in the forward-additive formulation. Gradients
+    // are stored interleaved as [gx, gy] pairs so both components are sampled
+    // with a single bilinear interpolation. Border pixels are zeroed.
+    float *gxy = malloc(sizeof(float) * 2 * w * h);
+    for (int x = 0; x < w; ++x) {
+      gxy[2 * x] = 0.0f;
+      gxy[2 * x + 1] = 0.0f;
+      gxy[2 * ((h - 1) * w + x)] = 0.0f;
+      gxy[2 * ((h - 1) * w + x) + 1] = 0.0f;
+    }
+    for (int y = 0; y < h; ++y) {
+      gxy[2 * (y * w)] = 0.0f;
+      gxy[2 * (y * w) + 1] = 0.0f;
+      gxy[2 * (y * w + (w - 1))] = 0.0f;
+      gxy[2 * (y * w + (w - 1)) + 1] = 0.0f;
+    }
+    for (int y = 1; y < h - 1; ++y) {
+      const uint8_t *row_prev = &I1->data[(y - 1) * w];
+      const uint8_t *row_curr = &I1->data[y * w];
+      const uint8_t *row_next = &I1->data[(y + 1) * w];
+      float *row_out = &gxy[2 * (y * w)];
+
+      for (int x = 1; x < w - 1; ++x) {
+        const float gx = 0.5f * (row_curr[x + 1] - row_curr[x - 1]);
+        const float gy = 0.5f * (row_next[x] - row_prev[x]);
+        row_out[2 * x] = gx;
+        row_out[2 * x + 1] = gy;
+      }
+    }
+
+    // Track each keypoint
+#pragma omp parallel for
+    for (int i = 0; i < num_kp; i++) {
+      float ox = kp_in[i].x / scale;
+      float oy = kp_in[i].y / scale;
+      float px = ox + dx[i] / scale;
+      float py = oy + dy[i] / scale;
+
+      // Template patch sampled from I0 around (ox, oy): fixed for this
+      // keypoint/level, so it's computed once here instead of once per
+      // Gauss-Newton iteration.
+      float t0_patch[patch_len];
+      uint8_t t0_valid[patch_len];
+      for (int wy = -half_win; wy <= half_win; wy++) {
+        for (int wx = -half_win; wx <= half_win; wx++) {
+          const int idx = (wy + half_win) * window_size + (wx + half_win);
+          const float sx0 = ox + (float) wx;
+          const float sy0 = oy + (float) wy;
+          if (sx0 < 0.0f || sx0 >= w || sy0 < 0.0f || sy0 >= h) {
+            t0_valid[idx] = 0;
+            continue;
+          }
+          t0_valid[idx] = 1;
+          t0_patch[idx] = image_bilinear_sample(I0, sx0, sy0, 0);
+        }
+      }
+
+      // Gauss-Newton Optimization
+      int level_ok = 1;
+      for (int iter = 0; iter < max_iters; iter++) {
+        float A00 = 0, A01 = 0, A11 = 0;
+        float b0 = 0, b1 = 0;
+
+        for (int wy = -half_win; wy <= half_win; wy++) {
+          for (int wx = -half_win; wx <= half_win; wx++) {
+            const int idx = (wy + half_win) * window_size + (wx + half_win);
+            if (!t0_valid[idx]) {
+              continue;
+            }
+
+            float sx1 = px + (float) wx;
+            float sy1 = py + (float) wy;
+            if (sx1 < 1.0f || sx1 >= w - 2.0f || sy1 < 1.0f ||
+                sy1 >= h - 2.0f) {
+              continue;
+            }
+
+            // sx1/sy1 are guaranteed at least 1px from the border by the
+            // check above, so I1 can be sampled directly without the
+            // clamping image_bilinear_sample() would otherwise do, and the
+            // bilinear weights below are shared between the I1 intensity
+            // sample and the gradient sample just after it.
+            int ix = (int) sx1;
+            int iy = (int) sy1;
+            float dxg = sx1 - (float) ix;
+            float dyg = sy1 - (float) iy;
+            float w00 = (1 - dxg) * (1 - dyg);
+            float w10 = dxg * (1 - dyg);
+            float w01 = (1 - dxg) * dyg;
+            float w11 = dxg * dyg;
+
+            // Rounded to uint8_t to match image_bilinear_sample()'s return
+            // type exactly (the weighted sum of four already-clamped [0,255]
+            // values with non-negative weights summing to 1 never leaves
+            // that range, so only the rounding step needs to be replicated).
+            const uint8_t *q00 = &I1->data[iy * w + ix];
+            float t1_raw = w00 * q00[0] + w10 * q00[1] + w01 * q00[w] +
+                           w11 * q00[w + 1];
+            float t1 = (float) (uint8_t) (t1_raw + 0.5f);
+            float it = t1 - t0_patch[idx];
+
+            const float *p00 = &gxy[2 * (iy * w + ix)];
+            const float *p10 = p00 + 2;
+            const float *p01 = p00 + 2 * w;
+            const float *p11 = p01 + 2;
             float gx = w00 * p00[0] + w10 * p10[0] + w01 * p01[0] + w11 * p11[0];
             float gy = w00 * p00[1] + w10 * p10[1] + w01 * p01[1] + w11 * p11[1];
 

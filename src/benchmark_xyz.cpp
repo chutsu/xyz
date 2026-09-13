@@ -17,7 +17,8 @@ static double ms(Clock::time_point a, Clock::time_point b) {
 }
 
 /*******************************************************************************
- * CONVOLUTION: image_convolve() vs image_convolution_fast()
+ * CONVOLUTION: image_convolve() vs image_convolution_fast() vs
+ * image_convolution_fast2()
  ******************************************************************************/
 
 static void benchmark_convolve(void) {
@@ -32,7 +33,8 @@ static void benchmark_convolve(void) {
   const int sizes[] = {3, 5, 7, 9, 15, 21};
   const int num_sizes = (int) (sizeof(sizes) / sizeof(sizes[0]));
 
-  printf("Benchmark: image_convolve() vs image_convolution_fast() (%dx%d)\n",
+  printf("Benchmark: image_convolve() vs image_convolution_fast() vs "
+         "image_convolution_fast2() (%dx%d)\n",
          width,
          height);
   for (int s = 0; s < num_sizes; s++) {
@@ -70,16 +72,25 @@ static void benchmark_convolve(void) {
         image_convolution_fast(img, kernel_1d, size, kernel_1d, size);
     const double fast_time = toc();
 
+    tic();
+    image_t *fast2 =
+        image_convolution_fast2(img, kernel_1d, size, kernel_1d, size);
+    const double fast2_time = toc();
+
     printf("kernel %2dx%-2d | image_convolve: %6.4f s | "
-           "image_convolution_fast: %6.4f s | speedup: %5.2fx\n",
+           "image_convolution_fast: %6.4f s (%5.2fx) | "
+           "image_convolution_fast2: %6.4f s (%5.2fx)\n",
            size,
            size,
            slow_time,
            fast_time,
-           slow_time / fast_time);
+           slow_time / fast_time,
+           fast2_time,
+           slow_time / fast2_time);
 
     image_free(slow);
     image_free(fast);
+    image_free(fast2);
     free(kernel_2d);
   }
 
