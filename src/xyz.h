@@ -1635,12 +1635,6 @@ void image_laplacian_pyramid(const image_t *img,
                              image_t ***out,
                              int *out_count);
 
-typedef struct lk_track_t {
-  float dx;
-  float dy;
-  int status;
-} lk_track_t;
-
 uint8_t image_bilinear_sample(const image_t *img,
                               const float x,
                               const float y,
@@ -1655,7 +1649,8 @@ void lk_track(const image_t *img0,
               const int num_kp,
               const int num_levels,
               const float sigma,
-              lk_track_t *tracks);
+              keypoint_t *kp_out,
+              int *status);
 
 imagef32_t *imagef32_malloc(const int width,
                             const int height,

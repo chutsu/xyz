@@ -4330,8 +4330,9 @@ int test_lk_track_translation(void) {
     image_free(viz);
   }
 
-  // lk_track_t *tracks = malloc(sizeof(lk_track_t) * kps_count);
-  // lk_track(image_km1, image_k, kps, kps_count, 3, 1.0f, tracks);
+  // keypoint_t *kps_out = malloc(sizeof(keypoint_t) * kps_count);
+  // int *status = malloc(sizeof(int) * kps_count);
+  // lk_track(image_km1, image_k, kps, kps_count, 3, 1.0f, kps_out, status);
 
   // for (size_t k = 1; k < n; ++k) {
   //   image_t *image_k = image_load(cam0_data->image_paths[k]);
@@ -4356,12 +4357,13 @@ int test_lk_track_translation(void) {
   // kp.y = 32;
   // kp.score = 1.0f;
   //
-  // lk_track_t track;
-  // lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+  // keypoint_t kp_out;
+  // int status;
+  // lk_track(img0, img1, &kp, 1, 3, 1.0f, &kp_out, &status);
   //
-  // MU_ASSERT(track.status == 1);
-  // MU_ASSERT(fabsf(track.dx - 3.0f) < 1.0f);
-  // MU_ASSERT(fabsf(track.dy) < 1.0f);
+  // MU_ASSERT(status == 1);
+  // MU_ASSERT(abs(kp_out.x - kp.x - 3) < 1);
+  // MU_ASSERT(abs(kp_out.y - kp.y) < 1);
   //
   // image_free(img0);
   // image_free(img1);
@@ -4377,12 +4379,13 @@ int test_lk_track_no_motion(void) {
   kp.y = 10;
   kp.score = 1.0f;
 
-  lk_track_t track;
-  lk_track(img, img, &kp, 1, 3, 1.0f, &track);
+  keypoint_t kp_out;
+  int status;
+  lk_track(img, img, &kp, 1, 3, 1.0f, &kp_out, &status);
 
-  MU_ASSERT(track.status == 1);
-  MU_ASSERT(fabsf(track.dx) < 0.5f);
-  MU_ASSERT(fabsf(track.dy) < 0.5f);
+  MU_ASSERT(status == 1);
+  MU_ASSERT(kp_out.x == kp.x);
+  MU_ASSERT(kp_out.y == kp.y);
 
   image_free(img);
   return 0;
@@ -4401,10 +4404,11 @@ int test_lk_track_lost(void) {
   kp.y = 20;
   kp.score = 1.0f;
 
-  lk_track_t track;
-  lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+  keypoint_t kp_out;
+  int status;
+  lk_track(img0, img1, &kp, 1, 3, 1.0f, &kp_out, &status);
 
-  MU_ASSERT(track.status == 0);
+  MU_ASSERT(status == 0);
 
   image_free(img0);
   image_free(img1);
@@ -10048,17 +10052,15 @@ int test_sandbox_optflow(void) {
   }
 
   // Track features frame-by-frame, chaining positions forward
-  lk_track_t *fwd = malloc(sizeof(lk_track_t) * kps_count);
-  lk_track_t *bwd = malloc(sizeof(lk_track_t) * kps_count);
+  int *fwd_status = malloc(sizeof(int) * kps_count);
+  int *bwd_status = malloc(sizeof(int) * kps_count);
   keypoint_t *cur = malloc(sizeof(keypoint_t) * kps_count);
+  keypoint_t *fwd_kp = malloc(sizeof(keypoint_t) * kps_count);
   keypoint_t *bcur = malloc(sizeof(keypoint_t) * kps_count);
-  float *fx = malloc(sizeof(float) * kps_count);
-  float *fy = malloc(sizeof(float) * kps_count);
+  keypoint_t *bwd_kp = malloc(sizeof(keypoint_t) * kps_count);
   bool *alive = malloc(sizeof(bool) * kps_count);
   for (int i = 0; i < kps_count; ++i) {
     cur[i] = kps[i];
-    fx[i] = (float) kps[i].x;
-    fy[i] = (float) kps[i].y;
     alive[i] = true;
   }
 
@@ -10068,17 +10070,16 @@ int test_sandbox_optflow(void) {
     image_t *curr = image_load(cam0_data->image_paths[k]);
 
     // Forward tracking prev -> curr
-    lk_track(prev, curr, cur, kps_count, 3, 1.0f, fwd);
+    lk_track(prev, curr, cur, kps_count, 3, 1.0f, fwd_kp, fwd_status);
 
     for (int i = 0; i < kps_count; ++i) {
-      if (alive[i] && fwd[i].status == 1) {
-        bcur[i].x = (int) (fx[i] + fwd[i].dx + 0.5f);
-        bcur[i].y = (int) (fy[i] + fwd[i].dy + 0.5f);
+      if (alive[i] && fwd_status[i] == 1) {
+        bcur[i] = fwd_kp[i];
       }
     }
 
     // Backward tracking curr -> prev and forward-backward consistency check
-    lk_track(curr, prev, bcur, kps_count, 3, 1.0f, bwd);
+    lk_track(curr, prev, bcur, kps_count, 3, 1.0f, bwd_kp, bwd_status);
 
     image_t *viz = image_to_rgb(curr);
     int tracked_count = 0;
@@ -10086,24 +10087,21 @@ int test_sandbox_optflow(void) {
       if (!alive[i]) {
         continue;
       }
-      if (fwd[i].status == 0 || bwd[i].status == 0) {
+      if (fwd_status[i] == 0 || bwd_status[i] == 0) {
         alive[i] = false;
         continue;
       }
 
       // Round-trip error: following the feature forward and back should
       // return to where it started
-      float rtx = fwd[i].dx + bwd[i].dx;
-      float rty = fwd[i].dy + bwd[i].dy;
+      float rtx = (float) (bwd_kp[i].x - cur[i].x);
+      float rty = (float) (bwd_kp[i].y - cur[i].y);
       if (sqrtf(rtx * rtx + rty * rty) > 1.0f) {
         alive[i] = false;
         continue;
       }
 
-      fx[i] += fwd[i].dx;
-      fy[i] += fwd[i].dy;
-      cur[i].x = (int) (fx[i] + 0.5f);
-      cur[i].y = (int) (fy[i] + 0.5f);
+      cur[i] = fwd_kp[i];
       tracked_count++;
       image_draw_points(viz, &cur[i], 1, 1, COLOR_GREEN);
     }
@@ -10118,12 +10116,12 @@ int test_sandbox_optflow(void) {
   }
 
   free(alive);
-  free(fx);
-  free(fy);
   free(cur);
+  free(fwd_kp);
   free(bcur);
-  free(fwd);
-  free(bwd);
+  free(bwd_kp);
+  free(fwd_status);
+  free(bwd_status);
   free(kps);
 
   // Clean up

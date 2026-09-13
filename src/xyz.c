@@ -9501,8 +9501,11 @@ static void imagef32_central_gradients_interleaved(const imagef32_t *image,
  * @param[in]  num_kp     Number of input keypoints
  * @param[in]  num_levels Number of pyramid levels (typically 3-4)
  * @param[in]  sigma      Gaussian sigma for pyramid pre-blur
- * @param[out] tracks     Output array of lk_track_t (must be allocated by
- *                        caller, same size as num_kp)
+ * @param[out] kp_out     Output array of tracked keypoint_t positions (must
+ *                        be allocated by caller, same size as num_kp)
+ * @param[out] status     Output array of status flags, 1 if tracked, 0 if
+ *                        lost (must be allocated by caller, same size as
+ *                        num_kp)
  */
 void lk_track(const image_t *img0,
               const image_t *img1,
@@ -9510,7 +9513,8 @@ void lk_track(const image_t *img0,
               const int num_kp,
               const int num_levels,
               const float sigma,
-              lk_track_t *tracks) {
+              keypoint_t *kp_out,
+              int *status) {
   assert(img0 != NULL && img0->channels == 1);
   assert(img1 != NULL && img1->channels == 1);
   assert(img0->width == img1->width);
@@ -9519,7 +9523,8 @@ void lk_track(const image_t *img0,
   assert(num_kp > 0);
   assert(num_levels > 0);
   assert(sigma > 0.0f);
-  assert(tracks != NULL);
+  assert(kp_out != NULL);
+  assert(status != NULL);
 
   // Build pyramids
   image_t **pyr0;
@@ -9535,11 +9540,16 @@ void lk_track(const image_t *img0,
   const int max_iters = 20;
   const float epsilon = 0.01f;
 
-  // Initialize tracks
+  // Accumulated displacement per keypoint, carried from coarse to fine
+  // pyramid levels. This is tracked separately from kp_out since kp_out
+  // holds rounded integer positions, which would lose sub-pixel precision
+  // needed by finer levels.
+  float *dx = malloc(sizeof(float) * num_kp);
+  float *dy = malloc(sizeof(float) * num_kp);
   for (int i = 0; i < num_kp; i++) {
-    tracks[i].dx = 0.0f;
-    tracks[i].dy = 0.0f;
-    tracks[i].status = 1;
+    dx[i] = 0.0f;
+    dy[i] = 0.0f;
+    status[i] = 1;
   }
 
   // Process each pyramid level (coarsest to finest)
@@ -9564,12 +9574,10 @@ void lk_track(const image_t *img0,
 
     // Track each keypoint
     for (int i = 0; i < num_kp; i++) {
-      float dx = tracks[i].dx;
-      float dy = tracks[i].dy;
       float ox = kp_in[i].x / scale;
       float oy = kp_in[i].y / scale;
-      float px = ox + dx / scale;
-      float py = oy + dy / scale;
+      float px = ox + dx[i] / scale;
+      float py = oy + dy[i] / scale;
 
       int level_ok = 1;
       for (int iter = 0; iter < max_iters; iter++) {
@@ -9643,24 +9651,33 @@ void lk_track(const image_t *img0,
 
       // Check tracking
       if (!level_ok) {
-        tracks[i].status = 0;
+        status[i] = 0;
         continue;
       }
 
       // Check bounds
       if (px < 0.0f || px >= w || py < 0.0f || py >= h) {
-        tracks[i].status = 0;
+        status[i] = 0;
         continue;
       }
 
       // Update track
-      tracks[i].dx = px * scale - (float) kp_in[i].x;
-      tracks[i].dy = py * scale - (float) kp_in[i].y;
+      dx[i] = px * scale - (float) kp_in[i].x;
+      dy[i] = py * scale - (float) kp_in[i].y;
     }
 
     imagef32_free(img1);
     free(gxy);
   }
+
+  // Write final tracked positions
+  for (int i = 0; i < num_kp; i++) {
+    kp_out[i].x = (int) (kp_in[i].x + dx[i] + 0.5f);
+    kp_out[i].y = (int) (kp_in[i].y + dy[i] + 0.5f);
+    kp_out[i].score = kp_in[i].score;
+  }
+  free(dx);
+  free(dy);
 
   // Free pyramids
   for (int i = 0; i < num_levels; ++i) {
