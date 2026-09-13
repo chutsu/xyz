@@ -15,6 +15,7 @@ CI_MODE := 0
 CC := clang
 # CC := gcc
 # CC := tcc
+CXX := clang++
 
 
 # LIBRARIES
@@ -28,6 +29,8 @@ BLAS_LDFLAGS := -lblas -llapack -llapacke
 SUITESPARSE_LDFLAGS := -llapack -lcamd -lamd -lccolamd -lcolamd -lcholmod -lcxsparse
 ASSIMP_LDFLAGS := -lassimp
 APRILTAG_LDFLAGS := -lapriltag
+OPENCV_CFLAGS := $(shell pkg-config --cflags opencv4)
+OPENCV_LDFLAGS := $(shell pkg-config --libs opencv4)
 YAML_LDFLAGS := -lyaml
 XYZ_LDFLAGS := -L$(BLD_DIR) -lxyz
 
@@ -71,6 +74,27 @@ CFLAGS += \
 	$(FREETYPE_CFLAGS)
 
 
+# CXXFLAGS (benchmark_xyz.cpp: C++ wrapper around xyz + OpenCV comparisons.
+# Timing is meaningless under ASan/debug, so prefer `make BUILD_TYPE=release
+# benchmark`.)
+CXXFLAGS := -std=c++17 -Wall -ggdb
+
+ifeq ($(BUILD_TYPE), debug)
+	CXXFLAGS += -g -fopenmp
+else
+	CXXFLAGS += -g -O3 -march=native -DNDEBUG -fopenmp
+endif
+
+CXXFLAGS += \
+	-I$(INC_DIR) \
+	-I$(DEPS_DIR)/include \
+	-I$(DEPS_DIR)/src/glad \
+	-fPIC \
+	$(STB_CFLAGS) \
+	$(FREETYPE_CFLAGS) \
+	$(OPENCV_CFLAGS)
+
+
 # LDFLAGS
 RPATH := -Wl,-rpath,$(DEPS_DIR)/lib
 LDFLAGS= \
@@ -92,6 +116,9 @@ LDFLAGS= \
 	-lm \
 	-ldl
 
+# CXXLDFLAGS (benchmark_xyz.cpp only, adds OpenCV on top of LDFLAGS)
+CXXLDFLAGS = $(LDFLAGS) $(OPENCV_LDFLAGS)
+
 
 # ARCHIVER SETTTINGS
 AR = ar
@@ -105,3 +132,6 @@ LIBXYZ_OBJS := $(BLD_DIR)/xyz.o
 
 # TESTS
 TESTS := $(BLD_DIR)/test_xyz
+
+# BENCHMARKS
+BENCHMARKS := $(BLD_DIR)/benchmark_xyz

@@ -4054,6 +4054,60 @@ int test_image_gaussian_blur(void) {
   return 0;
 }
 
+int test_image_convolution_fast(void) {
+  image_t *img = image_malloc(6, 6, 1);
+  for (int i = 0; i < 6 * 6; i++) {
+    img->data[i] = (uint8_t) ((i * 37) % 256);
+  }
+
+  // 1D Gaussian kernel, matching image_gaussian_blur's construction
+  const int size = 5;
+  const int radius = size / 2;
+  const float sigma = 1.0f;
+  const float s2 = 2.0f * sigma * sigma;
+  float kernel_1d[5];
+  float sum = 0.0f;
+  for (int i = -radius; i <= radius; i++) {
+    const float val = expf(-(float) (i * i) / s2);
+    kernel_1d[i + radius] = val;
+    sum += val;
+  }
+  for (int i = 0; i < size; i++) {
+    kernel_1d[i] /= sum;
+  }
+
+  // The full 2D kernel equivalent to the outer product of the 1D kernel
+  // with itself, for comparison against image_convolve()
+  float kernel_2d[5 * 5];
+  for (int y = 0; y < size; y++) {
+    for (int x = 0; x < size; x++) {
+      kernel_2d[y * size + x] = kernel_1d[y] * kernel_1d[x];
+    }
+  }
+
+  image_t *slow = image_convolve(img, kernel_2d, size, size);
+  image_t *fast =
+      image_convolution_fast(img, kernel_1d, size, kernel_1d, size);
+
+  MU_ASSERT(slow != NULL);
+  MU_ASSERT(fast != NULL);
+  MU_ASSERT(fast->width == slow->width);
+  MU_ASSERT(fast->height == slow->height);
+  MU_ASSERT(fast->channels == slow->channels);
+
+  // Both compute the same mathematical sum, just in a different order, so
+  // results should match up to a rounding unit
+  for (int i = 0; i < 6 * 6; i++) {
+    const int diff = (int) slow->data[i] - (int) fast->data[i];
+    MU_ASSERT(abs(diff) <= 1);
+  }
+
+  image_free(img);
+  image_free(slow);
+  image_free(fast);
+  return 0;
+}
+
 int test_image_threshold(void) {
   image_t *img = image_malloc(4, 1, 1);
   img->data[0] = 50;
@@ -7746,6 +7800,25 @@ int test_morton_codes_3d(void) {
   return 0;
 }
 
+int test_morton_encode_variants(void) {
+  // All three encoders implement the same interleaving, just via different
+  // algorithms (for-loop, magic-bits, lookup-table) -- they must agree.
+  const unsigned int xs[] = {0, 1, 5, 42, 1023, 123456};
+  const unsigned int ys[] = {0, 2, 7, 17, 2047, 654321};
+  const unsigned int zs[] = {0, 3, 9, 99, 4095, 111111};
+
+  for (size_t i = 0; i < sizeof(xs) / sizeof(xs[0]); i++) {
+    uint64_t forloop = morton_encode_forloop(xs[i], ys[i], zs[i]);
+    uint64_t magicbits = morton_encode_magicbits(xs[i], ys[i], zs[i]);
+    uint64_t lut = morton_encode_LUT(xs[i], ys[i], zs[i]);
+
+    MU_ASSERT(forloop == magicbits);
+    MU_ASSERT(magicbits == lut);
+  }
+
+  return 0;
+}
+
 /*******************************************************************************
  * POINT CLOUD
  ******************************************************************************/
@@ -10440,6 +10513,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_to_grayscale);
   MU_ADD_TEST(test_image_to_rgb);
   MU_ADD_TEST(test_image_gaussian_blur);
+  MU_ADD_TEST(test_image_convolution_fast);
   MU_ADD_TEST(test_image_threshold);
   MU_ADD_TEST(test_image_sobel);
   MU_ADD_TEST(test_image_histogram_equalize);
@@ -10532,6 +10606,7 @@ void test_suite(void) {
 
   // MORTON CODES
   MU_ADD_TEST(test_morton_codes_3d);
+  MU_ADD_TEST(test_morton_encode_variants);
 
   // POINT CLOUD
   MU_ADD_TEST(test_umeyama);

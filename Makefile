@@ -1,7 +1,7 @@
 include config.mk
 
 .PHONY: help setup all deps venv compile_commands libxyz _libxyz_internal tests \
-	tools ci cppcheck clean docs
+	tools ci cppcheck clean docs benchmark
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile \
@@ -16,6 +16,10 @@ setup:
 $(BLD_DIR)/test_%: src/test_%.c $(BLD_DIR)/libxyz.a
 	@echo "TEST [$(notdir $@)]"
 	@$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lxyz
+
+$(BLD_DIR)/benchmark_%: src/benchmark_%.cpp $(BLD_DIR)/libxyz.a
+	@echo "BENCHMARK [$(notdir $@)]"
+	@$(CXX) $(CXXFLAGS) $< -o $@ $(CXXLDFLAGS) -lxyz
 
 $(BLD_DIR)/%.o: src/%.c src/%.h Makefile
 	@echo "CC [$(notdir $<)]"
@@ -123,6 +127,15 @@ _libxyz_internal: \
 
 tests: libxyz ## Build and run tests
 	@cd ./build && $(foreach TEST, $(TESTS), ./$(notdir ${TEST});)
+
+# Benchmarks are meaningless under ASan/debug, so force a release libxyz
+# regardless of the ambient BUILD_TYPE (this leaves build/libxyz.a in release
+# form afterwards -- rerun `make libxyz` to restore the default debug build).
+benchmark: ## Build and run benchmarks (forces a release libxyz)
+	@rm -f $(BLD_DIR)/xyz.o $(BLD_DIR)/libxyz.a
+	@$(MAKE) -s _libxyz_internal BUILD_TYPE=release --no-print-directory
+	@$(MAKE) -s $(BENCHMARKS) BUILD_TYPE=release --no-print-directory
+	@cd ./build && $(foreach BENCH, $(BENCHMARKS), ./$(notdir ${BENCH});)
 
 tools:
 	@gcc -c tools/calib_camera.c -o $(BLD_DIR)/calib_camera

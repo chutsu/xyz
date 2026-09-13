@@ -43,6 +43,7 @@
 #pragma once
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -86,6 +87,10 @@
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define PRECISION 2
 #define MAX_LINE_LENGTH 9046
@@ -1595,6 +1600,11 @@ image_t *image_convolve(const image_t *img,
                         const float *kernel,
                         const int kernel_w,
                         const int kernel_h);
+image_t *image_convolution_fast(const image_t *img,
+                                const float *kernel_x,
+                                const int kernel_w,
+                                const float *kernel_y,
+                                const int kernel_h);
 image_t *image_gaussian_blur(const image_t *img,
                              const int size,
                              const float sigma);
@@ -1957,6 +1967,10 @@ uint32_t morton_encode_2d(uint32_t x, uint32_t y);
 uint32_t morton_encode_3d(uint32_t x, uint32_t y, uint32_t z);
 void morton_decode_2d(uint32_t code, uint32_t *x, uint32_t *y);
 void morton_decode_3d(uint32_t code, uint32_t *x, uint32_t *y, uint32_t *z);
+uint64_t morton_encode_forloop(unsigned int x, unsigned int y, unsigned int z);
+uint64_t
+morton_encode_magicbits(unsigned int x, unsigned int y, unsigned int z);
+uint64_t morton_encode_LUT(unsigned int x, unsigned int y, unsigned int z);
 
 /*******************************************************************************
  * PLANE
@@ -4224,3 +4238,7 @@ typedef struct gl_model_t {
 gl_model_t *gl_model_load(const char *model_path);
 void gl_model_free(gl_model_t *model);
 void gl_model_draw(const gl_model_t *model, const gl_camera_t *camera);
+
+#ifdef __cplusplus
+}
+#endif
