@@ -9641,14 +9641,19 @@ void lk_track(const image_t *img0,
         }
       }
 
+      // Check tracking
       if (!level_ok) {
+        tracks[i].status = 0;
         continue;
       }
 
       // Check bounds
       if (px < 0.0f || px >= w || py < 0.0f || py >= h) {
+        tracks[i].status = 0;
         continue;
       }
+
+      // Update track
       tracks[i].dx = px * scale - (float) kp_in[i].x;
       tracks[i].dy = py * scale - (float) kp_in[i].y;
     }

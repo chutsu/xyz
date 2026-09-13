@@ -4369,7 +4369,7 @@ int test_lk_track_translation(void) {
 }
 
 int test_lk_track_no_motion(void) {
-  image_t *img = image_malloc(20, 20, 3);
+  image_t *img = image_malloc(20, 20, 1);
   image_draw_rect_fill(img, 5, 5, 10, 10, COLOR_WHITE);
 
   keypoint_t kp;
@@ -4385,6 +4385,29 @@ int test_lk_track_no_motion(void) {
   MU_ASSERT(fabsf(track.dy) < 0.5f);
 
   image_free(img);
+  return 0;
+}
+
+int test_lk_track_lost(void) {
+  // Feature patch exists in img0 but the target image is flat, so the
+  // Lucas-Kanade system is degenerate and the track must be marked dead.
+  image_t *img0 = image_malloc(40, 40, 1);
+  image_draw_rect_fill(img0, 15, 15, 10, 10, COLOR_WHITE);
+
+  image_t *img1 = image_malloc(40, 40, 1);
+
+  keypoint_t kp;
+  kp.x = 20;
+  kp.y = 20;
+  kp.score = 1.0f;
+
+  lk_track_t track;
+  lk_track(img0, img1, &kp, 1, 3, 1.0f, &track);
+
+  MU_ASSERT(track.status == 0);
+
+  image_free(img0);
+  image_free(img1);
   return 0;
 }
 
@@ -9993,8 +10016,8 @@ cleanup:
 }
 
 int test_sandbox_optflow(void) {
-  const int frame_start = 100;
-  const int num_frames = 20;
+  const int frame_start = 0;
+  const int num_frames = 100;
 
   // Setup test data
   const char data_path[1024] = "/data/euroc/MH_01";
@@ -10392,6 +10415,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_image_bilinear_sample);
   MU_ADD_TEST(test_lk_track_translation);
   MU_ADD_TEST(test_lk_track_no_motion);
+  MU_ADD_TEST(test_lk_track_lost);
   // -- Pinhole
   MU_ADD_TEST(test_pinhole_focal);
   MU_ADD_TEST(test_pinhole_K);
