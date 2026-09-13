@@ -9593,6 +9593,7 @@ void lk_track(const image_t *img0,
     }
 
     // Track each keypoint
+#pragma omp parallel for
     for (int i = 0; i < num_kp; i++) {
       float ox = kp_in[i].x / scale;
       float oy = kp_in[i].y / scale;
