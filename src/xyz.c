@@ -9486,9 +9486,6 @@ float imagef32_bilinear_sample(const imagef32_t *img,
          v11 * dx * dy;
 }
 
-static void imagef32_central_gradients_interleaved(const imagef32_t *image,
-                                                   float *gxy);
-
 /**
  * Track keypoints from img0 to img1 using pyramidal Lucas-Kanade.
  *
@@ -9567,10 +9564,33 @@ void lk_track(const image_t *img0,
     // linearisation of I1 around the current warped position is what drives
     // the Gauss-Newton update in the forward-additive formulation. Gradients
     // are stored interleaved as [gx, gy] pairs so both components are sampled
-    // with a single bilinear interpolation.
-    imagef32_t *img1 = image_to_float(pyr1[level]);
+    // with a single bilinear interpolation. Border pixels are zeroed.
     float *gxy = malloc(sizeof(float) * 2 * w * h);
-    imagef32_central_gradients_interleaved(img1, gxy);
+    for (int x = 0; x < w; ++x) {
+      gxy[2 * x] = 0.0f;
+      gxy[2 * x + 1] = 0.0f;
+      gxy[2 * ((h - 1) * w + x)] = 0.0f;
+      gxy[2 * ((h - 1) * w + x) + 1] = 0.0f;
+    }
+    for (int y = 0; y < h; ++y) {
+      gxy[2 * (y * w)] = 0.0f;
+      gxy[2 * (y * w) + 1] = 0.0f;
+      gxy[2 * (y * w + (w - 1))] = 0.0f;
+      gxy[2 * (y * w + (w - 1)) + 1] = 0.0f;
+    }
+    for (int y = 1; y < h - 1; ++y) {
+      const uint8_t *row_prev = &I1->data[(y - 1) * w];
+      const uint8_t *row_curr = &I1->data[y * w];
+      const uint8_t *row_next = &I1->data[(y + 1) * w];
+      float *row_out = &gxy[2 * (y * w)];
+
+      for (int x = 1; x < w - 1; ++x) {
+        const float gx = 0.5f * (row_curr[x + 1] - row_curr[x - 1]);
+        const float gy = 0.5f * (row_next[x] - row_prev[x]);
+        row_out[2 * x] = gx;
+        row_out[2 * x + 1] = gy;
+      }
+    }
 
     // Track each keypoint
     for (int i = 0; i < num_kp; i++) {
@@ -9579,6 +9599,7 @@ void lk_track(const image_t *img0,
       float px = ox + dx[i] / scale;
       float py = oy + dy[i] / scale;
 
+      // Gauss-Newton Optimization
       int level_ok = 1;
       for (int iter = 0; iter < max_iters; iter++) {
         float A00 = 0, A01 = 0, A11 = 0;
@@ -9637,13 +9658,14 @@ void lk_track(const image_t *img0,
           break;
         }
 
+        // Calculate optical flow velocity
         float inv_det = 1.0f / det;
         float du = -(A11 * b0 - A01 * b1) * inv_det;
         float dv = -(-A01 * b0 + A00 * b1) * inv_det;
-
         px += du;
         py += dv;
 
+        // Optimization step threshold reached?
         if (fabsf(du) + fabsf(dv) < epsilon) {
           break;
         }
@@ -9666,7 +9688,6 @@ void lk_track(const image_t *img0,
       dy[i] = py * scale - (float) kp_in[i].y;
     }
 
-    imagef32_free(img1);
     free(gxy);
   }
 
