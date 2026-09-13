@@ -1795,24 +1795,6 @@ void epipolar_distance(const real_t E[3 * 3],
                        const size_t n,
                        real_t *dist);
 
-/**
- * Analytical Nx5 Jacobian of epipolar distance residuals.
- *
- * Computes the Jacobian of the epipolar distance residual
- *
- *   r_i = (x'^T E x) / sqrt((E x)_0^2 + (E x)_1^2)
- *
- * with respect to the 5-parameter vector w = [ax, ay, az, du, dv] where
- * (ax, ay, az) is the rotation axis-angle and (du, dv) are tangent-space
- * coordinates for the translation direction on S^2.
- *
- * @param w      Parameter vector [ax, ay, az, du, dv] (5 elements)
- * @param t_cur  Current translation direction on S^2 (3 elements, unit vector)
- * @param hpts1  First set of homogeneous points [x, y, w] row-major (N*3)
- * @param hpts2  Second set of homogeneous points [x, y, w] row-major (N*3)
- * @param n      Number of point pairs
- * @param J      Output Nx5 Jacobian matrix, row-major (N*5)
- */
 void epipolar_jacobian(const real_t w[5],
                        const real_t t_cur[3],
                        const real_t *hpts1,

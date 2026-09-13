@@ -9764,23 +9764,6 @@ void imagef32_save_png(const imagef32_t *img, const char *file_path) {
 }
 
 /**
- * Compute the central-difference image gradients.
- *
- * For each interior pixel, the x and y gradients are computed with central
- * differences using a 3x3 neighbourhood:
- *
- *   gx = 0.5 * (I[x+1] - I[x-1])
- *   gy = 0.5 * (I[y+1] - I[y-1])
- *
- * The gradient magnitude is computed as `sqrt(gx^2 + gy^2)`. Border pixels
- * have their gradients and magnitude set to zero.
- *
- * @param[in]  image     Input single-channel float image
- * @param[out] grad_x    Output x-gradient (same dims as `image`)
- * @param[out] grad_y    Output y-gradient (same dims as `image`)
- * @param[out] grad_mag  Output gradient magnitude (same dims as `image`)
- */
-/**
  * Compute central-difference gradients into an interleaved [gx, gy] buffer.
  *
  * Border pixels are zeroed. The buffer is 2 * width * height floats laid out
@@ -9823,6 +9806,23 @@ static void imagef32_central_gradients_interleaved(const imagef32_t *image,
   }
 }
 
+/**
+ * Compute the central-difference image gradients.
+ *
+ * For each interior pixel, the x and y gradients are computed with central
+ * differences using a 3x3 neighbourhood:
+ *
+ *   gx = 0.5 * (I[x+1] - I[x-1])
+ *   gy = 0.5 * (I[y+1] - I[y-1])
+ *
+ * The gradient magnitude is computed as `sqrt(gx^2 + gy^2)`. Border pixels
+ * have their gradients and magnitude set to zero.
+ *
+ * @param[in]  image     Input single-channel float image
+ * @param[out] grad_x    Output x-gradient (same dims as `image`)
+ * @param[out] grad_y    Output y-gradient (same dims as `image`)
+ * @param[out] grad_mag  Output gradient magnitude (same dims as `image`)
+ */
 void imagef32_central_gradients(const imagef32_t *image,
                                 imagef32_t *grad_x,
                                 imagef32_t *grad_y,
@@ -10934,6 +10934,13 @@ void epipolar_distance(const real_t E[3 * 3],
  * with respect to the 5-parameter vector w = [ax, ay, az, du, dv] where
  * (ax, ay, az) is the rotation axis-angle and (du, dv) are tangent-space
  * coordinates for the translation direction on S^2.
+ *
+ * @param w      Parameter vector [ax, ay, az, du, dv] (5 elements)
+ * @param t_cur  Current translation direction on S^2 (3 elements, unit vector)
+ * @param hpts1  First set of homogeneous points [x, y, w] row-major (N*3)
+ * @param hpts2  Second set of homogeneous points [x, y, w] row-major (N*3)
+ * @param n      Number of point pairs
+ * @param J      Output Nx5 Jacobian matrix, row-major (N*5)
  */
 void epipolar_jacobian(const real_t w[5],
                        const real_t t_cur[3],
