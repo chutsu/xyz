@@ -9,6 +9,7 @@
 
 #include <opencv2/features2d.hpp>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/video/tracking.hpp>
 
 using Clock = std::chrono::steady_clock;
 
@@ -295,6 +296,205 @@ static void benchmark_corners(int w, int h) {
   }
 }
 
+/*******************************************************************************
+ * OPTICAL FLOW: lk_track() / lk_track2() vs OpenCV calcOpticalFlowPyrLK()
+ ******************************************************************************/
+
+typedef void (*lk_track_fn_t)(const image_t *,
+                              const image_t *,
+                              const keypoint_t *,
+                              const int,
+                              const int,
+                              const float,
+                              keypoint_t *,
+                              int *);
+
+struct FlowRes {
+  int tracked_xyz;
+  int both_tracked; // tracked by both xyz and OpenCV
+  double mean_err;  // mean pixel distance vs OpenCV, for points both tracked
+  double max_err;
+};
+
+// Runs one xyz lk_track-family function and scores it against OpenCV's
+// already-computed track (cv_next/cv_status) for the same keypoints.
+static FlowRes run_lk_track(lk_track_fn_t fn,
+                            const image_t *img0,
+                            const image_t *img1,
+                            const keypoint_t *kps,
+                            int kps_count,
+                            const std::vector<cv::Point2f> &cv_next,
+                            const std::vector<uchar> &cv_status,
+                            double *t_xyz) {
+  keypoint_t *kp_out = (keypoint_t *) malloc(sizeof(keypoint_t) * kps_count);
+  int *status = (int *) malloc(sizeof(int) * kps_count);
+
+  auto t0 = Clock::now();
+  fn(img0, img1, kps, kps_count, 3, 1.0f, kp_out, status);
+  auto t1 = Clock::now();
+  *t_xyz = ms(t0, t1);
+
+  FlowRes r{};
+  double err_sum = 0.0;
+  for (int i = 0; i < kps_count; i++) {
+    if (status[i]) {
+      r.tracked_xyz++;
+    }
+    if (status[i] && cv_status[i]) {
+      double ex = kp_out[i].x - cv_next[i].x;
+      double ey = kp_out[i].y - cv_next[i].y;
+      double e = std::sqrt(ex * ex + ey * ey);
+      err_sum += e;
+      if (e > r.max_err) {
+        r.max_err = e;
+      }
+      r.both_tracked++;
+    }
+  }
+  r.mean_err = r.both_tracked > 0 ? err_sum / r.both_tracked : 0.0;
+
+  free(kp_out);
+  free(status);
+  return r;
+}
+
+static void benchmark_lk_track(void) {
+  const char *data_path = "/data/euroc/MH_01";
+  euroc_data_t *test_data = euroc_data_load(data_path);
+  euroc_camera_t *cam0_data = test_data->cam0_data;
+
+  image_t *img0 = image_load(cam0_data->image_paths[0]);
+  image_t *img1 = image_load(cam0_data->image_paths[1]);
+
+  keypoint_t *kps;
+  int kps_count;
+  image_good_features(img0, 3, 1.0f, 1e4f, &kps, &kps_count);
+
+  cv::Mat cv_img0(img0->height, img0->width, CV_8UC1, img0->data);
+  cv::Mat cv_img1(img1->height, img1->width, CV_8UC1, img1->data);
+
+  std::vector<cv::Point2f> cv_prev(kps_count);
+  for (int i = 0; i < kps_count; i++) {
+    cv_prev[i] = cv::Point2f((float) kps[i].x, (float) kps[i].y);
+  }
+
+  // xyz uses window_size=21, 3 pyramid levels (maxLevel=2), 20 iters @ 0.01px
+  std::vector<cv::Point2f> cv_next;
+  std::vector<uchar> cv_status;
+  std::vector<float> cv_err;
+  cv::TermCriteria criteria(cv::TermCriteria::COUNT | cv::TermCriteria::EPS,
+                            20,
+                            0.01);
+
+  // Warm up, then time each implementation over several runs and keep the
+  // minimum (least noisy); OpenCV's tracked positions are the reference the
+  // xyz implementations are scored against.
+  cv::calcOpticalFlowPyrLK(cv_img0,
+                           cv_img1,
+                           cv_prev,
+                           cv_next,
+                           cv_status,
+                           cv_err,
+                           cv::Size(21, 21),
+                           2,
+                           criteria);
+
+  double t_cv = 1e18;
+  for (int i = 0; i < 5; i++) {
+    auto t0 = Clock::now();
+    cv::calcOpticalFlowPyrLK(cv_img0,
+                             cv_img1,
+                             cv_prev,
+                             cv_next,
+                             cv_status,
+                             cv_err,
+                             cv::Size(21, 21),
+                             2,
+                             criteria);
+    auto t1 = Clock::now();
+    const double t = ms(t0, t1);
+    if (t < t_cv) {
+      t_cv = t;
+    }
+  }
+  const int tracked_cv = (int) cv::countNonZero(cv_status);
+
+  double t_xyz = 1e18;
+  FlowRes r1{};
+  for (int i = 0; i < 5; i++) {
+    double t;
+    FlowRes r =
+        run_lk_track(lk_track, img0, img1, kps, kps_count, cv_next, cv_status, &t);
+    if (t < t_xyz) {
+      t_xyz = t;
+      r1 = r;
+    }
+  }
+
+  double t_xyz2 = 1e18;
+  FlowRes r2{};
+  for (int i = 0; i < 5; i++) {
+    double t;
+    FlowRes r = run_lk_track(
+        lk_track2, img0, img1, kps, kps_count, cv_next, cv_status, &t);
+    if (t < t_xyz2) {
+      t_xyz2 = t;
+      r2 = r;
+    }
+  }
+
+  printf("\nBenchmark: lk_track() / lk_track2() vs OpenCV "
+         "calcOpticalFlowPyrLK() (%dx%d, %d keypoints)\n",
+         img0->width,
+         img0->height,
+         kps_count);
+  printf("%-10s %11s %8s  %9s  %11s  %9s\n",
+         "function",
+         "time",
+         "speedup",
+         "tracked",
+         "agree(cv)",
+         "mean err");
+  printf("%-10s %11s %8s  %9s  %11s  %9s\n",
+         "--------",
+         "----",
+         "-------",
+         "-------",
+         "---------",
+         "--------");
+  printf("%-10s %8.3f ms %8s  %4d/%-4d  %11s  %9s\n",
+         "opencv",
+         t_cv,
+         "-",
+         tracked_cv,
+         kps_count,
+         "-",
+         "-");
+  printf("%-10s %8.3f ms %7.2fx  %4d/%-4d  %5d/%-5d  %7.3f px\n",
+         "lk_track",
+         t_xyz,
+         t_cv / t_xyz,
+         r1.tracked_xyz,
+         kps_count,
+         r1.both_tracked,
+         r1.tracked_xyz,
+         r1.mean_err);
+  printf("%-10s %8.3f ms %7.2fx  %4d/%-4d  %5d/%-5d  %7.3f px\n",
+         "lk_track2",
+         t_xyz2,
+         t_cv / t_xyz2,
+         r2.tracked_xyz,
+         kps_count,
+         r2.both_tracked,
+         r2.tracked_xyz,
+         r2.mean_err);
+
+  free(kps);
+  image_free(img0);
+  image_free(img1);
+  euroc_data_free(test_data);
+}
+
 int main(int argc, char **argv) {
   benchmark_convolve();
 
@@ -304,6 +504,8 @@ int main(int argc, char **argv) {
     h = std::atoi(argv[2]);
   }
   benchmark_corners(w, h);
+
+  benchmark_lk_track();
 
   return 0;
 }
