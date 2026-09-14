@@ -1605,11 +1605,6 @@ image_t *image_convolution_fast(const image_t *img,
                                 const int kernel_w,
                                 const float *kernel_y,
                                 const int kernel_h);
-image_t *image_convolution_fast2(const image_t *img,
-                                 const float *kernel_x,
-                                 const int kernel_w,
-                                 const float *kernel_y,
-                                 const int kernel_h);
 image_t *image_gaussian_blur(const image_t *img,
                              const int size,
                              const float sigma);
@@ -1667,14 +1662,6 @@ void lk_track(const image_t *img0,
               const float sigma,
               keypoint_t *kp_out,
               int *status);
-void lk_track2(const image_t *img0,
-               const image_t *img1,
-               const keypoint_t *kp_in,
-               const int num_kp,
-               const int num_levels,
-               const float sigma,
-               keypoint_t *kp_out,
-               int *status);
 
 imagef32_t *imagef32_malloc(const int width,
                             const int height,
