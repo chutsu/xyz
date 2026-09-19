@@ -23607,6 +23607,12 @@ static void gl_camera_constrain_yaw_pitch(gl_camera_t *camera) {
 /**
  * Recompute the camera basis vectors (front, right, up) and update
  * the view and projection matrices for the active view mode.
+ *
+ *   front = normalize(sin(yaw)cos(pitch), sin(pitch), cos(yaw)cos(pitch))
+ *   right = normalize(front x world_up)
+ *   up    = normalize(right x front)
+ *   P     = perspective(fov, window_width / window_height, near, far)
+ *   V     = lookat(position, position + front, world_up)   // FPS mode
  */
 void gl_camera_update(gl_camera_t *camera,
                       const int window_width,
@@ -23667,6 +23673,13 @@ void gl_camera_update(gl_camera_t *camera,
 
 /**
  * Rotate the camera yaw and pitch by (dx, dy) scaled by `factor`.
+ * `dx`/`dy` are the mouse cursor movement in pixels since the last
+ * frame (left-click drag).
+ *
+ *   yaw   -= dx * factor
+ *   pitch -= dy * factor
+ *   (yaw, pitch) constrained by gl_camera_constrain_yaw_pitch()
+ *   front  = normalize(sin(yaw)cos(pitch), sin(pitch), cos(yaw)cos(pitch))
  */
 void gl_camera_rotate(gl_camera_t *camera,
                       const float factor,
@@ -23699,7 +23712,12 @@ void gl_camera_rotate(gl_camera_t *camera,
 
 /**
  * Pan the camera focal point along its front/right axes by (dx, dy)
- * scaled by `factor`.
+ * scaled by `factor`. `dx`/`dy` are the mouse cursor movement in
+ * pixels since the last frame (right-click drag).
+ *
+ *   focal -= (dy * factor) * front
+ *   focal += (dx * factor) * right
+ *   focal.y = max(focal.y, 0)
  */
 void gl_camera_pan(gl_camera_t *camera,
                    const float factor,
@@ -23724,7 +23742,10 @@ void gl_camera_pan(gl_camera_t *camera,
 
 /**
  * Zoom the camera by moving its field of view by `dy` (clamped to
- * fov_min/fov_max).
+ * fov_min/fov_max). `dy` is the change in fov in radians for this
+ * call; `dx` is unused, kept so rotate/pan/zoom share one signature.
+ *
+ *   fov = clamp(fov + dy, fov_min, fov_max)
  */
 void gl_camera_zoom(gl_camera_t *camera,
                     const float factor,
