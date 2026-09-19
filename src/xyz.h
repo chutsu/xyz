@@ -3947,7 +3947,7 @@ typedef struct gl_rect_t {
 
 gl_rect_t *gl_rect_malloc(const gl_bounds_t bounds, const gl_color_t color);
 void gl_rect_free(gl_rect_t *rect);
-void draw_rect(gui_t *gui, gl_rect_t *rect);
+void gl_rect_draw(gui_t *gui, gl_rect_t *rect);
 
 /////////////////
 // GL POINTS3D //
@@ -3971,7 +3971,7 @@ void gl_points3d_update(gl_points3d_t *points,
                         gl_float_t *points_data,
                         size_t num_points,
                         const gl_float_t point_size);
-void draw_points3d(gui_t *gui, gl_points3d_t *points);
+void gl_points3d_draw(gui_t *gui, gl_points3d_t *points);
 
 ///////////////
 // GL LINE3D //
@@ -3996,7 +3996,7 @@ void gl_line3d_update(gl_line3d_t *line3d,
                       const gl_float_t *data,
                       const size_t num_points);
 void gl_line3d_free(gl_line3d_t *line);
-void draw_line3d(gui_t *gui, gl_line3d_t *line);
+void gl_line3d_draw(gui_t *gui, gl_line3d_t *line);
 
 ///////////////
 // GL CUBE3D //
@@ -4010,11 +4010,11 @@ typedef struct gl_cube3d_t {
 
 gl_cube3d_t *gl_cube3d_malloc(void);
 void gl_cube3d_free(gl_cube3d_t *cube);
-void draw_cube(gui_t *gui,
-               gl_cube3d_t *cube,
-               const gl_float_t T[4 * 4],
-               const gl_float_t size,
-               const gl_color_t color);
+void gl_cube_draw(gui_t *gui,
+                  gl_cube3d_t *cube,
+                  const gl_float_t T[4 * 4],
+                  const gl_float_t size,
+                  const gl_color_t color);
 
 //////////////
 // GL PLANE //
@@ -4080,7 +4080,7 @@ gl_frustum_t *gl_frustum_malloc(const gl_float_t hfov,
                                 const gl_color_t color,
                                 const gl_float_t lw);
 void gl_frustum_free(gl_frustum_t *frustum);
-void draw_frustum(gui_t *gui, gl_frustum_t *frustum);
+void gl_frustum_draw(gui_t *gui, gl_frustum_t *frustum);
 
 ///////////////
 // GL AXES3D //
@@ -4100,7 +4100,7 @@ gl_axes3d_t *gl_axes3d_malloc(const gl_float_t T[4 * 4],
                               const gl_float_t size,
                               const gl_float_t lw);
 void gl_axes3d_free(gl_axes3d_t *axes);
-void draw_axes3d(gui_t *gui, gl_axes3d_t *axes);
+void gl_axes3d_draw(gui_t *gui, gl_axes3d_t *axes);
 
 ///////////////
 // GL GRID3D //
@@ -4122,7 +4122,7 @@ gl_grid3d_t *gl_grid3d_malloc(const gl_int_t num_rows,
                               const gl_color_t color,
                               const gl_float_t lw);
 void gl_grid3d_free(gl_grid3d_t *grid);
-void draw_grid3d(gui_t *gui, gl_grid3d_t *grid);
+void gl_grid3d_draw(gui_t *gui, gl_grid3d_t *grid);
 
 //////////////
 // GL IMAGE //
@@ -4151,7 +4151,7 @@ gl_image_t *gl_image_malloc(const int x,
                             const int h,
                             const int c);
 void gl_image_free(gl_image_t *image);
-void draw_image(gui_t *gui, gl_image_t *image);
+void gl_image_draw(gui_t *gui, gl_image_t *image);
 
 /////////////
 // GL TEXT //
@@ -4171,12 +4171,12 @@ void text_width_height(gl_text_t *text,
                        const char *s,
                        gl_float_t *w,
                        gl_float_t *h);
-void draw_text(gui_t *gui,
-               gl_text_t *text,
-               const char *s,
-               const float x,
-               const float y,
-               const gl_color_t c);
+void gl_text_draw(gui_t *gui,
+                  gl_text_t *text,
+                  const char *s,
+                  const float x,
+                  const float y,
+                  const gl_color_t c);
 
 /////////////
 // GL MESH //

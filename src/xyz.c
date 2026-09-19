@@ -10969,6 +10969,7 @@ void decompose_essential_matrix(const real_t E[3 * 3],
   real_t s[3] = {0};
   real_t V[3 * 3] = {0};
   int retval = svd(E, 3, 3, U, s, V);
+  UNUSED(retval);
   assert(retval == 0);
 
   // Enforce proper rotation frames det(U) > 0 and det(V) > 0. Since U and V
@@ -24049,14 +24050,6 @@ void gui_update(gui_t *gui) {
   const double time_now = gui_time();
   gui->frame_dt = time_now - gui->frame_last;
   gui->frame_last = time_now;
-  // printf("fps: %f\n", 1.0 / gui->frame_dt);
-  // const double time_now = glfwGetTime();
-  // const double dt = time_now - gui->last_frame;
-  // if (dt >= gui->fps_limit) {
-  //   glfwSwapBuffers(gui->window);
-  //   gui->last_frame = time_now;
-  // }
-  // gui->last_time = time_now;
 }
 
 /////////////
@@ -24167,7 +24160,7 @@ void gl_rect_free(gl_rect_t *rect) {
 /**
  * Draw the 2D rectangle using an orthographic projection.
  */
-void draw_rect(gui_t *gui, gl_rect_t *rect) {
+void gl_rect_draw(gui_t *gui, gl_rect_t *rect) {
   assert(gui);
   assert(rect);
 
@@ -24307,7 +24300,7 @@ void gl_points3d_update(gl_points3d_t *points,
 /**
  * Draw the 3D point cloud using the active camera.
  */
-void draw_points3d(gui_t *gui, gl_points3d_t *points) {
+void gl_points3d_draw(gui_t *gui, gl_points3d_t *points) {
   assert(gui);
   assert(points);
   if (points->num_points == 0) {
@@ -24561,7 +24554,7 @@ void gl_line3d_free(gl_line3d_t *line) {
 /**
  * Draw the 3D line strip using the active camera.
  */
-void draw_line3d(gui_t *gui, gl_line3d_t *line3d) {
+void gl_line3d_draw(gui_t *gui, gl_line3d_t *line3d) {
   assert(gui);
   assert(line3d);
 
@@ -24749,11 +24742,11 @@ void gl_cube3d_free(gl_cube3d_t *cube) {
  * Draw the cube at pose `T` with the given size and color using
  * ambient/diffuse/specular lighting.
  */
-void draw_cube(gui_t *gui,
-               gl_cube3d_t *cube,
-               const gl_float_t T[4 * 4],
-               const gl_float_t size,
-               const gl_color_t color) {
+void gl_cube_draw(gui_t *gui,
+                  gl_cube3d_t *cube,
+                  const gl_float_t T[4 * 4],
+                  const gl_float_t size,
+                  const gl_color_t color) {
   assert(gui);
   assert(cube);
 
@@ -24921,7 +24914,7 @@ void gl_frustum_free(gl_frustum_t *frustum) {
 /**
  * Draw the view frustum as lines using the active camera.
  */
-void draw_frustum(gui_t *gui, gl_frustum_t *frustum) {
+void gl_frustum_draw(gui_t *gui, gl_frustum_t *frustum) {
   assert(gui);
   assert(frustum);
 
@@ -25003,12 +24996,12 @@ void gl_axes3d_free(gl_axes3d_t *axes) {
 /**
  * Draw the x (red), y (green) and z (blue) axes.
  */
-void draw_axes3d(gui_t *gui, gl_axes3d_t *axes) {
+void gl_axes3d_draw(gui_t *gui, gl_axes3d_t *axes) {
   assert(gui);
   assert(axes);
-  draw_line3d(gui, &axes->x_axis);
-  draw_line3d(gui, &axes->y_axis);
-  draw_line3d(gui, &axes->z_axis);
+  gl_line3d_draw(gui, &axes->x_axis);
+  gl_line3d_draw(gui, &axes->y_axis);
+  gl_line3d_draw(gui, &axes->z_axis);
 }
 
 ///////////////
@@ -25158,15 +25151,15 @@ void gl_grid3d_free(gl_grid3d_t *grid) {
 /**
  * Draw all row and column lines of the grid.
  */
-void draw_grid3d(gui_t *gui, gl_grid3d_t *grid) {
+void gl_grid3d_draw(gui_t *gui, gl_grid3d_t *grid) {
   assert(gui);
   assert(grid);
 
   for (int i = 0; i <= grid->num_rows; ++i) {
-    draw_line3d(gui, &grid->row_lines[i]);
+    gl_line3d_draw(gui, &grid->row_lines[i]);
   }
   for (int i = 0; i <= grid->num_cols; ++i) {
-    draw_line3d(gui, &grid->col_lines[i]);
+    gl_line3d_draw(gui, &grid->col_lines[i]);
   }
 }
 
@@ -25324,7 +25317,7 @@ void gl_image_free(gl_image_t *image) {
 /**
  * Draw the image as a textured quad at its stored position.
  */
-void draw_image(gui_t *gui, gl_image_t *image) {
+void gl_image_draw(gui_t *gui, gl_image_t *image) {
   assert(gui);
   assert(image);
 
@@ -25522,12 +25515,12 @@ void text_width_height(gl_text_t *text,
 /**
  * Draw the string `s` at pixel position (x, y) with color `c`.
  */
-void draw_text(gui_t *gui,
-               gl_text_t *text,
-               const char *s,
-               const float x,
-               const float y,
-               const gl_color_t c) {
+void gl_text_draw(gui_t *gui,
+                  gl_text_t *text,
+                  const char *s,
+                  const float x,
+                  const float y,
+                  const gl_color_t c) {
   assert(gui);
   assert(text);
   assert(s);
