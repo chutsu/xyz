@@ -1,6 +1,6 @@
 include config.mk
 
-.PHONY: help setup all deps venv compile_commands libxyz _libxyz_internal tests \
+.PHONY: help setup all deps venv libxyz _libxyz_internal tests \
 	tools ci cppcheck clean docs benchmark
 
 help:
@@ -13,15 +13,38 @@ setup:
 	@cp -r deps/fonts $(BLD_DIR)
 	@cp -r src/test_data $(BLD_DIR)
 
-$(BLD_DIR)/test_%: src/test_%.c $(BLD_DIR)/libxyz.a
+# Make only tracks file mtimes, not variable content, so a flags-only
+# change (e.g. `make ci` setting CI_MODE=1) would otherwise leave an
+# already-up-to-date .o/binary stale and unrebuilt. These sentinel
+# files record the flags used last build; FORCE makes them re-checked
+# every run, but they only touch (and so only trigger a rebuild) when
+# the flags actually changed.
+$(BLD_DIR)/.cflags: FORCE
+	@mkdir -p $(BLD_DIR)
+	@echo "$(CFLAGS)" > $(BLD_DIR)/.cflags.tmp
+	@cmp -s $(BLD_DIR)/.cflags.tmp $@ 2>/dev/null \
+		|| mv $(BLD_DIR)/.cflags.tmp $@
+	@rm -f $(BLD_DIR)/.cflags.tmp
+
+$(BLD_DIR)/.cxxflags: FORCE
+	@mkdir -p $(BLD_DIR)
+	@echo "$(CXXFLAGS)" > $(BLD_DIR)/.cxxflags.tmp
+	@cmp -s $(BLD_DIR)/.cxxflags.tmp $@ 2>/dev/null \
+		|| mv $(BLD_DIR)/.cxxflags.tmp $@
+	@rm -f $(BLD_DIR)/.cxxflags.tmp
+
+.PHONY: FORCE
+FORCE:
+
+$(BLD_DIR)/test_%: src/test_%.c $(BLD_DIR)/libxyz.a $(BLD_DIR)/.cflags
 	@echo "TEST [$(notdir $@)]"
 	@$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS) -lxyz
 
-$(BLD_DIR)/benchmark_%: src/benchmark_%.cpp $(BLD_DIR)/libxyz.a
+$(BLD_DIR)/benchmark_%: src/benchmark_%.cpp $(BLD_DIR)/libxyz.a $(BLD_DIR)/.cxxflags
 	@echo "BENCHMARK [$(notdir $@)]"
 	@$(CXX) $(CXXFLAGS) $< -o $@ $(CXXLDFLAGS) -lxyz
 
-$(BLD_DIR)/%.o: src/%.c src/%.h Makefile
+$(BLD_DIR)/%.o: src/%.c src/%.h Makefile $(BLD_DIR)/.cflags
 	@echo "CC [$(notdir $<)]"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
@@ -98,16 +121,6 @@ venv: ## Setup env
 	venv/bin/pip3 install -r requirements.txt && \
 	echo "Run 'source venv/bin/activate' to activate the virtualenv"
 
-compile_commands: ## Generate compile_commands.json
-	@if command -v bear > /dev/null 2>&1; then \
-		bear -- $(MAKE) _libxyz_internal; \
-	elif command -v compiledb > /dev/null 2>&1; then \
-		compiledb -n $(MAKE) _libxyz_internal; \
-	else \
-		echo "Error: install bear or compiledb"; exit 1; \
-	fi
-	@mv compile_commands.json $(BLD_DIR)/
-
 libxyz: ## Build libxyz
 	@if command -v bear > /dev/null 2>&1; then \
 		bear -- $(MAKE) -s _libxyz_internal; \
@@ -131,7 +144,7 @@ tests: libxyz ## Build and run tests
 # Benchmarks are meaningless under ASan/debug, so force a release libxyz
 # regardless of the ambient BUILD_TYPE (this leaves build/libxyz.a in release
 # form afterwards -- rerun `make libxyz` to restore the default debug build).
-benchmark: ## Build and run benchmarks (forces a release libxyz)
+benchmark: ## Build and run benchmarks
 	@rm -f $(BLD_DIR)/xyz.o $(BLD_DIR)/libxyz.a
 	@$(MAKE) -s _libxyz_internal BUILD_TYPE=release --no-print-directory
 	@$(MAKE) -s $(BENCHMARKS) BUILD_TYPE=release --no-print-directory

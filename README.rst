@@ -49,12 +49,12 @@ Other make targets include:
   deps       Install dependencies
   libxyz     Build libxyz
   tests      Build and run tests
+  benchmark  Build and run benchmarks
   ci         Run CI tests
   cppcheck   Run cppcheck
   clean      Clean
   docs       Build docs
   venv       Setup Python virtual environment
-  compile_commands  Generate compile_commands.json
 
 Alternatively just type ``make help`` to bring up info on make targets.
 

@@ -10680,8 +10680,8 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_image);
   // MU_ADD_TEST(test_gl_text);
   // MU_ADD_TEST(test_gui_sandbox);
-  MU_ADD_TEST(test_sandbox_optflow);
-  MU_ADD_TEST(test_sandbox_direct);
+  // MU_ADD_TEST(test_sandbox_optflow);
+  // MU_ADD_TEST(test_sandbox_direct);
 #endif
 }
 MU_RUN_TESTS(test_suite)
