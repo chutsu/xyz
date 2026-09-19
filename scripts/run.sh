@@ -427,8 +427,9 @@ run_test() {
 # run_test test_xyz test_gl_shader
 # run_test test_xyz test_gl_camera_setup
 # run_test test_xyz test_gl_model_load
+run_test test_xyz test_gl_cube3d
 # run_test test_xyz test_gui
 
-run_test test_xyz test_sandbox_optflow
+# run_test test_xyz test_sandbox_optflow
 
 # make tools

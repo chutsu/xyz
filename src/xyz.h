@@ -4237,7 +4237,7 @@ typedef struct gl_model_t {
 
 gl_model_t *gl_model_load(const char *model_path);
 void gl_model_free(gl_model_t *model);
-void gl_model_draw(const gl_model_t *model, const gl_camera_t *camera);
+void gl_model_draw(const gui_t *gui, const gl_model_t *model);
 
 #ifdef __cplusplus
 }

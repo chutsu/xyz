@@ -10674,7 +10674,7 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_rect);
   // MU_ADD_TEST(test_gl_points3d);
   // MU_ADD_TEST(test_gl_line3d);
-  // MU_ADD_TEST(test_gl_cube3d);
+  MU_ADD_TEST(test_gl_cube3d);
   // MU_ADD_TEST(test_gl_axes3d);
   // MU_ADD_TEST(test_gl_grid3d);
   // MU_ADD_TEST(test_gl_image);
