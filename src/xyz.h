@@ -3913,11 +3913,13 @@ typedef struct gui_t {
   int ui_engaged;
 
   int key_q;
+  int key_e;
   int key_w;
   int key_a;
   int key_s;
   int key_d;
-  int key_n;
+  int key_m;
+  int key_m_prev;
   int key_esc;
   int key_equal;
   int key_minus;

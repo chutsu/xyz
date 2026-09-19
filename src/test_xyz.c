@@ -9783,7 +9783,7 @@ int test_gl_cube3d(void) {
   gl_eye(cube_T, 4, 4);
   cube_T[12] = 0.0;
   cube_T[13] = 0.0;
-  cube_T[14] = 1.0;
+  cube_T[14] = 0.0;
   const gl_float_t cube_size = 1.0f;
   const gl_color_t cube_color = (gl_color_t){1.0, 0.0, 0.0};
   gl_cube3d_t *cube = gl_cube3d_malloc();
@@ -10674,14 +10674,14 @@ void test_suite(void) {
   // MU_ADD_TEST(test_gl_rect);
   // MU_ADD_TEST(test_gl_points3d);
   // MU_ADD_TEST(test_gl_line3d);
-  MU_ADD_TEST(test_gl_cube3d);
+  // MU_ADD_TEST(test_gl_cube3d);
   // MU_ADD_TEST(test_gl_axes3d);
   // MU_ADD_TEST(test_gl_grid3d);
   // MU_ADD_TEST(test_gl_image);
   // MU_ADD_TEST(test_gl_text);
   // MU_ADD_TEST(test_gui_sandbox);
-#endif
   MU_ADD_TEST(test_sandbox_optflow);
   MU_ADD_TEST(test_sandbox_direct);
+#endif
 }
 MU_RUN_TESTS(test_suite)

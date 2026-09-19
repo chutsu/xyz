@@ -23607,12 +23607,6 @@ static void gl_camera_constrain_yaw_pitch(gl_camera_t *camera) {
 /**
  * Recompute the camera basis vectors (front, right, up) and update
  * the view and projection matrices for the active view mode.
- *
- *   front = normalize(sin(yaw)cos(pitch), sin(pitch), cos(yaw)cos(pitch))
- *   right = normalize(front x world_up)
- *   up    = normalize(right x front)
- *   P     = perspective(fov, window_width / window_height, near, far)
- *   V     = lookat(position, position + front, world_up)   // FPS mode
  */
 void gl_camera_update(gl_camera_t *camera,
                       const int window_width,
@@ -23640,20 +23634,15 @@ void gl_camera_update(gl_camera_t *camera,
   gl_perspective(camera->fov, aspect, camera->near, camera->far, camera->P);
 
   // View matrix (Orbit mode)
-  // if (camera->view_mode == ORBIT) {
-  //   const float radius = camera->radius;
-  //   const float pitch = camera->pitch;
-  //   const float yaw = camera->yaw;
-  //   camera->position[0] = radius * sin(pitch) * sin(yaw);
-  //   camera->position[1] = radius * cos(pitch);
-  //   camera->position[2] = radius * sin(pitch) * cos(yaw);
-  //
-  //   gl_float_t eye[3] = {0};
-  //   eye[0] = camera->position[0];
-  //   eye[1] = camera->position[1];
-  //   eye[2] = camera->position[2];
-  //   gl_lookat(eye, camera->focal, camera->world_up, camera->V);
-  // }
+  // Orbit around `focal` at `radius`, on the opposite side of `front`
+  // so that looking along `front` faces the focal point.
+  if (camera->view_mode == ORBIT) {
+    camera->position[0] = camera->focal[0] - camera->radius * camera->front[0];
+    camera->position[1] = camera->focal[1] - camera->radius * camera->front[1];
+    camera->position[2] = camera->focal[2] - camera->radius * camera->front[2];
+
+    gl_lookat(camera->position, camera->focal, camera->world_up, camera->V);
+  }
 
   // View matrix (FPS mode)
   if (camera->view_mode == FPS) {
@@ -23675,11 +23664,6 @@ void gl_camera_update(gl_camera_t *camera,
  * Rotate the camera yaw and pitch by (dx, dy) scaled by `factor`.
  * `dx`/`dy` are the mouse cursor movement in pixels since the last
  * frame (left-click drag).
- *
- *   yaw   -= dx * factor
- *   pitch -= dy * factor
- *   (yaw, pitch) constrained by gl_camera_constrain_yaw_pitch()
- *   front  = normalize(sin(yaw)cos(pitch), sin(pitch), cos(yaw)cos(pitch))
  */
 void gl_camera_rotate(gl_camera_t *camera,
                       const float factor,
@@ -23714,10 +23698,6 @@ void gl_camera_rotate(gl_camera_t *camera,
  * Pan the camera focal point along its front/right axes by (dx, dy)
  * scaled by `factor`. `dx`/`dy` are the mouse cursor movement in
  * pixels since the last frame (right-click drag).
- *
- *   focal -= (dy * factor) * front
- *   focal += (dx * factor) * right
- *   focal.y = max(focal.y, 0)
  */
 void gl_camera_pan(gl_camera_t *camera,
                    const float factor,
@@ -23744,8 +23724,6 @@ void gl_camera_pan(gl_camera_t *camera,
  * Zoom the camera by moving its field of view by `dy` (clamped to
  * fov_min/fov_max). `dy` is the change in fov in radians for this
  * call; `dx` is unused, kept so rotate/pan/zoom share one signature.
- *
- *   fov = clamp(fov + dy, fov_min, fov_max)
  */
 void gl_camera_zoom(gl_camera_t *camera,
                     const float factor,
@@ -23810,22 +23788,39 @@ void gui_process_input(gui_t *gui) {
   // -- Key press
   gui->key_esc = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
   gui->key_q = glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS;
+  gui->key_e = glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS;
   gui->key_w = glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS;
   gui->key_a = glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS;
   gui->key_s = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
   gui->key_d = glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS;
-  gui->key_n = glfwGetKey(window, GLFW_KEY_N) == GLFW_PRESS;
+  gui->key_m = glfwGetKey(window, GLFW_KEY_M) == GLFW_PRESS;
   gui->key_equal = glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS;
   gui->key_minus = glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS;
-  if (gui->key_esc || gui->key_q) {
+  if (gui->key_esc) {
     gui->window_loop = 0;
   }
 
-  // -- FPS MODE
+  // -- Toggle view mode (M key, on press only)
   gl_camera_t *camera = &gui->camera;
+  if (gui->key_m && !gui->key_m_prev) {
+    camera->view_mode = (camera->view_mode == FPS) ? ORBIT : FPS;
+  }
+  gui->key_m_prev = gui->key_m;
+
+  // -- FPS MODE
   const float camera_speed = gui->camera_speed;
   const float dt = gui->frame_dt;
   if (camera->view_mode == FPS) {
+    if (gui->key_q) {
+      camera->position[0] += camera->up[0] * camera_speed * dt;
+      camera->position[1] += camera->up[1] * camera_speed * dt;
+      camera->position[2] += camera->up[2] * camera_speed * dt;
+    }
+    if (gui->key_e) {
+      camera->position[0] -= camera->up[0] * camera_speed * dt;
+      camera->position[1] -= camera->up[1] * camera_speed * dt;
+      camera->position[2] -= camera->up[2] * camera_speed * dt;
+    }
     if (gui->key_w) {
       camera->position[0] += camera->front[0] * camera_speed * dt;
       camera->position[1] += camera->front[1] * camera_speed * dt;
@@ -23860,32 +23855,17 @@ void gui_process_input(gui_t *gui) {
     }
   }
 
-  // -- ORBIT MODE
-  // if (camera->view_mode == ORBIT) {
-  //   if (gui->key_w) {
-  //     camera->pitch += 0.01;
-  //     camera->pitch = (camera->pitch >= M_PI) ? M_PI : camera->pitch;
-  //     camera->pitch = (camera->pitch <= 0.0f) ? 0.0f : camera->pitch;
-  //   } else if (gui->key_s) {
-  //     camera->pitch -= 0.01;
-  //     camera->pitch = (camera->pitch >= M_PI) ? M_PI : camera->pitch;
-  //     camera->pitch = (camera->pitch <= 0.0f) ? 0.0f : camera->pitch;
-  //   } else if (gui->key_a) {
-  //     camera->yaw -= 0.01;
-  //     camera->yaw = (camera->yaw >= M_PI) ? M_PI : camera->yaw;
-  //     camera->yaw = (camera->yaw <= -M_PI) ? -M_PI : camera->yaw;
-  //   } else if (gui->key_d) {
-  //     camera->yaw += 0.01;
-  //     camera->yaw = (camera->yaw >= M_PI) ? M_PI : camera->yaw;
-  //     camera->yaw = (camera->yaw <= -M_PI) ? -M_PI : camera->yaw;
-  //   } else if (gui->key_equal) {
-  //     camera->radius += 0.1;
-  //     camera->radius = (camera->radius <= 0.01) ? 0.01 : camera->radius;
-  //   } else if (gui->key_minus) {
-  //     camera->radius -= 0.1;
-  //     camera->radius = (camera->radius <= 0.01) ? 0.01 : camera->radius;
-  //   }
-  // }
+  // -- ORBIT MODE (yaw/pitch come from mouse drag below; +/- zooms by
+  // moving the orbit radius instead of the fov)
+  if (camera->view_mode == ORBIT) {
+    if (gui->key_equal) {
+      camera->radius -= camera_speed * dt;
+      camera->radius = (camera->radius < 0.01f) ? 0.01f : camera->radius;
+    }
+    if (gui->key_minus) {
+      camera->radius += camera_speed * dt;
+    }
+  }
 
   // Handle mouse events
   // -- Mouse button press
@@ -23956,6 +23936,7 @@ gui_t *gui_malloc(const char *window_title,
   gui->camera_speed = 5.0f;
   gui->mouse_sensitivity = 0.02f;
   gui->ui_engaged = 0;
+  gui->key_m_prev = 0;
 
   strcpy(gui->window_title, window_title);
   gui->window_width = window_width;
