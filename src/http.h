@@ -244,8 +244,8 @@ status_t ip_port_info(const int sockfd, char *ip, int *port);
 status_t tcp_server_setup(tcp_server_t *server, const int port);
 status_t tcp_server_loop(tcp_server_t *server);
 status_t tcp_client_setup(tcp_client_t *client,
-                        const char *server_ip,
-                        const int server_port);
+                          const char *server_ip,
+                          const int server_port);
 status_t tcp_client_loop(tcp_client_t *client);
 
 void http_msg_setup(http_msg_t *msg);
@@ -561,10 +561,8 @@ status_t tcp_client_loop(tcp_client_t *client) {
     if (client->loop_cb) {
       int retval = client->loop_cb(client);
       switch (retval) {
-        case -1:
-          return -1;
-        case 1:
-          break;
+        case -1: return -1;
+        case 1: break;
       }
     }
   }
@@ -1048,11 +1046,14 @@ int main(void) {
   int passed = 0;
   int failed = 0;
 
-  struct { char *name; int (*fn)(void); } tests[] = {
-    {"http_msg_setup", test_http_msg_setup},
-    {"http_msg_print", test_http_msg_print},
-    {"http_parse_request", test_http_parse_request},
-    {"ws_hash", test_ws_hash},
+  struct {
+    char *name;
+    int (*fn)(void);
+  } tests[] = {
+      {"http_msg_setup", test_http_msg_setup},
+      {"http_msg_print", test_http_msg_print},
+      {"http_parse_request", test_http_parse_request},
+      {"ws_hash", test_ws_hash},
   };
   int n_tests = sizeof(tests) / sizeof(tests[0]);
 

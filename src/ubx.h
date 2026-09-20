@@ -510,29 +510,29 @@ int ublox_rover_run(ublox_t *rover,
  ****************************************************************************/
 
 int8_t ubx_int8(const uint8_t *data, const size_t offset) {
-  return (int8_t)(data[offset]);
+  return (int8_t) (data[offset]);
 }
 
 uint8_t ubx_uint8(const uint8_t *data, const size_t offset) {
-  return (uint8_t)(data[offset]);
+  return (uint8_t) (data[offset]);
 }
 
 int16_t ubx_int16(const uint8_t *data, const size_t offset) {
-  return (int16_t)((data[offset + 1] << 8) | (data[offset]));
+  return (int16_t) ((data[offset + 1] << 8) | (data[offset]));
 }
 
 uint16_t ubx_uint16(const uint8_t *data, const size_t offset) {
-  return (uint16_t)((data[offset + 1] << 8) | (data[offset]));
+  return (uint16_t) ((data[offset + 1] << 8) | (data[offset]));
 }
 
 int32_t ubx_int32(const uint8_t *data, const size_t offset) {
-  return (int32_t)((data[offset + 3] << 24) | (data[offset + 2] << 16) |
-                   (data[offset + 1] << 8) | (data[offset]));
+  return (int32_t) ((data[offset + 3] << 24) | (data[offset + 2] << 16) |
+                    (data[offset + 1] << 8) | (data[offset]));
 }
 
 uint32_t ubx_uint32(const uint8_t *data, const size_t offset) {
-  return (uint32_t)((data[offset + 3] << 24) | (data[offset + 2] << 16) |
-                    (data[offset + 1] << 8) | (data[offset]));
+  return (uint32_t) ((data[offset + 3] << 24) | (data[offset + 2] << 16) |
+                     (data[offset + 1] << 8) | (data[offset]));
 }
 
 //* Obtain the IP and Port number from the network socket file descriptor *
@@ -996,24 +996,12 @@ void print_ubx_nav_pvt(const ubx_nav_pvt_t *msg) {
   printf("height: %d", msg->height);
   printf("\t");
   switch (msg->fix_type) {
-    case 0:
-      printf("Fix type: no fix");
-      break;
-    case 1:
-      printf("Fix type: dead reckoning only");
-      break;
-    case 2:
-      printf("Fix type: 2D-fix");
-      break;
-    case 3:
-      printf("Fix type: 3D-fix");
-      break;
-    case 4:
-      printf("Fix type: GNSS + dead reckoning combined");
-      break;
-    case 5:
-      printf("Fix type: time only fix");
-      break;
+    case 0: printf("Fix type: no fix"); break;
+    case 1: printf("Fix type: dead reckoning only"); break;
+    case 2: printf("Fix type: 2D-fix"); break;
+    case 3: printf("Fix type: 3D-fix"); break;
+    case 4: printf("Fix type: GNSS + dead reckoning combined"); break;
+    case 5: printf("Fix type: time only fix"); break;
   }
   printf("\n");
 }
@@ -1024,24 +1012,12 @@ void print_ubx_nav_status(const ubx_nav_status_t *msg) {
 
   printf("\t");
   switch (msg->fix) {
-    case 0x00:
-      printf("fix: no fix");
-      break;
-    case 0x01:
-      printf("fix: dead reckoning only");
-      break;
-    case 0x02:
-      printf("fix: 2D-fix");
-      break;
-    case 0x03:
-      printf("fix: 3D-fix");
-      break;
-    case 0x04:
-      printf("fix: GNSS + dead reckoning combined");
-      break;
-    case 0x05:
-      printf("fix: time only fix");
-      break;
+    case 0x00: printf("fix: no fix"); break;
+    case 0x01: printf("fix: dead reckoning only"); break;
+    case 0x02: printf("fix: 2D-fix"); break;
+    case 0x03: printf("fix: 3D-fix"); break;
+    case 0x04: printf("fix: GNSS + dead reckoning combined"); break;
+    case 0x05: printf("fix: time only fix"); break;
   }
   printf("\t");
 
@@ -1146,18 +1122,10 @@ int ubx_parser_update(ubx_parser_t *parser, uint8_t data) {
         ubx_parser_reset(parser);
       }
       break;
-    case MSG_CLASS:
-      parser->state = MSG_ID;
-      break;
-    case MSG_ID:
-      parser->state = PAYLOAD_LENGTH_LOW;
-      break;
-    case PAYLOAD_LENGTH_LOW:
-      parser->state = PAYLOAD_LENGTH_HI;
-      break;
-    case PAYLOAD_LENGTH_HI:
-      parser->state = PAYLOAD_DATA;
-      break;
+    case MSG_CLASS: parser->state = MSG_ID; break;
+    case MSG_ID: parser->state = PAYLOAD_LENGTH_LOW; break;
+    case PAYLOAD_LENGTH_LOW: parser->state = PAYLOAD_LENGTH_HI; break;
+    case PAYLOAD_LENGTH_HI: parser->state = PAYLOAD_DATA; break;
     case PAYLOAD_DATA: {
       uint8_t length_low = parser->buf_data[4];
       uint8_t length_hi = parser->buf_data[5];
@@ -1171,16 +1139,13 @@ int ubx_parser_update(ubx_parser_t *parser, uint8_t data) {
       }
       break;
     }
-    case CK_A:
-      parser->state = CK_B;
-      break;
+    case CK_A: parser->state = CK_B; break;
     case CK_B:
       ubx_msg_parse(&parser->msg, parser->buf_data);
       ubx_parser_reset(parser);
       return 1;
     // default: UBX_FATAL("Invalid Parser State!"); break;
-    default:
-      ubx_parser_reset(parser);
+    default: ubx_parser_reset(parser);
   }
 
   return 0;
@@ -1198,9 +1163,7 @@ void rtcm3_parser_init(rtcm3_parser_t *parser) {
   parser->msg_len = 0;
 }
 
-void rtcm3_parser_reset(rtcm3_parser_t *parser) {
-  rtcm3_parser_init(parser);
-}
+void rtcm3_parser_reset(rtcm3_parser_t *parser) { rtcm3_parser_init(parser); }
 
 /**
  * RTCM 3.2 Frame
@@ -1519,14 +1482,10 @@ retry:
 
   ubx_write(ublox, UBX_CFG, UBX_CFG_VALSET, payload_length, payload);
   switch (ubx_read_ack(ublox, UBX_CFG, UBX_CFG_VALSET)) {
-    case 0:
-      return 0;
-    case 1:
-      goto retry;
+    case 0: return 0;
+    case 1: goto retry;
     case -1:
-    default:
-      UBX_ERROR("Failed to set configuration!");
-      return -1;
+    default: UBX_ERROR("Failed to set configuration!"); return -1;
   }
 }
 
@@ -1793,12 +1752,8 @@ int ublox_base_run(ublox_t *base, const int port, int *loop) {
           base->state = UBLOX_PARSING_RTCM3;
         }
         break;
-      case UBLOX_PARSING_UBX:
-        ublox_parse_ubx(base, data);
-        break;
-      case UBLOX_PARSING_RTCM3:
-        ublox_parse_rtcm3(base, data);
-        break;
+      case UBLOX_PARSING_UBX: ublox_parse_ubx(base, data); break;
+      case UBLOX_PARSING_RTCM3: ublox_parse_rtcm3(base, data); break;
     }
   }
 
@@ -1990,9 +1945,7 @@ void run_test(const char *test_name, int (*test_ptr)(void)) {
   } while (0)
 
 int loop = 1;
-static void signal_handler(int sig) {
-  loop = 0;
-}
+static void signal_handler(int sig) { loop = 0; }
 
 /*****************************************************************************
  * UBX Message
@@ -2037,9 +1990,7 @@ int test_ubx_msg_checksum(void) {
   return 0;
 }
 
-int test_ubx_msg_is_valid(void) {
-  return 0;
-}
+int test_ubx_msg_is_valid(void) { return 0; }
 
 int test_ubx_msg_build(void) {
   ubx_msg_t msg;

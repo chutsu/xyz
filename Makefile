@@ -133,6 +133,7 @@ setup:
 	@mkdir -p $(BLD_DIR)
 	@cp -r deps/fonts $(BLD_DIR)
 	@cp -r src/test_data $(BLD_DIR)
+	@git config core.hooksPath scripts/hooks
 
 .PHONY: libxyz
 libxyz: ## Build libxyz

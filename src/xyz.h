@@ -1536,7 +1536,6 @@ typedef struct imagef32_t {
   float *data;
 } imagef32_t;
 
-
 image_t *image_malloc(const int width, const int height, const int channels);
 void image_free(image_t *img);
 image_t *image_clone(const image_t *img);
@@ -1971,8 +1970,9 @@ uint32_t morton_encode_3d(uint32_t x, uint32_t y, uint32_t z);
 void morton_decode_2d(uint32_t code, uint32_t *x, uint32_t *y);
 void morton_decode_3d(uint32_t code, uint32_t *x, uint32_t *y, uint32_t *z);
 uint64_t morton_encode_forloop(unsigned int x, unsigned int y, unsigned int z);
-uint64_t
-morton_encode_magicbits(unsigned int x, unsigned int y, unsigned int z);
+uint64_t morton_encode_magicbits(unsigned int x,
+                                 unsigned int y,
+                                 unsigned int z);
 uint64_t morton_encode_LUT(unsigned int x, unsigned int y, unsigned int z);
 
 /*******************************************************************************

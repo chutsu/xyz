@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Runs clang-format over every tracked .c/.h file in the repo (excluding
+# deps/, which is vendored third-party code we don't own the style of)
+# and stages whatever it changes, so every commit leaves the whole tree
+# formatted.
+set -e
+
+if ! command -v clang-format > /dev/null 2>&1; then
+  echo "pre-commit: clang-format not found on PATH, skipping formatting" >&2
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+git ls-files -z -- '*.c' '*.h' ':!:deps/*' | while IFS= read -r -d '' f; do
+  clang-format -i "$f"
+done
+
+git ls-files -z -- '*.c' '*.h' ':!:deps/*' | xargs -0 git add --
+
+exit 0
