@@ -33,6 +33,17 @@ Modules
 - POINT CLOUD - Umeyama point cloud alignment
 - VOXEL - Voxel grid and downsampling
 - OCTREE - Octree spatial partitioning
+- KD-TREE - KD-tree nearest-neighbor search
+- STATE-ESTIMATION - Factors, cameras, IMU, bundle adjustment
+- SOLVER - Gauss-Newton nonlinear least squares
+- TIMELINE - Sensor event ordering and loading
+- SIMULATION - Synthetic trajectories, IMU, and camera data
+- CALIB-CAMERA - Camera intrinsics/extrinsics calibration
+- EUROC - EuRoC MAV dataset loader
+- KITTI - KITTI dataset loader
+- OPENGL - OpenGL math, shaders, cameras
+- GUI - GLFW window and input handling
+- GL-PRIMITIVES - 3D drawables (points, lines, meshes, text)
 
 Build
 -----
