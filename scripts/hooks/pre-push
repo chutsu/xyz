@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Runs the full test suite before allowing a push, so broken code (or a
+# crashing test that only shows up under `make ci`) never reaches the
+# remote.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push: running \`make ci\`..." >&2
+if ! make ci --no-print-directory; then
+  echo "pre-push: \`make ci\` failed, aborting push" >&2
+  exit 1
+fi
+
+exit 0

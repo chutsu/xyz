@@ -5,17 +5,27 @@
 # formatted.
 set -e
 
+# clang-format is required -- block the commit rather than letting
+# unformatted code slip through.
 if ! command -v clang-format > /dev/null 2>&1; then
-  echo "pre-commit: clang-format not found on PATH, skipping formatting" >&2
-  exit 0
+  echo "pre-commit: clang-format not found on PATH, aborting commit" >&2
+  exit 1
 fi
 
+# Run from the repo root regardless of the caller's cwd, so the git-ls-files
+# pathspecs below (and the paths they print) are relative to the repo, not
+# wherever `git commit` happened to be run from.
 cd "$(git rev-parse --show-toplevel)"
 
+# -z / -d '' pairs a NUL-delimited `git ls-files` with a NUL-delimited read,
+# so file names are handled correctly even if they contain spaces.
 git ls-files -z -- '*.c' '*.h' ':!:deps/*' | while IFS= read -r -d '' f; do
   clang-format -i "$f"
 done
 
+# Re-run the same listing and stage every matching file -- including ones
+# clang-format just rewrote in place above but that weren't part of this
+# commit to begin with -- so the formatting fix actually ends up committed.
 git ls-files -z -- '*.c' '*.h' ':!:deps/*' | xargs -0 git add --
 
 exit 0
