@@ -33,6 +33,236 @@ void print_stacktrace(void) {
   free(strings);
 }
 
+/**
+ * Check if file or directory exists at `path`.
+ * @returns
+ * - 1 Path exists
+ * - 0 Path does not exist
+ */
+status_t path_exists(const char *path) {
+  return (access(path, F_OK) == 0) ? 1 : 0;
+}
+
+/**
+ * Extract filename from `path` to `fname`.
+ */
+void path_file_name(const char *path, char *fname) {
+  assert(path != NULL);
+  assert(fname != NULL);
+
+  char path_copy[9046] = {0};
+  memcpy(path_copy, path, strlen(path));
+
+  char *base = strrchr(path_copy, '/');
+  base = base ? base + 1 : path_copy;
+
+  memcpy(fname, base, strlen(base));
+}
+
+/**
+ * Extract file extension from `path` to `fext`.
+ */
+void path_file_ext(const char *path, char *fext) {
+  assert(path != NULL);
+  assert(fext != NULL);
+
+  char path_copy[9046] = {0};
+  memcpy(path_copy, path, strlen(path));
+
+  char *base = strrchr(path_copy, '.');
+  if (base) {
+    base = base ? base + 1 : path_copy;
+    memcpy(fext, base, strlen(base));
+  } else {
+    fext[0] = '\0';
+  }
+}
+
+/**
+ * Extract file stem (file name without extension) from `path` to `fstem`.
+ */
+void path_file_stem(const char *path, char *fstem) {
+  assert(path != NULL);
+  assert(fstem != NULL);
+
+  char path_copy[9046] = {0};
+  memcpy(path_copy, path, strlen(path));
+
+  char *base = strrchr(path_copy, '/');
+  base = base ? base + 1 : path_copy;
+
+  char *dot = strrchr(base, '.');
+  const size_t len = (dot && dot != base) ? (size_t) (dot - base) : strlen(base);
+  memcpy(fstem, base, len);
+  fstem[len] = '\0';
+}
+
+/**
+ * Extract dir name from `path` to `dirname`.
+ */
+void path_dir_name(const char *path, char *dir_name) {
+  assert(path != NULL);
+  assert(dir_name != NULL);
+
+  char path_copy[9046] = {0};
+  memcpy(path_copy, path, strlen(path));
+
+  char *base = strrchr(path_copy, '/');
+  memcpy(dir_name, path_copy, base - path_copy);
+}
+
+/**
+ * Join two paths `x` and `y`
+ */
+char *path_join(const char *x, const char *y) {
+  assert(x != NULL && y != NULL);
+
+  const size_t x_len = strlen(x);
+
+  // Strip leading slashes from y so a trailing slash on x never yields two.
+  const char *y_begin = y;
+  while (x_len > 0 && x[x_len - 1] == '/' && *y_begin == '/') {
+    y_begin++;
+  }
+  const size_t y_used = strlen(y_begin);
+
+  // Separator only needed when x is non-empty and doesn't end in '/'.
+  const size_t sep = (x_len > 0 && x[x_len - 1] != '/') ? 1 : 0;
+
+  char *retval = malloc(x_len + sep + y_used + 1);
+  if (retval == NULL) {
+    return NULL;
+  }
+
+  char *p = retval;
+  memcpy(p, x, x_len);
+  p += x_len;
+  if (sep) {
+    *p++ = '/';
+  }
+  memcpy(p, y_begin, y_used);
+  p[y_used] = '\0';
+
+  return retval;
+}
+
+/**
+ * List files in `path`.
+ * @returns List of files in directory and number of files `n`.
+ */
+char **list_files(const char *path, int *n) {
+  assert(path != NULL);
+  assert(n != NULL);
+
+  struct dirent **namelist;
+  int num_files = scandir(path, &namelist, 0, alphasort);
+  if (num_files < 0) {
+    return NULL;
+  }
+
+  // The first two are '.' and '..'
+  free(namelist[0]);
+  free(namelist[1]);
+
+  // Allocate memory for list of files
+  char **files = malloc(sizeof(char *) * num_files - 2);
+  *n = 0;
+
+  // Create list of files
+  for (int i = 2; i < num_files; i++) {
+    char fp[9046] = {0};
+    const char *c = (path[strlen(path) - 1] == '/') ? "" : "/";
+    string_cat(fp, path);
+    string_cat(fp, c);
+    string_cat(fp, namelist[i]->d_name);
+
+    files[*n] = malloc(sizeof(char) * strlen(fp) + 1);
+    memcpy(files[*n], fp, strlen(fp));
+    files[*n][strlen(fp)] = '\0'; // strncpy does not null terminate
+    (*n)++;
+
+    free(namelist[i]);
+  }
+  free(namelist);
+
+  return files;
+}
+
+/**
+ * Free list of `files` of length `n`.
+ */
+void list_files_free(char **data, const int n) {
+  if (data == NULL) {
+    return;
+  }
+  for (int i = 0; i < n; i++) {
+    free(data[i]);
+  }
+  free(data);
+}
+
+/**
+ * Create directory at `path`, including any missing parent folders.
+ * `mode` is the POSIX permission bits (e.g. 0755) applied to every
+ * directory created, subject to the process umask -- same as the
+ * third argument to mkdir(2).
+ * @returns 0 for success or -1 for failure.
+ */
+int mkdir_p(const char *path, const mode_t mode) {
+  char *tmp = strdup(path);
+  char *p = tmp;
+  int status = 0;
+
+  // Skip leading slashes
+  while (*p == '/') {
+    p++;
+  }
+
+  for (; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+
+      if (mkdir(tmp, mode) != 0) {
+        if (errno != EEXIST) {
+          status = -1;
+          break;
+        }
+      }
+
+      *p = '/';
+    }
+  }
+
+  // Create the final directory
+  if (status == 0 && mkdir(tmp, mode) != 0) {
+    if (errno != EEXIST) {
+      status = -1;
+    }
+  }
+
+  free(tmp);
+  return status;
+}
+
+int _unlink_cb(const char *fpath,
+               const struct stat *sb,
+               int typeflag,
+               struct FTW *ftwbuf) {
+  int rv = remove(fpath);
+  if (rv) {
+    perror(fpath);
+  }
+  return rv;
+}
+
+/**
+ * Delete directrory.
+ * Returns 0 for success or -1 for failure.
+ */
+int rmdir(const char *path) {
+  return nftw(path, _unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
+}
+
 /*******************************************************************************
  * DATA
  ******************************************************************************/
@@ -595,143 +825,6 @@ void csv_free(double **data, const int num_rows) {
 }
 
 /**
- * Extract filename from `path` to `fname`.
- */
-void path_file_name(const char *path, char *fname) {
-  assert(path != NULL);
-  assert(fname != NULL);
-
-  char path_copy[9046] = {0};
-  memcpy(path_copy, path, strlen(path));
-
-  char *base = strrchr(path_copy, '/');
-  base = base ? base + 1 : path_copy;
-
-  memcpy(fname, base, strlen(base));
-}
-
-/**
- * Extract file extension from `path` to `fext`.
- */
-void path_file_ext(const char *path, char *fext) {
-  assert(path != NULL);
-  assert(fext != NULL);
-
-  char path_copy[9046] = {0};
-  memcpy(path_copy, path, strlen(path));
-
-  char *base = strrchr(path_copy, '.');
-  if (base) {
-    base = base ? base + 1 : path_copy;
-    memcpy(fext, base, strlen(base));
-  } else {
-    fext[0] = '\0';
-  }
-}
-
-/**
- * Extract dir name from `path` to `dirname`.
- */
-void path_dir_name(const char *path, char *dir_name) {
-  assert(path != NULL);
-  assert(dir_name != NULL);
-
-  char path_copy[9046] = {0};
-  memcpy(path_copy, path, strlen(path));
-
-  char *base = strrchr(path_copy, '/');
-  memcpy(dir_name, path_copy, base - path_copy);
-}
-
-/**
- * Join two paths `x` and `y`
- */
-char *path_join(const char *x, const char *y) {
-  assert(x != NULL && y != NULL);
-
-  const size_t x_len = strlen(x);
-
-  // Strip leading slashes from y so a trailing slash on x never yields two.
-  const char *y_begin = y;
-  while (x_len > 0 && x[x_len - 1] == '/' && *y_begin == '/') {
-    y_begin++;
-  }
-  const size_t y_used = strlen(y_begin);
-
-  // Separator only needed when x is non-empty and doesn't end in '/'.
-  const size_t sep = (x_len > 0 && x[x_len - 1] != '/') ? 1 : 0;
-
-  char *retval = malloc(x_len + sep + y_used + 1);
-  if (retval == NULL) {
-    return NULL;
-  }
-
-  char *p = retval;
-  memcpy(p, x, x_len);
-  p += x_len;
-  if (sep) {
-    *p++ = '/';
-  }
-  memcpy(p, y_begin, y_used);
-  p[y_used] = '\0';
-
-  return retval;
-}
-
-/**
- * List files in `path`.
- * @returns List of files in directory and number of files `n`.
- */
-char **list_files(const char *path, int *n) {
-  assert(path != NULL);
-  assert(n != NULL);
-
-  struct dirent **namelist;
-  int num_files = scandir(path, &namelist, 0, alphasort);
-  if (num_files < 0) {
-    return NULL;
-  }
-
-  // The first two are '.' and '..'
-  free(namelist[0]);
-  free(namelist[1]);
-
-  // Allocate memory for list of files
-  char **files = malloc(sizeof(char *) * num_files - 2);
-  *n = 0;
-
-  // Create list of files
-  for (int i = 2; i < num_files; i++) {
-    char fp[9046] = {0};
-    const char *c = (path[strlen(path) - 1] == '/') ? "" : "/";
-    string_cat(fp, path);
-    string_cat(fp, c);
-    string_cat(fp, namelist[i]->d_name);
-
-    files[*n] = malloc(sizeof(char) * strlen(fp) + 1);
-    memcpy(files[*n], fp, strlen(fp));
-    files[*n][strlen(fp)] = '\0'; // strncpy does not null terminate
-    (*n)++;
-
-    free(namelist[i]);
-  }
-  free(namelist);
-
-  return files;
-}
-
-/**
- * Free list of `files` of length `n`.
- */
-void list_files_free(char **data, const int n) {
-  assert(data != NULL);
-  for (int i = 0; i < n; i++) {
-    free(data[i]);
-  }
-  free(data);
-}
-
-/**
  * Count number of lines in file
  * @returns Number of lines or `-1` for failure
  */
@@ -751,65 +844,6 @@ size_t file_lines(const char *fp) {
   }
 
   return lines;
-}
-
-/**
- * Create directory, including parent folders.
- * Returns 0 for success or -1 for failure.
- */
-int mkdir_p(const char *path, const mode_t mode) {
-  char *tmp = strdup(path);
-  char *p = tmp;
-  int status = 0;
-
-  // Skip leading slashes
-  while (*p == '/') {
-    p++;
-  }
-
-  for (; *p; p++) {
-    if (*p == '/') {
-      *p = '\0';
-
-      if (mkdir(tmp, mode) != 0) {
-        if (errno != EEXIST) {
-          status = -1;
-          break;
-        }
-      }
-
-      *p = '/';
-    }
-  }
-
-  // Create the final directory
-  if (status == 0 && mkdir(tmp, mode) != 0) {
-    if (errno != EEXIST) {
-      status = -1;
-    }
-  }
-
-  free(tmp);
-  return status;
-}
-
-int _unlink_cb(const char *fpath,
-               const struct stat *sb,
-               int typeflag,
-               struct FTW *ftwbuf) {
-  int rv = remove(fpath);
-  if (rv) {
-    perror(fpath);
-  }
-  return rv;
-}
-
-/**
- * Delete directrory.
- * Returns 0 for success or -1 for failure.
- */
-int rmdir(const char *path) {
-  return nftw(path, _unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
 }
 
 /**
@@ -856,14 +890,6 @@ void skip_line(FILE *fp) {
     FATAL("Failed to skip line!");
   }
 }
-
-/**
- * Check if file exists.
- * @returns
- * - 1 File exists
- * - 0 File does not exist
- */
-int file_exists(const char *fp) { return (access(fp, F_OK) == 0) ? 1 : 0; }
 
 /**
  * Get number of rows in file `fp`.
@@ -20461,7 +20487,7 @@ sim_camera_data_t *sim_camera_data_load(const char *data_dir) {
 
   // Form csv file path
   char *csv_path = path_join(data_dir, "/data.csv");
-  if (file_exists(csv_path) == 0) {
+  if (path_exists(csv_path) == 0) {
     free(csv_path);
     return NULL;
   }
@@ -21202,7 +21228,7 @@ euroc_camera_t *euroc_camera_load(const char *data_dir, int is_calib_data) {
     strcat(image_path, data_dir);
     strcat(image_path, "/data/");
     strcat(image_path, filename);
-    if (file_exists(image_path) == 0) {
+    if (path_exists(image_path) == 0) {
       EUROC_FATAL("File [%s] does not exist!\n", image_path);
     }
 
