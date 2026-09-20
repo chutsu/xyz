@@ -276,15 +276,15 @@ typedef double real_t;
 void print_stacktrace(void);
 
 status_t path_exists(const char *path);
-void path_file_name(const char *path, char *fname);
-void path_file_ext(const char *path, char *fext);
-void path_file_stem(const char *path, char *fstem);
-void path_dir_name(const char *path, char *dir_name);
+void path_filename(const char *path, char *fname);
+void path_extension(const char *path, char *fext);
+void path_stem(const char *path, char *fstem);
+void path_parent(const char *path, char *parent);
 char *path_join(const char *x, const char *y);
+int path_mkdir(const char *path, const mode_t mode);
+int path_rmtree(const char *path);
 char **list_files(const char *path, int *num_files);
 void list_files_free(char **data, const int n);
-int mkdir_p(const char *path, const mode_t mode);
-int rmdir(const char *path);
 
 /*******************************************************************************
  * DATA

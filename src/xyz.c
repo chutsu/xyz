@@ -46,13 +46,15 @@ status_t path_exists(const char *path) {
 /**
  * Extract filename from `path` to `fname`.
  */
-void path_file_name(const char *path, char *fname) {
+void path_filename(const char *path, char *fname) {
   assert(path != NULL);
   assert(fname != NULL);
 
   char path_copy[9046] = {0};
   memcpy(path_copy, path, strlen(path));
 
+  // Find the last '/'. Everything after it is the file name; if there's
+  // no '/' at all, the whole path is the file name.
   char *base = strrchr(path_copy, '/');
   base = base ? base + 1 : path_copy;
 
@@ -62,17 +64,24 @@ void path_file_name(const char *path, char *fname) {
 /**
  * Extract file extension from `path` to `fext`.
  */
-void path_file_ext(const char *path, char *fext) {
+void path_extension(const char *path, char *fext) {
   assert(path != NULL);
   assert(fext != NULL);
 
   char path_copy[9046] = {0};
   memcpy(path_copy, path, strlen(path));
 
-  char *base = strrchr(path_copy, '.');
-  if (base) {
-    base = base ? base + 1 : path_copy;
-    memcpy(fext, base, strlen(base));
+  // Strip the directory first, same as path_filename(), so a dot in a
+  // parent directory doesn't get mistaken for an extension separator.
+  char *name = strrchr(path_copy, '/');
+  name = name ? name + 1 : path_copy;
+
+  // Find the last '.' within the file name. Everything after it is the
+  // extension; if there's no '.', there's no extension.
+  char *dot = strrchr(name, '.');
+  if (dot) {
+    memcpy(fext, dot + 1, strlen(dot + 1));
+    fext[strlen(dot + 1)] = '\0';
   } else {
     fext[0] = '\0';
   }
@@ -81,34 +90,53 @@ void path_file_ext(const char *path, char *fext) {
 /**
  * Extract file stem (file name without extension) from `path` to `fstem`.
  */
-void path_file_stem(const char *path, char *fstem) {
+void path_stem(const char *path, char *fstem) {
   assert(path != NULL);
   assert(fstem != NULL);
 
   char path_copy[9046] = {0};
   memcpy(path_copy, path, strlen(path));
 
+  // Strip the directory first, same as path_filename().
   char *base = strrchr(path_copy, '/');
   base = base ? base + 1 : path_copy;
 
+  // Find the last '.' within the file name only (not the whole path, so a
+  // dot in a parent directory doesn't get mistaken for an extension
+  // separator). A leading dot (e.g. ".gitignore") isn't treated as one
+  // either -- `dot != base` excludes it, so the stem keeps the dot.
   char *dot = strrchr(base, '.');
-  const size_t len = (dot && dot != base) ? (size_t) (dot - base) : strlen(base);
+  size_t len;
+  if (dot && dot != base) {
+    len = (size_t) (dot - base);
+  } else {
+    len = strlen(base);
+  }
   memcpy(fstem, base, len);
   fstem[len] = '\0';
 }
 
 /**
- * Extract dir name from `path` to `dirname`.
+ * Extract parent directory from `path` to `parent`.
  */
-void path_dir_name(const char *path, char *dir_name) {
+void path_parent(const char *path, char *parent) {
   assert(path != NULL);
-  assert(dir_name != NULL);
+  assert(parent != NULL);
 
   char path_copy[9046] = {0};
   memcpy(path_copy, path, strlen(path));
 
+  // Find the last '/'. Everything before it is the parent directory; if
+  // there's no '/' at all, the path has no parent directory.
   char *base = strrchr(path_copy, '/');
-  memcpy(dir_name, path_copy, base - path_copy);
+  if (base == NULL) {
+    parent[0] = '\0';
+    return;
+  }
+
+  const size_t len = base - path_copy;
+  memcpy(parent, path_copy, len);
+  parent[len] = '\0';
 }
 
 /**
@@ -144,6 +172,68 @@ char *path_join(const char *x, const char *y) {
   p[y_used] = '\0';
 
   return retval;
+}
+
+/**
+ * Create directory at `path`, including any missing parent folders.
+ * `mode` is the POSIX permission bits (e.g. 0755) applied to every
+ * directory created, subject to the process umask -- same as the
+ * third argument to mkdir(2).
+ * @returns 0 for success or -1 for failure.
+ */
+int path_mkdir(const char *path, const mode_t mode) {
+  char *tmp = strdup(path);
+  char *p = tmp;
+  int status = 0;
+
+  // Skip leading slashes
+  while (*p == '/') {
+    p++;
+  }
+
+  for (; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+
+      if (mkdir(tmp, mode) != 0) {
+        if (errno != EEXIST) {
+          status = -1;
+          break;
+        }
+      }
+
+      *p = '/';
+    }
+  }
+
+  // Create the final directory
+  if (status == 0 && mkdir(tmp, mode) != 0) {
+    if (errno != EEXIST) {
+      status = -1;
+    }
+  }
+
+  free(tmp);
+  return status;
+}
+
+int _unlink_cb(const char *fpath,
+               const struct stat *sb,
+               int typeflag,
+               struct FTW *ftwbuf) {
+  int rv = remove(fpath);
+  if (rv) {
+    perror(fpath);
+  }
+  return rv;
+}
+
+/**
+ * Recursively delete the directory at `path` and everything in it.
+ * @returns 0 for success or -1 for failure.
+ */
+int path_rmtree(const char *path) {
+  return nftw(path, _unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
 }
 
 /**
@@ -199,68 +289,6 @@ void list_files_free(char **data, const int n) {
     free(data[i]);
   }
   free(data);
-}
-
-/**
- * Create directory at `path`, including any missing parent folders.
- * `mode` is the POSIX permission bits (e.g. 0755) applied to every
- * directory created, subject to the process umask -- same as the
- * third argument to mkdir(2).
- * @returns 0 for success or -1 for failure.
- */
-int mkdir_p(const char *path, const mode_t mode) {
-  char *tmp = strdup(path);
-  char *p = tmp;
-  int status = 0;
-
-  // Skip leading slashes
-  while (*p == '/') {
-    p++;
-  }
-
-  for (; *p; p++) {
-    if (*p == '/') {
-      *p = '\0';
-
-      if (mkdir(tmp, mode) != 0) {
-        if (errno != EEXIST) {
-          status = -1;
-          break;
-        }
-      }
-
-      *p = '/';
-    }
-  }
-
-  // Create the final directory
-  if (status == 0 && mkdir(tmp, mode) != 0) {
-    if (errno != EEXIST) {
-      status = -1;
-    }
-  }
-
-  free(tmp);
-  return status;
-}
-
-int _unlink_cb(const char *fpath,
-               const struct stat *sb,
-               int typeflag,
-               struct FTW *ftwbuf) {
-  int rv = remove(fpath);
-  if (rv) {
-    perror(fpath);
-  }
-  return rv;
-}
-
-/**
- * Delete directrory.
- * Returns 0 for success or -1 for failure.
- */
-int rmdir(const char *path) {
-  return nftw(path, _unlink_cb, 64, FTW_DEPTH | FTW_PHYS);
 }
 
 /*******************************************************************************
@@ -1046,8 +1074,8 @@ timestamp_t sec2ts(const double time_s) { return time_s * 1e9; }
 timestamp_t path2ts(const char *file_path) {
   char fname[128] = {0};
   char fext[128] = {0};
-  path_file_name(file_path, fname);
-  path_file_ext(file_path, fext);
+  path_filename(file_path, fname);
+  path_extension(file_path, fext);
 
   char ts_str[128] = {0};
   memcpy(ts_str, fname, strlen(fname) - strlen(fext) - 1);

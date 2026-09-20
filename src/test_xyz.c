@@ -8468,7 +8468,7 @@ int test_sim_camera_data_save_load(void) {
     }
   }
   sim_camera_data_free(data);
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -8578,7 +8578,7 @@ int test_calib_camera_mono_batch(void) {
   const char *cam0_outdir = "/tmp/cam0-aprilgrids";
 
   if (path_exists(cam0_outdir) == 0) {
-    if (mkdir_p(cam0_outdir, 0755) == -1) {
+    if (path_mkdir(cam0_outdir, 0755) == -1) {
       printf("Failed to create output directory: %s\n", cam0_outdir);
     }
   }
@@ -8588,7 +8588,7 @@ int test_calib_camera_mono_batch(void) {
   for (size_t i = 0; i < num_files; ++i) {
     // Parse timestamp from filename
     char ts_str[20] = {0};
-    path_file_stem(cam0_files[i], ts_str);
+    path_stem(cam0_files[i], ts_str);
     const timestamp_t ts = str2ts(ts_str);
 
     // Form output path
@@ -8853,7 +8853,7 @@ int test_calib_camera_mono_batch(void) {
 
 void setup_euroc_imu_test_data(const char *data_dir) {
   // Create data directory
-  int retval = mkdir_p(data_dir, 0755);
+  int retval = path_mkdir(data_dir, 0755);
   if (retval != 0 && errno != EEXIST) {
     FATAL("Failed to create directory [%s]", data_dir);
   }
@@ -8890,7 +8890,7 @@ void setup_euroc_imu_test_data(const char *data_dir) {
 
 void setup_euroc_camera_test_data(const char *data_dir) {
   // Create data directory
-  int retval = mkdir_p(data_dir, 0755);
+  int retval = path_mkdir(data_dir, 0755);
   if (retval != 0 && errno != EEXIST) {
     FATAL("Failed to create directory [%s]", data_dir);
   }
@@ -8929,7 +8929,7 @@ void setup_euroc_camera_test_data(const char *data_dir) {
   char image_dir[100] = {0};
   strcat(image_dir, data_dir);
   strcat(image_dir, "/data");
-  mkdir_p(image_dir, 0755);
+  path_mkdir(image_dir, 0755);
 
   char image_path[100] = {0};
   strcat(image_path, image_dir);
@@ -8940,7 +8940,7 @@ void setup_euroc_camera_test_data(const char *data_dir) {
 
 void setup_euroc_ground_truth_test_data(const char *data_dir) {
   // Create data directory
-  int retval = mkdir_p(data_dir, 0755);
+  int retval = path_mkdir(data_dir, 0755);
   if (retval != 0 && errno != EEXIST) {
     FATAL("Failed to create directory [%s]", data_dir);
   }
@@ -8972,7 +8972,7 @@ void setup_euroc_ground_truth_test_data(const char *data_dir) {
 
 void setup_euroc_calib_target_test_config(const char *data_dir) {
   // Create data directory
-  int retval = mkdir_p(data_dir, 0755);
+  int retval = path_mkdir(data_dir, 0755);
   if (retval != 0 && errno != EEXIST) {
     FATAL("Failed to create directory [%s]", data_dir);
   }
@@ -8990,7 +8990,7 @@ void setup_euroc_calib_target_test_config(const char *data_dir) {
 
 void setup_euroc_test_data(const char *data_dir) {
   // Create data directory
-  int retval = mkdir_p(data_dir, 0755);
+  int retval = path_mkdir(data_dir, 0755);
   if (retval != 0 && errno != EEXIST) {
     FATAL("Failed to create directory [%s]", data_dir);
   }
@@ -9043,7 +9043,7 @@ int test_euroc_imu_load(void) {
   euroc_imu_free(data);
 
   // Clean up
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -9078,7 +9078,7 @@ int test_euroc_camera_load(void) {
   euroc_camera_free(data);
 
   // Clean up
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -9115,7 +9115,7 @@ int test_euroc_ground_truth_load(void) {
   euroc_ground_truth_free(data);
 
   // Clean up
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -9130,7 +9130,7 @@ int test_euroc_data_load(void) {
   euroc_data_free(data);
 
   // Clean up
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -9152,7 +9152,7 @@ int test_euroc_calib_target_load(void) {
   euroc_calib_target_free(data);
 
   // Clean up
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -9167,7 +9167,7 @@ int test_euroc_calib_load(void) {
   euroc_calib_free(data);
 
   // Clean up
-  rmdir(data_dir);
+  path_rmtree(data_dir);
 
   return 0;
 }
@@ -9182,7 +9182,7 @@ int setup_kitti_camera_test_data(const char *camera_dir) {
   // Create data directory
   char data_dir[100] = {0};
   sprintf(data_dir, "%s/data", camera_dir);
-  MU_ASSERT(mkdir_p(data_dir, 0755) == 0);
+  MU_ASSERT(path_mkdir(data_dir, 0755) == 0);
 
   // Image file
   {
@@ -9208,7 +9208,7 @@ int setup_kitti_oxts_test_data(const char *oxts_dir) {
   // Create data directory
   char data_dir[100] = {0};
   sprintf(data_dir, "%s/data", oxts_dir);
-  MU_ASSERT(mkdir_p(data_dir, 0755) == 0);
+  MU_ASSERT(path_mkdir(data_dir, 0755) == 0);
 
   // Oxts entry
   {
@@ -9242,7 +9242,7 @@ int setup_kitti_velodyne_test_data(const char *oxts_dir) {
   // Create data directory
   char data_dir[100] = {0};
   sprintf(data_dir, "%s/data", oxts_dir);
-  MU_ASSERT(mkdir_p(data_dir, 0755) == 0);
+  MU_ASSERT(path_mkdir(data_dir, 0755) == 0);
 
   // Velodyne entry
   {
@@ -9361,7 +9361,7 @@ int setup_kitti_test_data(const char *data_dir) {
   sprintf(oxts_dir, "%s/oxts", data_dir);
   sprintf(velodyne_dir, "%s/velodyne_points", data_dir);
 
-  MU_ASSERT(mkdir_p(KITTI_TEST_DIR, 0755) == 0);
+  MU_ASSERT(path_mkdir(KITTI_TEST_DIR, 0755) == 0);
   MU_ASSERT(setup_kitti_camera_test_data(cam0_dir) == 0);
   MU_ASSERT(setup_kitti_camera_test_data(cam1_dir) == 0);
   MU_ASSERT(setup_kitti_camera_test_data(cam2_dir) == 0);
@@ -9380,7 +9380,7 @@ int test_kitti_camera_load(void) {
   kitti_camera_t *data = kitti_camera_load(data_dir);
   kitti_camera_free(data);
 
-  rmdir(KITTI_TEST_DIR);
+  path_rmtree(KITTI_TEST_DIR);
 
   return 0;
 }
@@ -9422,7 +9422,7 @@ int test_kitti_oxts_load(void) {
   MU_ASSERT(data->orimode[0] == 29);
   kitti_oxts_free(data);
 
-  rmdir(KITTI_TEST_DIR);
+  path_rmtree(KITTI_TEST_DIR);
 
   return 0;
 }
@@ -9434,7 +9434,7 @@ int test_kitti_velodyne_load(void) {
   kitti_velodyne_t *data = kitti_velodyne_load(data_dir);
   kitti_velodyne_free(data);
 
-  rmdir(KITTI_TEST_DIR);
+  path_rmtree(KITTI_TEST_DIR);
 
   return 0;
 }
@@ -9445,7 +9445,7 @@ int test_kitti_calib_load(void) {
   kitti_calib_t *data = kitti_calib_load(KITTI_TEST_DIR);
   kitti_calib_free(data);
 
-  rmdir(KITTI_TEST_DIR);
+  path_rmtree(KITTI_TEST_DIR);
 
   return 0;
 }
@@ -9456,7 +9456,7 @@ int test_kitti_raw_load(void) {
   kitti_raw_t *data = kitti_raw_load(KITTI_TEST_DIR, "");
   kitti_raw_free(data);
 
-  rmdir(KITTI_TEST_DIR);
+  path_rmtree(KITTI_TEST_DIR);
 
   return 0;
 }
