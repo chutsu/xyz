@@ -446,6 +446,7 @@ int int_cmp(const void *x, const void *y);
 int float_cmp(const void *x, const void *y);
 int double_cmp(const void *x, const void *y);
 int string_cmp(const void *x, const void *y);
+int ts_cmp(const void *x, const void *y);
 
 typedef struct rbt_node_t rbt_node_t;
 struct rbt_node_t {

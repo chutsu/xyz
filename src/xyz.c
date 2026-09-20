@@ -1616,6 +1616,15 @@ int string_cmp(const void *x, const void *y) {
   return strcmp((char *) x, (char *) y);
 }
 
+int ts_cmp(const void *x, const void *y) {
+  if (*(timestamp_t *) x < *(timestamp_t *) y) {
+    return -1;
+  } else if (*(timestamp_t *) x > *(timestamp_t *) y) {
+    return 1;
+  }
+  return 0;
+}
+
 /**
  * The following Red-Black tree implementation is based on Robert Sedgewick's
  * Left Leaninng Red-Black tree (LLRBT), where we have implemented the 2-3
@@ -2082,6 +2091,10 @@ rbt_t *rbt_malloc(cmp_t cmp) {
 }
 
 void rbt_free(rbt_t *rbt) {
+  if (rbt == NULL) {
+    return;
+  }
+
   if (rbt->kfree) {
     rbt_node_free_keys(rbt->root, rbt->kfree);
   }
