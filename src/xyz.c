@@ -795,7 +795,9 @@ dsv_data(const char *fp, const char delim, int *num_rows, int *num_cols) {
  * Free DSV data.
  */
 void dsv_free(double **data, const int num_rows) {
-  assert(data != NULL);
+  if (data == NULL) {
+    return;
+  }
   for (int i = 0; i < num_rows; i++) {
     free(data[i]);
   }
@@ -818,6 +820,9 @@ double **csv_data(const char *fp, int *num_rows, int *num_cols) {
  * Free CSV data.
  */
 void csv_free(double **data, const int num_rows) {
+  if (data == NULL) {
+    return;
+  }
   for (int i = 0; i < num_rows; i++) {
     free(data[i]);
   }
@@ -971,7 +976,12 @@ timestamp_t *timestamp_malloc(timestamp_t ts) {
   return ts_ptr;
 }
 
-void timestamp_free(timestamp_t *ts_ptr) { free(ts_ptr); }
+void timestamp_free(timestamp_t *ts_ptr) {
+  if (ts_ptr == NULL) {
+    return;
+  }
+  free(ts_ptr);
+}
 
 /**
  * Tic, start timer.
@@ -1059,6 +1069,9 @@ arr_t *arr_malloc(const size_t capacity) {
 }
 
 void arr_free(arr_t *keys) {
+  if (keys == NULL) {
+    return;
+  }
   free(keys->data);
   free(keys);
 }
@@ -1330,7 +1343,9 @@ list_t *list_malloc(void) {
 }
 
 void list_free(list_t *list) {
-  assert(list != NULL);
+  if (list == NULL) {
+    return;
+  }
 
   list_node_t *node;
   list_node_t *next_node;
@@ -1368,7 +1383,9 @@ void list_clear(list_t *list) {
 }
 
 void list_clear_free(list_t *list) {
-  assert(list != NULL);
+  if (list == NULL) {
+    return;
+  }
 
   list_node_t *node = list->first;
   while (node != NULL) {
@@ -2237,7 +2254,9 @@ hm_t *hm_malloc(const size_t capacity,
 }
 
 void hm_free(hm_t *hm, void (*free_key)(void *), void (*free_value)(void *)) {
-  assert(hm);
+  if (hm == NULL) {
+    return;
+  }
 
   for (size_t i = 0; i < hm->capacity; ++i) {
     hm_entry_t *entry = &hm->entries[i];
@@ -7647,6 +7666,9 @@ mav_model_telem_t *mav_model_telem_malloc(void) {
 }
 
 void mav_model_telem_free(mav_model_telem_t *telem) {
+  if (telem == NULL) {
+    return;
+  }
   free(telem->time);
   free(telem->roll);
   free(telem->pitch);
@@ -7937,6 +7959,9 @@ mav_waypoints_t *mav_waypoints_malloc(void) {
 }
 
 void mav_waypoints_free(mav_waypoints_t *wps) {
+  if (wps == NULL) {
+    return;
+  }
   free(wps->waypoints);
   free(wps);
 }
@@ -8054,7 +8079,9 @@ image_t *image_malloc(const int width, const int height, const int channels) {
  * Free image.
  */
 void image_free(image_t *img) {
-  assert(img != NULL);
+  if (img == NULL) {
+    return;
+  }
   free(img->data);
   free(img);
 }
@@ -9912,7 +9939,9 @@ imagef32_t *imagef32_malloc(const int width,
  * Free a floating-point image.
  */
 void imagef32_free(imagef32_t *img) {
-  assert(img != NULL);
+  if (img == NULL) {
+    return;
+  }
   free(img->data);
   free(img);
 }
@@ -12789,7 +12818,9 @@ aprilgrid_detector_t *aprilgrid_detector_malloc(int num_rows,
 }
 
 void aprilgrid_detector_free(aprilgrid_detector_t *det) {
-  assert(det != NULL);
+  if (det == NULL) {
+    return;
+  }
   apriltag_detector_destroy(det->td);
   // tagStandard41h12_destroy(det->tf);
   tag36h11_destroy(det->tf);
@@ -13547,7 +13578,9 @@ voxel_t *voxel_malloc(const int32_t key[3]) {
 
 /** Free heap memory allocated for voxel. */
 void voxel_free(voxel_t *voxel) {
-  assert(voxel);
+  if (voxel == NULL) {
+    return;
+  }
   free(voxel->points);
   free(voxel);
 }
@@ -14148,6 +14181,9 @@ kdtree_t *kdtree_malloc(float *points, size_t num_points) {
 }
 
 void kdtree_free(kdtree_t *kdtree) {
+  if (kdtree == NULL) {
+    return;
+  }
   kdtree_node_free(kdtree->root);
   free(kdtree);
 }
@@ -14268,6 +14304,9 @@ fiducial_info_t *fiducial_info_malloc(const timestamp_t ts, const int cam_idx) {
 }
 
 void fiducial_info_free(fiducial_info_t *finfo) {
+  if (finfo == NULL) {
+    return;
+  }
   free(finfo->tag_ids);
   free(finfo->corner_indices);
   free(finfo->pts);
@@ -14784,6 +14823,10 @@ rbt_t *param_index_malloc(void) { return rbt_malloc(default_cmp); }
  * Free param index.
  */
 void param_index_free(rbt_t *param_index) {
+  if (param_index == NULL) {
+    return;
+  }
+
   // Free values
   const size_t n = rbt_size(param_index);
   arr_t *keys = arr_malloc(n);
@@ -17233,6 +17276,10 @@ camchain_t *camchain_malloc(const int num_cams) {
  * Free camchain initialzer.
  */
 void camchain_free(camchain_t *cc) {
+  if (cc == NULL) {
+    return;
+  }
+
   // Adjacency list and extrinsic
   for (int cam_idx = 0; cam_idx < cc->num_cams; cam_idx++) {
     free(cc->adj_list[cam_idx]);
@@ -19103,6 +19150,9 @@ void solver_params_restore(solver_t *solver, real_t **x) {
  * Free params
  */
 void solver_params_free(const solver_t *solver, real_t **x) {
+  if (x == NULL) {
+    return;
+  }
   for (int idx = 0; idx < rbt_size(solver->param_index); ++idx) {
     free(x[idx]);
   }
@@ -20766,6 +20816,9 @@ sim_circle_camera_imu_t *sim_circle_camera_imu(void) {
 }
 
 void sim_circle_camera_imu_free(sim_circle_camera_imu_t *sim_data) {
+  if (sim_data == NULL) {
+    return;
+  }
   sim_imu_data_free(sim_data->imu_data);
   sim_camera_data_free(sim_data->cam0_data);
   sim_camera_data_free(sim_data->cam1_data);
@@ -21149,7 +21202,9 @@ euroc_imu_t *euroc_imu_load(const char *data_dir) {
  * Free EuRoC IMU data
  */
 void euroc_imu_free(euroc_imu_t *data) {
-  assert(data != NULL);
+  if (data == NULL) {
+    return;
+  }
   free(data->timestamps);
   for (size_t k = 0; k < data->num_timestamps; k++) {
     free(data->w_B[k]);
@@ -21274,6 +21329,9 @@ euroc_camera_t *euroc_camera_load(const char *data_dir, int is_calib_data) {
  * Free EuRoC camera data
  */
 void euroc_camera_free(euroc_camera_t *data) {
+  if (data == NULL) {
+    return;
+  }
   free(data->timestamps);
   for (size_t k = 0; k < data->num_timestamps; k++) {
     free(data->image_paths[k]);
@@ -21397,6 +21455,9 @@ euroc_ground_truth_t *euroc_ground_truth_load(const char *data_dir) {
  * Free EuRoC ground truth data
  */
 void euroc_ground_truth_free(euroc_ground_truth_t *data) {
+  if (data == NULL) {
+    return;
+  }
   free(data->timestamps);
 
   for (size_t k = 0; k < data->num_timestamps; k++) {
@@ -21519,6 +21580,9 @@ euroc_timeline_t *euroc_timeline_create(const euroc_imu_t *imu0_data,
  * Free EuRoC timeline
  */
 void euroc_timeline_free(euroc_timeline_t *timeline) {
+  if (timeline == NULL) {
+    return;
+  }
   free(timeline->timestamps);
   free(timeline->events);
   free(timeline);
@@ -21570,7 +21634,9 @@ euroc_data_t *euroc_data_load(const char *data_path) {
  * Free EuRoC data
  */
 void euroc_data_free(euroc_data_t *data) {
-  assert(data != NULL);
+  if (data == NULL) {
+    return;
+  }
   euroc_imu_free(data->imu0_data);
   euroc_camera_free(data->cam0_data);
   euroc_camera_free(data->cam1_data);
@@ -21599,7 +21665,12 @@ euroc_calib_target_t *euroc_calib_target_load(const char *conf) {
 /**
  * Free EuRoC calibration target
  */
-void euroc_calib_target_free(euroc_calib_target_t *target) { free(target); }
+void euroc_calib_target_free(euroc_calib_target_t *target) {
+  if (target == NULL) {
+    return;
+  }
+  free(target);
+}
 
 /**
  * EuRoC calibration target to output stream
@@ -21658,6 +21729,9 @@ euroc_calib_t *euroc_calib_load(const char *data_path) {
  * Free EuRoC calibration data
  */
 void euroc_calib_free(euroc_calib_t *data) {
+  if (data == NULL) {
+    return;
+  }
   euroc_imu_free(data->imu0_data);
   euroc_camera_free(data->cam0_data);
   euroc_camera_free(data->cam1_data);
@@ -21856,6 +21930,10 @@ kitti_camera_t *kitti_camera_load(const char *data_dir) {
 }
 
 void kitti_camera_free(kitti_camera_t *data) {
+  if (data == NULL) {
+    return;
+  }
+
   // Timestamps
   free(data->timestamps);
 
@@ -22023,6 +22101,10 @@ kitti_oxts_t *kitti_oxts_load(const char *data_dir) {
 }
 
 void kitti_oxts_free(kitti_oxts_t *data) {
+  if (data == NULL) {
+    return;
+  }
+
   // Timestamps
   free(data->timestamps);
 
@@ -22163,6 +22245,9 @@ kitti_velodyne_t *kitti_velodyne_load(const char *data_dir) {
 }
 
 void kitti_velodyne_free(kitti_velodyne_t *data) {
+  if (data == NULL) {
+    return;
+  }
   free(data->timestamps);
   free(data->timestamps_start);
   free(data->timestamps_end);
@@ -22291,7 +22376,12 @@ kitti_calib_t *kitti_calib_load(const char *data_dir) {
   return data;
 }
 
-void kitti_calib_free(kitti_calib_t *data) { free(data); }
+void kitti_calib_free(kitti_calib_t *data) {
+  if (data == NULL) {
+    return;
+  }
+  free(data);
+}
 
 void kitti_calib_print(const kitti_calib_t *data) {
   printf("calib_time_cam_to_cam: %s\n", data->calib_time_cam_to_cam);
@@ -22383,6 +22473,9 @@ kitti_raw_t *kitti_raw_load(const char *data_dir, const char *seq_name) {
 }
 
 void kitti_raw_free(kitti_raw_t *data) {
+  if (data == NULL) {
+    return;
+  }
   kitti_camera_free(data->image_00);
   kitti_camera_free(data->image_01);
   kitti_camera_free(data->image_02);
@@ -24040,7 +24133,9 @@ gui_t *gui_malloc(const char *window_title,
  * Terminate GLFW and free the `gui` window.
  */
 void gui_free(gui_t *gui) {
-  assert(gui);
+  if (gui == NULL) {
+    return;
+  }
   glfwTerminate();
   free(gui);
 }
