@@ -64,7 +64,7 @@ run_test() {
       && clear \
       && make libxyz -j \
       && cd build \
-      && $DEBUG ./$1 --target $2 \
+      && ./$1 --target $2 \
       && cd ~/code/xyz
   " C-m C-m
   exit
@@ -394,6 +394,8 @@ run_test() {
 # run_test test_xyz test_sim_camera_frame_save_load
 # run_test test_xyz test_sim_camera_data_save_load
 # run_test test_xyz test_sim_camera_circle_trajectory
+## XYZ-CAMERA-CALIBRATION
+run_test test_xyz test_calib_camera_mono_batch
 ## XYZ-EUROC
 # run_test test_xyz test_euroc_imu_load
 # run_test test_xyz test_euroc_camera_load
@@ -427,9 +429,7 @@ run_test() {
 # run_test test_xyz test_gl_shader
 # run_test test_xyz test_gl_camera_setup
 # run_test test_xyz test_gl_model_load
-run_test test_xyz test_gl_cube3d
+# run_test test_xyz test_gl_cube3d
 # run_test test_xyz test_gui
 
 # run_test test_xyz test_sandbox_optflow
-
-# make tools

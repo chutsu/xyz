@@ -167,10 +167,6 @@ benchmark: ## Build and run benchmarks
 	@$(MAKE) -s $(BENCHMARKS) BUILD_TYPE=release --no-print-directory
 	@cd ./build && $(foreach BENCH, $(BENCHMARKS), ./$(notdir ${BENCH});)
 
-.PHONY: tools
-tools:
-	@gcc -c tools/calib_camera.c -o $(BLD_DIR)/calib_camera
-
 .PHONY: ci
 ci: ## Run CI tests
 	@make tests CI_MODE=1 --no-print-directory

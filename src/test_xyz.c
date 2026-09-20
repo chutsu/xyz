@@ -4086,8 +4086,7 @@ int test_image_convolution_fast(void) {
   }
 
   image_t *slow = image_convolve(img, kernel_2d, size, size);
-  image_t *fast =
-      image_convolution_fast(img, kernel_1d, size, kernel_1d, size);
+  image_t *fast = image_convolution_fast(img, kernel_1d, size, kernel_1d, size);
 
   MU_ASSERT(slow != NULL);
   MU_ASSERT(fast != NULL);
@@ -8539,6 +8538,316 @@ int test_sim_camera_circle_trajectory(void) {
 }
 
 /******************************************************************************
+ * CAMERA CALIBRATION
+ *****************************************************************************/
+
+#define TEST_DATA_PATH "/data/euroc/"
+#define TEST_CAM_APRIL TEST_DATA_PATH "cam_april"
+
+int test_calib_camera_mono_batch(void) {
+  // Initialize camera intrinsics
+  const int cam_res[2] = {752, 480};
+  const char *proj_model = "pinhole";
+  const char *dist_model = "radtan4";
+  const real_t cam_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+  const real_t camera[8] =
+      {495.864541, 495.864541, 375.500000, 239.500000, 0, 0, 0, 0};
+
+  // Setup aprilgrid detector
+  const int tag_rows = 6;
+  const int tag_cols = 6;
+  const real_t tag_size = 0.088;
+  const real_t tag_spacing = 0.3;
+  aprilgrid_detector_t *det =
+      aprilgrid_detector_malloc(tag_rows, tag_cols, tag_size, tag_spacing);
+
+  // Setup camera calibration problem
+  calib_camera_t *calib = calib_camera_malloc();
+  calib->verbose = 0;
+  calib->max_iter = 30;
+  calib_camera_add_camera(calib,
+                          0,
+                          cam_res,
+                          proj_model,
+                          dist_model,
+                          camera,
+                          cam_ext);
+
+  // Process camera images
+  const char *cam0_dir = TEST_CAM_APRIL "/mav0/cam0/data";
+  const char *cam0_outdir = "/tmp/cam0-aprilgrids";
+
+  if (path_exists(cam0_outdir) == 0) {
+    if (mkdir_p(cam0_outdir, 0755) == -1) {
+      printf("Failed to create output directory: %s\n", cam0_outdir);
+    }
+  }
+
+  int num_files = 0;
+  char **cam0_files = list_files(cam0_dir, &num_files);
+  for (size_t i = 0; i < num_files; ++i) {
+    // Parse timestamp from filename
+    char ts_str[20] = {0};
+    path_file_stem(cam0_files[i], ts_str);
+    const timestamp_t ts = str2ts(ts_str);
+
+    // Form output path
+    char output_path[100] = {0};
+    snprintf(output_path, 100, "%s/%ld.csv", cam0_outdir, ts);
+    if (path_exists(output_path)) {
+      continue;
+    }
+
+    // Detect aprilgrid and save
+    image_t *image = image_load(cam0_files[i]);
+    aprilgrid_t *grid = aprilgrid_detector_detect(det,
+                                                  ts,
+                                                  image->width,
+                                                  image->height,
+                                                  image->width,
+                                                  image->data);
+    aprilgrid_save(grid, output_path);
+  }
+
+  // Batch solve
+  calib_camera_add_data(calib, 0, cam0_outdir);
+  // calib_camera_solve(calib);
+
+  // // Asserts
+  // double reproj_rmse = 0.0;
+  // double reproj_mean = 0.0;
+  // double reproj_median = 0.0;
+  // calib_camera_errors(calib, &reproj_rmse, &reproj_mean, &reproj_median);
+  // MU_ASSERT(reproj_rmse < 0.5);
+  // MU_ASSERT(reproj_mean < 0.5);
+  // MU_ASSERT(reproj_median < 0.5);
+
+  // Clean up
+  list_files_free(cam0_files, num_files);
+  aprilgrid_detector_free(det);
+  calib_camera_free(calib);
+
+  return 0;
+}
+
+// int test_calib_camera_mono_incremental(void) {
+//   const char *data_path = TEST_CAM_APRIL "/cam0";
+//
+//   // Initialize camera intrinsics
+//   const int res[2] = {752, 480};
+//   const char *pm = "pinhole";
+//   const char *dm = "radtan4";
+//   const real_t cam_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+//   const real_t cam_vec[8] =
+//       {495.864541, 495.864541, 375.500000, 239.500000, 0, 0, 0, 0};
+//
+//   // Setup camera calibration problem
+//   calib_camera_t *calib = calib_camera_malloc();
+//   calib->verbose = 0;
+//   calib_camera_add_camera(calib, 0, res, pm, dm, cam_vec, cam_ext);
+//
+//   // Incremental solve
+//   int window_size = 2;
+//   int cam_idx = 0;
+//   int num_files = 0;
+//   char **files = list_files(data_path, &num_files);
+//
+//   calib->verbose = 0;
+//   // TIC(calib_camera_loop);
+//
+//   for (int view_idx = 0; view_idx < num_files; view_idx++) {
+//     // Load aprilgrid
+//     aprilgrid_t *grid = aprilgrid_load(files[view_idx]);
+//
+//     // Get aprilgrid measurements
+//     const timestamp_t ts = grid->timestamp;
+//     const int num_corners = grid->corners_detected;
+//     int *tag_ids = MALLOC(int, num_corners);
+//     int *corner_indices = MALLOC(int, num_corners);
+//     real_t *kps = MALLOC(real_t, num_corners * 2);
+//     real_t *pts = MALLOC(real_t, num_corners * 3);
+//     aprilgrid_measurements(grid, tag_ids, corner_indices, kps, pts);
+//
+//     // Add view
+//     calib_camera_add_view(calib,
+//                           ts,
+//                           view_idx,
+//                           cam_idx,
+//                           num_corners,
+//                           tag_ids,
+//                           corner_indices,
+//                           pts,
+//                           kps);
+//
+//     // Incremental solve
+//     if (calib->num_views >= window_size) {
+//       calib_camera_marginalize(calib);
+//     }
+//     calib_camera_solve(calib);
+//
+//     // Clean up
+//     free(tag_ids);
+//     free(corner_indices);
+//     free(kps);
+//     free(pts);
+//     aprilgrid_free(grid);
+//   }
+//
+//   // calib_camera_print(calib);
+//   // const real_t time_taken = TOC(calib_camera_loop);
+//   // const real_t rate_hz = num_files / time_taken;
+//   // printf("%d frames in %.2f [s] or %.2f Hz\n", num_files, time_taken, rate_hz);
+//
+//   // Clean up
+//   for (int view_idx = 0; view_idx < num_files; view_idx++) {
+//     free(files[view_idx]);
+//   }
+//   free(files);
+//   calib_camera_free(calib);
+//
+//   return 0;
+// }
+//
+// int test_calib_camera_stereo_batch(void) {
+//   // Initialize camera intrinsics
+//   int num_cams = 2;
+//   char *data_dir = TEST_CAM_APRIL "/cam%d";
+//   const int cam_res[2] = {752, 480};
+//   const char *pmodel = "pinhole";
+//   const char *dmodel = "radtan4";
+//   const real_t focal = pinhole_focal(cam_res[0], 90.0);
+//   const real_t cx = cam_res[0] / 2.0;
+//   const real_t cy = cam_res[1] / 2.0;
+//   const real_t cam_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+//   real_t cam[2][8] = {{focal, focal, cx, cy, 0.0, 0.0, 0.0, 0.0},
+//                       {focal, focal, cx, cy, 0.0, 0.0, 0.0, 0.0}};
+//
+//   camera_t camera[2];
+//   camera_setup(&camera[0], 0, cam_res, pmodel, dmodel, cam[0]);
+//   camera_setup(&camera[1], 1, cam_res, pmodel, dmodel, cam[1]);
+//
+//   for (int cam_idx = 0; cam_idx < num_cams; cam_idx++) {
+//     char data_path[1024] = {0};
+//     sprintf(data_path, data_dir, cam_idx);
+//
+//     calib_camera_t *cam_calib = calib_camera_malloc();
+//     cam_calib->verbose = 0;
+//     calib_camera_add_camera(cam_calib,
+//                             0,
+//                             cam_res,
+//                             pmodel,
+//                             dmodel,
+//                             cam[cam_idx],
+//                             cam_ext);
+//     calib_camera_add_data(cam_calib, 0, data_path);
+//     calib_camera_solve(cam_calib);
+//     vec_copy(cam_calib->camera[0].data, 8, camera[cam_idx].data);
+//     calib_camera_free(cam_calib);
+//   }
+//
+//   // Initialize camera extrinsics
+//   camchain_t *camchain = camchain_malloc(num_cams);
+//   for (int cam_idx = 0; cam_idx < num_cams; cam_idx++) {
+//     char data_path[1024] = {0};
+//     sprintf(data_path, data_dir, cam_idx);
+//
+//     // Get camera data
+//     int num_files = 0;
+//     char **files = list_files(data_path, &num_files);
+//
+//     // Exit if no calibration data
+//     if (num_files == 0) {
+//       for (int view_idx = 0; view_idx < num_files; view_idx++) {
+//         free(files[view_idx]);
+//       }
+//       free(files);
+//       return -1;
+//     }
+//
+//     for (int view_idx = 0; view_idx < num_files; view_idx++) {
+//       // Load aprilgrid
+//       aprilgrid_t *grid = aprilgrid_load(files[view_idx]);
+//       if (grid->corners_detected == 0) {
+//         free(files[view_idx]);
+//         aprilgrid_free(grid);
+//         continue;
+//       }
+//
+//       // Get aprilgrid measurements
+//       const timestamp_t ts = grid->timestamp;
+//       const int n = grid->corners_detected;
+//       int *tag_ids = MALLOC(int, n);
+//       int *corner_indices = MALLOC(int, n);
+//       real_t *kps = MALLOC(real_t, n * 2);
+//       real_t *pts = MALLOC(real_t, n * 3);
+//       aprilgrid_measurements(grid, tag_ids, corner_indices, kps, pts);
+//
+//       // Estimate relative pose T_CiF and add to camchain
+//       real_t T_CiF[4 * 4] = {0};
+//       if (solvepnp_camera(&camera[cam_idx], kps, pts, n, T_CiF) == 0) {
+//         camchain_add_pose(camchain, cam_idx, ts, T_CiF);
+//       }
+//
+//       // Clean up
+//       free(tag_ids);
+//       free(corner_indices);
+//       free(kps);
+//       free(pts);
+//       aprilgrid_free(grid);
+//       free(files[view_idx]);
+//     }
+//     free(files);
+//   }
+//   camchain_adjacency(camchain);
+//   real_t T_CiCj[4 * 4] = {0};
+//   camchain_find(camchain, 0, 1, T_CiCj);
+//   camchain_free(camchain);
+//
+//   // Setup Camera calibrator
+//   const real_t cam0_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+//   TF_VECTOR(T_CiCj, cam1_ext);
+//
+//   calib_camera_t *stereo_calib = calib_camera_malloc();
+//   stereo_calib->verbose = 0;
+//   stereo_calib->max_iter = 50;
+//   calib_camera_add_camera(stereo_calib,
+//                           0,
+//                           cam_res,
+//                           pmodel,
+//                           dmodel,
+//                           camera[0].data,
+//                           cam0_ext);
+//   calib_camera_add_camera(stereo_calib,
+//                           1,
+//                           cam_res,
+//                           pmodel,
+//                           dmodel,
+//                           camera[1].data,
+//                           cam1_ext);
+//   for (int cam_idx = 0; cam_idx < stereo_calib->num_cams; cam_idx++) {
+//     char data_path[1024] = {0};
+//     sprintf(data_path, data_dir, cam_idx);
+//     calib_camera_add_data(stereo_calib, cam_idx, data_path);
+//   }
+//   calib_camera_solve(stereo_calib);
+//   // calib_camera_print(stereo_calib);
+//
+//   // Asserts
+//   double reproj_rmse = 0.0;
+//   double reproj_mean = 0.0;
+//   double reproj_median = 0.0;
+//   calib_camera_errors(stereo_calib, &reproj_rmse, &reproj_mean, &reproj_median);
+//   MU_ASSERT(reproj_rmse < 0.5);
+//   MU_ASSERT(reproj_mean < 0.5);
+//   MU_ASSERT(reproj_median < 0.5);
+//
+//   // Clean up
+//   calib_camera_free(stereo_calib);
+//
+//   return 0;
+// }
+
+/******************************************************************************
  * EUROC
  ******************************************************************************/
 
@@ -10218,7 +10527,10 @@ int test_sandbox_optflow(void) {
       image_draw_points(viz, &cur[i], 1, 1, COLOR_GREEN);
     }
     char path[1024];
-    snprintf(path, sizeof(path), "/tmp/sandbox/optflow_frame_%d.png", frame_index++);
+    snprintf(path,
+             sizeof(path),
+             "/tmp/sandbox/optflow_frame_%d.png",
+             frame_index++);
     image_save_png(viz, path);
     printf("Frame %d: tracked %d/%d keypoints\n", k, tracked_count, kps_count);
 
@@ -10632,6 +10944,9 @@ void test_suite(void) {
   MU_ADD_TEST(test_sim_camera_frame_save_load);
   MU_ADD_TEST(test_sim_camera_data_save_load);
   MU_ADD_TEST(test_sim_camera_circle_trajectory);
+
+  // CAMERA CALIBRATION
+  MU_ADD_TEST(test_calib_camera_mono_batch);
 
   // EUROC
   MU_ADD_TEST(test_euroc_imu_load);

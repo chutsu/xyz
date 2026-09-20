@@ -33,6 +33,7 @@
  *   - SOLVER ............ Gauss-Newton nonlinear least squares
  *   - TIMELINE .......... Sensor event ordering and loading
  *   - SIMULATION ........ Synthetic trajectories, IMU, and camera data
+ *   - CALIB-CAMERA ...... Camera intrinsics/extrinsics calibration
  *   - EUROC ............. EuRoC MAV dataset loader
  *   - KITTI ............. KITTI dataset loader
  *   - OPENGL ............ OpenGL math, shaders, cameras
@@ -3271,6 +3272,127 @@ typedef struct sim_circle_camera_imu_t {
 
 sim_circle_camera_imu_t *sim_circle_camera_imu(void);
 void sim_circle_camera_imu_free(sim_circle_camera_imu_t *sim_data);
+
+/*******************************************************************************
+ * CAMERA CALIBRATION
+ ******************************************************************************/
+
+/////////////////
+// CALIB FRAME //
+/////////////////
+
+typedef struct calib_frame_t {
+  timestamp_t ts;
+  int view_idx;
+  int cam_idx;
+  int num_corners;
+
+  int *tag_ids;
+  int *corner_indices;
+  real_t *pts;
+  real_t *kps;
+
+  calib_camera_factor_t *factors;
+} calib_frame_t;
+
+calib_frame_t *calib_frame_malloc(const timestamp_t ts,
+                                  const int view_idx,
+                                  const int cam_idx,
+                                  const int num_corners,
+                                  const int *tag_ids,
+                                  const int *corner_indices,
+                                  const real_t *pts,
+                                  const real_t *kps,
+                                  real_t *pose,
+                                  real_t *cam_ext,
+                                  camera_t *camera);
+void calib_frame_free(calib_frame_t *view);
+
+////////////////////
+// CALIB FRAMESET //
+////////////////////
+
+typedef struct calib_frameset_t {
+  timestamp_t ts;
+  real_t *pose;
+  real_t *cam_exts;
+  camera_t *cameras;
+  int num_cameras;
+  calib_frame_t **frames;
+} calib_frameset_t;
+
+calib_frameset_t *calib_frameset_malloc(const timestamp_t ts,
+                                        real_t *pose,
+                                        real_t *cam_exts,
+                                        camera_t *cameras,
+                                        int num_cameras);
+void calib_frameset_free(calib_frameset_t *fs);
+void calib_frameset_add(calib_frameset_t *fs,
+                        const timestamp_t ts,
+                        const int view_idx,
+                        const int cam_idx,
+                        const int num_corners,
+                        const int *tag_ids,
+                        const int *corner_indices,
+                        const real_t *pts,
+                        const real_t *kps);
+
+//////////////////////
+// CAMERA CALIBRATOR //
+//////////////////////
+
+typedef struct calib_camera_t {
+  // Settings
+  int fix_camera;
+  int fix_cam_exts;
+  int verbose;
+  int max_iter;
+
+  // Flags
+  int cams_ok;
+
+  // Counters
+  int num_cams;
+  int num_views;
+  int num_factors;
+
+  // Variables
+  arr_t *timestamps;
+  rbt_t *poses;
+  real_t *cam_exts;
+  camera_t *camera;
+
+  // Factors
+  calib_frameset_t *framesets;
+} calib_camera_t;
+
+calib_camera_t *calib_camera_malloc(void);
+void calib_camera_free(calib_camera_t *calib);
+void calib_camera_errors(calib_camera_t *calib,
+                         real_t *reproj_rmse,
+                         real_t *reproj_mean,
+                         real_t *reproj_median);
+void calib_camera_print(calib_camera_t *calib);
+void calib_camera_add_camera(calib_camera_t *calib,
+                             const int cam_idx,
+                             const int cam_res[2],
+                             const char *proj_model,
+                             const char *dist_model,
+                             const real_t *camera,
+                             const real_t *cam_ext);
+void calib_camera_add_view(calib_camera_t *calib,
+                           const timestamp_t ts,
+                           const int view_idx,
+                           const int cam_idx,
+                           const int num_corners,
+                           const int *tag_ids,
+                           const int *corner_indices,
+                           const real_t *pts,
+                           const real_t *kps);
+int calib_camera_add_data(calib_camera_t *calib,
+                          const int cam_idx,
+                          const char *data_path);
+void calib_camera_solve(calib_camera_t *calib);
 
 /******************************************************************************
  * EUROC
