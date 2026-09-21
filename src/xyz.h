@@ -593,9 +593,6 @@ int hm_next(hm_iter_t *it);
  * NETWORK
  ******************************************************************************/
 
-/**
- * TCP server
- */
 typedef struct tcp_server_t {
   int port;
   int sockfd;
@@ -603,9 +600,6 @@ typedef struct tcp_server_t {
   void *(*conn_handler)(void *);
 } tcp_server_t;
 
-/**
- * TCP client
- */
 typedef struct tcp_client_t {
   char server_ip[1024];
   int server_port;

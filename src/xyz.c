@@ -21409,8 +21409,13 @@ calib_camera_t *calib_camera_malloc(void) {
   calib->num_factors = 0;
 
   // Variables
-  calib->timestamps = NULL;
-  calib->poses = NULL;
+  calib->timestamps = arr_malloc(8);
+  calib->poses = rbt_malloc(ts_cmp);
+  // calib->timestamps holds the same timestamp_t* pointers as
+  // calib->poses's keys (calib_camera_add_view() pushes ts_ptr to both).
+  // Let the rbt own and free them via kfree, so calib_camera_free()
+  // doesn't need to (and must not) free them a second time itself.
+  calib->poses->kfree = free;
   calib->cam_exts = NULL;
   calib->camera = NULL;
 
@@ -21430,26 +21435,25 @@ void calib_camera_free(calib_camera_t *calib) {
   free(calib->cam_exts);
   free(calib->camera);
 
-  if (calib->num_views) {
-    // View sets
-    // for (int i = 0; i < arrlen(calib->timestamps); i++) {
-    //   const timestamp_t ts = calib->timestamps[i];
-    //   calib_frame_t **cam_views = hmgets(calib->framesets, ts).value;
-    //   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-    //     calib_frame_free(cam_views[cam_idx]);
-    //   }
-    //   free(cam_views);
-    // }
-
-    // Timestamps
-    // arr_free(calib->timestamps);
-
-    // Poses
-    // for (int i = 0; i < hmlen(calib->poses); i++) {
-    //   free(calib->poses[i].value);
-    // }
+  // Poses: free each pose vector (the rbt's values -- rbt_free() only
+  // ever frees keys, via kfree, never values), then the tree itself,
+  // which frees each timestamp_t* key via kfree set in
+  // calib_camera_malloc().
+  const size_t num_poses = rbt_size(calib->poses);
+  if (num_poses > 0) {
+    arr_t *pose_keys = arr_malloc(num_poses);
+    rbt_keys(calib->poses, pose_keys);
+    for (size_t i = 0; i < num_poses; ++i) {
+      free(rbt_search(calib->poses, pose_keys->data[i]));
+    }
+    arr_free(pose_keys);
   }
   rbt_free(calib->poses);
+
+  // Timestamps: just the array bookkeeping -- the timestamp_t*
+  // elements it points to are the same ones calib->poses just freed
+  // above via kfree, so freeing them again here would double-free.
+  arr_free(calib->timestamps);
   // rbt_free(calib->framesets);
 
   free(calib);
