@@ -291,6 +291,357 @@ void list_files_free(char **data, const int n) {
   free(data);
 }
 
+typedef struct cpu_ticks_t {
+  uint64_t user;
+  uint64_t nice;
+  uint64_t system;
+  uint64_t idle;
+  uint64_t iowait;
+  uint64_t irq;
+  uint64_t softirq;
+  uint64_t steal;
+  uint64_t guest;
+  uint64_t guest_nice;
+} cpu_ticks_t;
+
+/**
+ * Read one "cpuN? user nice system idle iowait irq softirq steal guest
+ * guest_nice" line from `fp` into `label` (its own buffer, e.g. "cpu" or
+ * "cpu0") and `t`.
+ * @returns 1 if a well-formed line was read, 0 on EOF/malformed line.
+ */
+static int cpu_ticks_read_line(FILE *fp, char *label, cpu_ticks_t *t) {
+  const int n = fscanf(fp,
+                       "%15s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu",
+                       label,
+                       &t->user,
+                       &t->nice,
+                       &t->system,
+                       &t->idle,
+                       &t->iowait,
+                       &t->irq,
+                       &t->softirq,
+                       &t->steal,
+                       &t->guest,
+                       &t->guest_nice);
+  return (n == 11) ? 1 : 0;
+}
+
+/**
+ * Read CPU tick counts from /proc/stat: the aggregate (all-cores) line
+ * into `total`, and each individual "cpu0", "cpu1", ... line into
+ * `cores` (which must have room for at least `max_cores` entries; pass
+ * `cores = NULL, max_cores = 0` to skip per-core reading). `guest`/
+ * `guest_nice` are already folded into `user`/`nice` respectively (time
+ * running a guest VM's virtual CPU counts as both), so they're kept for
+ * completeness but must not be added again on top of `user`/`nice` when
+ * summing total ticks.
+ * @returns the number of per-core entries filled in `cores` (0 if none
+ * requested or the kernel didn't report per-core lines) on success, or
+ * -1 on failure to even read the aggregate line.
+ */
+static int cpu_ticks_read(cpu_ticks_t *total,
+                          cpu_ticks_t *cores,
+                          const int max_cores) {
+  FILE *fp = fopen("/proc/stat", "r");
+  if (fp == NULL) {
+    return -1;
+  }
+
+  char label[16] = {0};
+  if (!cpu_ticks_read_line(fp, label, total) || strcmp(label, "cpu") != 0) {
+    fclose(fp);
+    return -1;
+  }
+
+  int num_cores = 0;
+  while (num_cores < max_cores) {
+    if (!cpu_ticks_read_line(fp, label, &cores[num_cores])) {
+      break;
+    }
+    if (strncmp(label, "cpu", 3) != 0) {
+      break; // Past the per-core lines (e.g. reached "intr").
+    }
+    num_cores++;
+  }
+
+  fclose(fp);
+  return num_cores;
+}
+
+/**
+ * Percentage of CPU time spent busy (not idle) between two tick samples.
+ *
+ * "Idle" ticks: idle + iowait, since the CPU wasn't executing anything
+ * either way -- iowait just means it was idle *because* a process was
+ * blocked on I/O, not that it was busy.
+ *
+ * "Total" ticks: every bucket /proc/stat reports, busy
+ * (user/nice/system/irq/softirq/steal) plus idle -- all CPU time
+ * accounted for in that sample, not just the busy portion.
+ * guest/guest_nice excluded: already counted inside user/nice, so
+ * adding them again would double-count.
+ */
+static float cpu_usage_from_ticks(const cpu_ticks_t *prev,
+                                  const cpu_ticks_t *curr) {
+  const uint64_t idle0 = prev->idle + prev->iowait;
+  const uint64_t idle1 = curr->idle + curr->iowait;
+  const uint64_t total0 = prev->user + prev->nice + prev->system + idle0 +
+                          prev->irq + prev->softirq + prev->steal;
+  const uint64_t total1 = curr->user + curr->nice + curr->system + idle1 +
+                          curr->irq + curr->softirq + curr->steal;
+
+  const uint64_t total_delta = total1 - total0;
+  const uint64_t idle_delta = idle1 - idle0;
+  if (total_delta == 0) {
+    return 0.0f;
+  }
+  return 100.0f * (1.0f - (float) idle_delta / (float) total_delta);
+}
+
+/**
+ * Aggregate and per-core CPU usage percentage since the previous call.
+ * Keeps the last /proc/stat sample (aggregate + per-core) in static
+ * state so callers don't need to manage two samples themselves -- the
+ * tradeoff is the first call in a process always returns all zeros,
+ * since there's no earlier sample yet to diff against.
+ *
+ * @returns
+ * - usage: aggregate CPU usage percentage, across all cores
+ * - per_core: per-core usage percentage, first `num_cores` entries valid
+ * - num_cores: number of entries filled in `per_core`
+ */
+cpu_usage_t sys_cpu_usage(void) {
+  static int has_prev = 0;
+  static cpu_ticks_t prev = {0};
+  static cpu_ticks_t prev_cores[SYS_CPU_MAX_CORES];
+  static int prev_num_cores = 0;
+
+  cpu_usage_t result = {0};
+  cpu_ticks_t curr;
+  cpu_ticks_t curr_cores[SYS_CPU_MAX_CORES];
+  const int num_cores = cpu_ticks_read(&curr, curr_cores, SYS_CPU_MAX_CORES);
+  if (num_cores < 0) {
+    return result;
+  }
+
+  // Nothing to diff against yet on the first call.
+  if (!has_prev) {
+    prev = curr;
+    memcpy(prev_cores, curr_cores, sizeof(cpu_ticks_t) * num_cores);
+    prev_num_cores = num_cores;
+    has_prev = 1;
+    return result;
+  }
+
+  result.usage = cpu_usage_from_ticks(&prev, &curr);
+
+  // Only pair up cores present in both samples -- core count could in
+  // principle change between calls (CPU hotplug), though that's rare.
+  result.num_cores = (num_cores < prev_num_cores) ? num_cores : prev_num_cores;
+  for (int i = 0; i < result.num_cores; i++) {
+    result.per_core[i] = cpu_usage_from_ticks(&prev_cores[i], &curr_cores[i]);
+  }
+
+  prev = curr;
+  memcpy(prev_cores, curr_cores, sizeof(cpu_ticks_t) * num_cores);
+  prev_num_cores = num_cores;
+
+  return result;
+}
+
+/**
+ * Free and available system RAM, as a percentage of total RAM, read
+ * from /proc/meminfo.
+ *
+ * @returns
+ * - free: percentage of total RAM that is completely unused.
+ * - avail: percentage of total RAM available for new allocations.
+ * - used: percentage of memory used.
+ */
+mem_usage_t sys_mem_usage(void) {
+  mem_usage_t result = {0};
+
+  FILE *fp = fopen("/proc/meminfo", "r");
+  if (fp == NULL) {
+    return result;
+  }
+
+  uint64_t mem_total = 0;
+  uint64_t mem_free = 0;
+  uint64_t mem_avail = 0;
+
+  char line[256] = {0};
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    uint64_t kb;
+    if (sscanf(line, "MemTotal: %lu kB", &kb) == 1) {
+      mem_total = kb;
+    } else if (sscanf(line, "MemFree: %lu kB", &kb) == 1) {
+      mem_free = kb;
+    } else if (sscanf(line, "MemAvailable: %lu kB", &kb) == 1) {
+      mem_avail = kb;
+    }
+  }
+  fclose(fp);
+
+  if (mem_total > 0) {
+    result.free = 100.0f * (float) mem_free / (float) mem_total;
+    result.avail = 100.0f * (float) mem_avail / (float) mem_total;
+    result.used = 100.0f - result.avail;
+  }
+
+  return result;
+}
+
+/**
+ * Read `utime`/`stime` (in clock ticks) for process `pid` from
+ * /proc/<pid>/stat. getrusage() can't be used here since it only ever
+ * reports the calling process (RUSAGE_SELF) -- there's no way to ask it
+ * about an arbitrary other pid. comm (the 2nd field) is parenthesized
+ * and may itself contain spaces or parens, so this skips to the *last*
+ * ')' before counting fields rather than naively splitting the whole
+ * line on whitespace from the start.
+ * @returns 0 on success, -1 on failure.
+ */
+static int proc_stat_cpu_ticks(const pid_t pid,
+                               uint64_t *utime,
+                               uint64_t *stime) {
+  char path[64] = {0};
+  snprintf(path, sizeof(path), "/proc/%d/stat", (int) pid);
+
+  FILE *fp = fopen(path, "r");
+  if (fp == NULL) {
+    return -1;
+  }
+  char buf[4096] = {0};
+  const int read_ok = (fgets(buf, sizeof(buf), fp) != NULL);
+  fclose(fp);
+  if (!read_ok) {
+    return -1;
+  }
+
+  char *p = strrchr(buf, ')');
+  if (p == NULL) {
+    return -1;
+  }
+  p++; // Skip ')'.
+
+  // Fields after comm, 1-indexed: state(1) ppid(2) pgrp(3) session(4)
+  // tty_nr(5) tpgid(6) flags(7) minflt(8) cminflt(9) majflt(10)
+  // cmajflt(11) utime(12) stime(13).
+  char state;
+  long ppid, pgrp, session, tty_nr, tpgid;
+  unsigned long flags, minflt, cminflt, majflt, cmajflt;
+  const int n = sscanf(p,
+                       " %c %ld %ld %ld %ld %ld %lu %lu %lu %lu %lu %lu %lu",
+                       &state,
+                       &ppid,
+                       &pgrp,
+                       &session,
+                       &tty_nr,
+                       &tpgid,
+                       &flags,
+                       &minflt,
+                       &cminflt,
+                       &majflt,
+                       &cmajflt,
+                       utime,
+                       stime);
+  return (n == 13) ? 0 : -1;
+}
+
+/**
+ * Previous CPU-time / wall-clock sample for one pid, used by
+ * proc_cpu_usage()'s per-pid sample cache below.
+ */
+typedef struct proc_cpu_sample_t {
+  double cpu_s;
+  double wall_s;
+} proc_cpu_sample_t;
+
+/**
+ * Percentage of a single CPU core's capacity used by process `pid` since
+ * the previous call *for that same pid*. Samples are cached per-pid (in
+ * a hashmap keyed by pid, since the pid space is sparse and the set of
+ * pids a caller might ask about isn't known ahead of time) so tracking
+ * several pids doesn't have them clobber each other's baseline. Same
+ * tradeoff as sys_cpu_usage(): the first call for a given pid always
+ * returns 0, since there's no earlier sample yet to diff against.
+ */
+proc_cpu_usage_t proc_cpu_usage(const pid_t pid) {
+  static hm_t *samples = NULL;
+  if (samples == NULL) {
+    samples = hm_malloc(64, hm_int_hash, int_cmp);
+  }
+
+  proc_cpu_usage_t result = {0};
+
+  uint64_t utime_ticks = 0;
+  uint64_t stime_ticks = 0;
+  if (proc_stat_cpu_ticks(pid, &utime_ticks, &stime_ticks) != 0) {
+    return result;
+  }
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
+    return result;
+  }
+
+  const long clk_tck = sysconf(_SC_CLK_TCK);
+  const double curr_cpu_s =
+      (double) (utime_ticks + stime_ticks) / (double) clk_tck;
+  const double curr_wall_s = ts.tv_sec + ts.tv_nsec * 1e-9;
+
+  int key = (int) pid;
+  proc_cpu_sample_t *prev = hm_get(samples, &key);
+  if (prev == NULL) {
+    proc_cpu_sample_t *sample = malloc(sizeof(proc_cpu_sample_t));
+    sample->cpu_s = curr_cpu_s;
+    sample->wall_s = curr_wall_s;
+    hm_set(samples, int_malloc((int) pid), sample);
+    return result;
+  }
+
+  const double cpu_delta = curr_cpu_s - prev->cpu_s;
+  const double wall_delta = curr_wall_s - prev->wall_s;
+  if (wall_delta > 0.0) {
+    result.usage = 100.0f * (float) (cpu_delta / wall_delta);
+  }
+
+  prev->cpu_s = curr_cpu_s;
+  prev->wall_s = curr_wall_s;
+  return result;
+}
+
+/**
+ * Current and peak resident set size of process `pid`, in MB, read from
+ * /proc/<pid>/status. Unlike sys_mem_usage() (percentage of total system
+ * RAM), these are that process's own footprint in absolute terms.
+ */
+proc_mem_usage_t proc_mem_usage(const pid_t pid) {
+  proc_mem_usage_t result = {0};
+
+  char path[64] = {0};
+  snprintf(path, sizeof(path), "/proc/%d/status", (int) pid);
+
+  FILE *fp = fopen(path, "r");
+  if (fp == NULL) {
+    return result;
+  }
+
+  char line[256] = {0};
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    uint64_t kb;
+    if (sscanf(line, "VmRSS: %lu kB", &kb) == 1) {
+      result.rss_mb = (float) kb / 1024.0f;
+    } else if (sscanf(line, "VmHWM: %lu kB", &kb) == 1) {
+      result.peak_mb = (float) kb / 1024.0f;
+    }
+  }
+  fclose(fp);
+
+  return result;
+}
+
 /*******************************************************************************
  * DATA
  ******************************************************************************/

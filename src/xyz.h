@@ -273,6 +273,10 @@ typedef double real_t;
  * SYSTEM
  ******************************************************************************/
 
+#ifndef SYS_CPU_MAX_CORES
+#define SYS_CPU_MAX_CORES 128
+#endif
+
 void print_stacktrace(void);
 
 status_t path_exists(const char *path);
@@ -285,6 +289,32 @@ int path_mkdir(const char *path, const mode_t mode);
 int path_rmtree(const char *path);
 char **list_files(const char *path, int *num_files);
 void list_files_free(char **data, const int n);
+
+typedef struct cpu_usage_t {
+  float usage;
+  float per_core[SYS_CPU_MAX_CORES];
+  int num_cores;
+} cpu_usage_t;
+
+typedef struct mem_usage_t {
+  float free;
+  float avail;
+  float used;
+} mem_usage_t;
+
+typedef struct proc_cpu_usage_t {
+  float usage;
+} proc_cpu_usage_t;
+
+typedef struct proc_mem_usage_t {
+  float rss_mb;
+  float peak_mb;
+} proc_mem_usage_t;
+
+cpu_usage_t sys_cpu_usage(void);
+mem_usage_t sys_mem_usage(void);
+proc_cpu_usage_t proc_cpu_usage(const pid_t pid);
+proc_mem_usage_t proc_mem_usage(const pid_t pid);
 
 /*******************************************************************************
  * DATA
