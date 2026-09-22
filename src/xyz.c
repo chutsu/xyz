@@ -494,21 +494,15 @@ mem_usage_t sys_mem_usage(void) {
 }
 
 /**
- * Read `utime`/`stime` (in clock ticks) for process `pid` from
- * /proc/<pid>/stat. getrusage() can't be used here since it only ever
- * reports the calling process (RUSAGE_SELF) -- there's no way to ask it
- * about an arbitrary other pid. comm (the 2nd field) is parenthesized
- * and may itself contain spaces or parens, so this skips to the *last*
- * ')' before counting fields rather than naively splitting the whole
- * line on whitespace from the start.
+ * Read `utime`/`stime` ticks from a /proc/<pid>/stat or
+ * /proc/<pid>/task/<tid>/stat file at `path` (same field layout).
+ * Skips to the *last* ')' first since comm (field 2) may itself
+ * contain spaces/parens.
  * @returns 0 on success, -1 on failure.
  */
-static int proc_stat_cpu_ticks(const pid_t pid,
+static int stat_cpu_ticks_read(const char *path,
                                uint64_t *utime,
                                uint64_t *stime) {
-  char path[64] = {0};
-  snprintf(path, sizeof(path), "/proc/%d/stat", (int) pid);
-
   FILE *fp = fopen(path, "r");
   if (fp == NULL) {
     return -1;
@@ -550,23 +544,86 @@ static int proc_stat_cpu_ticks(const pid_t pid,
   return (n == 13) ? 0 : -1;
 }
 
-/**
- * Previous CPU-time / wall-clock sample for one pid, used by
- * proc_cpu_usage()'s per-pid sample cache below.
- */
-typedef struct proc_cpu_sample_t {
+static int proc_stat_cpu_ticks(const pid_t pid,
+                               uint64_t *utime,
+                               uint64_t *stime) {
+  char path[64] = {0};
+  snprintf(path, sizeof(path), "/proc/%d/stat", (int) pid);
+  return stat_cpu_ticks_read(path, utime, stime);
+}
+
+static int thread_stat_cpu_ticks(const pid_t pid,
+                                 const pid_t tid,
+                                 uint64_t *utime,
+                                 uint64_t *stime) {
+  char path[96] = {0};
+  snprintf(path, sizeof(path), "/proc/%d/task/%d/stat", (int) pid, (int) tid);
+  return stat_cpu_ticks_read(path, utime, stime);
+}
+
+typedef struct cpu_sample_t {
   double cpu_s;
   double wall_s;
-} proc_cpu_sample_t;
+} cpu_sample_t;
 
 /**
- * Percentage of a single CPU core's capacity used by process `pid` since
- * the previous call *for that same pid*. Samples are cached per-pid (in
- * a hashmap keyed by pid, since the pid space is sparse and the set of
- * pids a caller might ask about isn't known ahead of time) so tracking
- * several pids doesn't have them clobber each other's baseline. Same
- * tradeoff as sys_cpu_usage(): the first call for a given pid always
- * returns 0, since there's no earlier sample yet to diff against.
+ * Shared cache lookup for proc_cpu_usage()/thread_cpu_usage(): % of a
+ * core busy since `cache_key`'s (a pid or tid) previous sample. Records
+ * the baseline and returns 0 on the first call for a given key.
+ */
+static float cpu_usage_from_cache(hm_t *samples,
+                                  int cache_key,
+                                  double curr_cpu_s,
+                                  double curr_wall_s) {
+  cpu_sample_t *prev = hm_get(samples, &cache_key);
+  if (prev == NULL) {
+    cpu_sample_t *sample = malloc(sizeof(cpu_sample_t));
+    sample->cpu_s = curr_cpu_s;
+    sample->wall_s = curr_wall_s;
+    hm_set(samples, int_malloc(cache_key), sample);
+    return 0.0f;
+  }
+
+  const double cpu_delta = curr_cpu_s - prev->cpu_s;
+  const double wall_delta = curr_wall_s - prev->wall_s;
+  const float usage =
+      (wall_delta > 0.0) ? 100.0f * (float) (cpu_delta / wall_delta) : 0.0f;
+
+  prev->cpu_s = curr_cpu_s;
+  prev->wall_s = curr_wall_s;
+  return usage;
+}
+
+/**
+ * Current and peak resident set size, in MB, from a /proc/.../status
+ * file at `path`.
+ */
+static proc_mem_usage_t mem_usage_from_status_path(const char *path) {
+  proc_mem_usage_t result = {0};
+
+  FILE *fp = fopen(path, "r");
+  if (fp == NULL) {
+    return result;
+  }
+
+  char line[256] = {0};
+  while (fgets(line, sizeof(line), fp) != NULL) {
+    uint64_t kb;
+    if (sscanf(line, "VmRSS: %lu kB", &kb) == 1) {
+      result.rss_mb = (float) kb / 1024.0f;
+    } else if (sscanf(line, "VmHWM: %lu kB", &kb) == 1) {
+      result.peak_mb = (float) kb / 1024.0f;
+    }
+  }
+  fclose(fp);
+
+  return result;
+}
+
+/**
+ * Percentage of a single CPU core's capacity used by process `pid`
+ * since the previous call for that pid, summed across all its threads
+ * (for one thread's usage alone, see thread_cpu_usage()).
  */
 proc_cpu_usage_t proc_cpu_usage(const pid_t pid) {
   static hm_t *samples = NULL;
@@ -591,55 +648,134 @@ proc_cpu_usage_t proc_cpu_usage(const pid_t pid) {
       (double) (utime_ticks + stime_ticks) / (double) clk_tck;
   const double curr_wall_s = ts.tv_sec + ts.tv_nsec * 1e-9;
 
-  int key = (int) pid;
-  proc_cpu_sample_t *prev = hm_get(samples, &key);
-  if (prev == NULL) {
-    proc_cpu_sample_t *sample = malloc(sizeof(proc_cpu_sample_t));
-    sample->cpu_s = curr_cpu_s;
-    sample->wall_s = curr_wall_s;
-    hm_set(samples, int_malloc((int) pid), sample);
-    return result;
-  }
-
-  const double cpu_delta = curr_cpu_s - prev->cpu_s;
-  const double wall_delta = curr_wall_s - prev->wall_s;
-  if (wall_delta > 0.0) {
-    result.usage = 100.0f * (float) (cpu_delta / wall_delta);
-  }
-
-  prev->cpu_s = curr_cpu_s;
-  prev->wall_s = curr_wall_s;
+  result.usage =
+      cpu_usage_from_cache(samples, (int) pid, curr_cpu_s, curr_wall_s);
   return result;
 }
 
 /**
- * Current and peak resident set size of process `pid`, in MB, read from
- * /proc/<pid>/status. Unlike sys_mem_usage() (percentage of total system
- * RAM), these are that process's own footprint in absolute terms.
+ * Current and peak resident set size of process `pid`, in MB. Unlike
+ * sys_mem_usage() (a % of total system RAM), this is absolute.
  */
 proc_mem_usage_t proc_mem_usage(const pid_t pid) {
-  proc_mem_usage_t result = {0};
-
   char path[64] = {0};
   snprintf(path, sizeof(path), "/proc/%d/status", (int) pid);
+  return mem_usage_from_status_path(path);
+}
 
-  FILE *fp = fopen(path, "r");
-  if (fp == NULL) {
+/**
+ * Percentage of a single CPU core's capacity used by thread `tid` of
+ * process `pid` since the previous call for that tid. Like
+ * proc_cpu_usage() but scoped to one thread. Cached by tid alone: tids
+ * are unique system-wide, so `pid` isn't needed in the cache key.
+ */
+proc_cpu_usage_t thread_cpu_usage(const pid_t pid, const pid_t tid) {
+  static hm_t *samples = NULL;
+  if (samples == NULL) {
+    samples = hm_malloc(64, hm_int_hash, int_cmp);
+  }
+
+  proc_cpu_usage_t result = {0};
+
+  uint64_t utime_ticks = 0;
+  uint64_t stime_ticks = 0;
+  if (thread_stat_cpu_ticks(pid, tid, &utime_ticks, &stime_ticks) != 0) {
+    return result;
+  }
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
     return result;
   }
 
-  char line[256] = {0};
-  while (fgets(line, sizeof(line), fp) != NULL) {
-    uint64_t kb;
-    if (sscanf(line, "VmRSS: %lu kB", &kb) == 1) {
-      result.rss_mb = (float) kb / 1024.0f;
-    } else if (sscanf(line, "VmHWM: %lu kB", &kb) == 1) {
-      result.peak_mb = (float) kb / 1024.0f;
+  const long clk_tck = sysconf(_SC_CLK_TCK);
+  const double curr_cpu_s =
+      (double) (utime_ticks + stime_ticks) / (double) clk_tck;
+  const double curr_wall_s = ts.tv_sec + ts.tv_nsec * 1e-9;
+
+  result.usage =
+      cpu_usage_from_cache(samples, (int) tid, curr_cpu_s, curr_wall_s);
+  return result;
+}
+
+/**
+ * Same numbers as proc_mem_usage(pid) -- memory isn't thread-scoped on
+ * Linux, all threads share one address space. Mainly useful as a
+ * liveness check: fails if `tid` isn't a live thread of `pid`.
+ */
+proc_mem_usage_t thread_mem_usage(const pid_t pid, const pid_t tid) {
+  char path[128] = {0};
+  snprintf(path, sizeof(path), "/proc/%d/task/%d/status", (int) pid, (int) tid);
+  return mem_usage_from_status_path(path);
+}
+
+/**
+ * Pin every thread of process `pid` to run only on `core`. There's no
+ * single syscall for this -- sched_setaffinity() only ever affects one
+ * task at a time, even when given a process's pid, so this enumerates
+ * /proc/<pid>/task and pins each thread individually.
+ * @returns 0 if every thread was pinned successfully, -1 if any failed.
+ */
+int proc_set_affinity(const pid_t pid, const int core) {
+  char task_dir[64] = {0};
+  snprintf(task_dir, sizeof(task_dir), "/proc/%d/task", (int) pid);
+
+  int num_tids = 0;
+  char **files = list_files(task_dir, &num_tids);
+  if (files == NULL) {
+    return -1;
+  }
+
+  int status = 0;
+  for (int i = 0; i < num_tids; i++) {
+    char tid_str[32] = {0};
+    path_filename(files[i], tid_str);
+    if (thread_set_affinity((pid_t) atoi(tid_str), core) != 0) {
+      status = -1;
     }
   }
-  fclose(fp);
+  list_files_free(files, num_tids);
 
-  return result;
+  return status;
+}
+
+/**
+ * Which single core process `pid` is pinned to, if any. Checks the main
+ * thread only, on the assumption every thread was pinned together via
+ * proc_set_affinity() -- see thread_get_affinity() for exact semantics.
+ */
+int proc_get_affinity(const pid_t pid) { return thread_get_affinity(pid); }
+
+/**
+ * Pin thread `tid` to run only on `core`.
+ * @returns 0 on success, -1 on failure.
+ */
+int thread_set_affinity(const pid_t tid, const int core) {
+  cpu_set_t mask;
+  CPU_ZERO(&mask);
+  CPU_SET(core, &mask);
+  return (sched_setaffinity(tid, sizeof(mask), &mask) == 0) ? 0 : -1;
+}
+
+/**
+ * Which single core thread `tid` is currently allowed to run on.
+ * @returns the core index if `tid` can run on exactly one core, -1 if
+ * it can run on more than one (i.e. not pinned the way
+ * thread_set_affinity() pins it) or on failure.
+ */
+int thread_get_affinity(const pid_t tid) {
+  cpu_set_t mask;
+  if (sched_getaffinity(tid, sizeof(mask), &mask) != 0) {
+    return -1;
+  }
+  if (CPU_COUNT(&mask) != 1) {
+    return -1;
+  }
+  for (int core = 0; core < CPU_SETSIZE; core++) {
+    if (CPU_ISSET(core, &mask)) {
+      return core;
+    }
+  }
+  return -1;
 }
 
 /*******************************************************************************

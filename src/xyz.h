@@ -57,6 +57,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <ftw.h>
+#include <sched.h>
 #include <unistd.h>
 #include <errno.h>
 #include <termios.h>
@@ -315,6 +316,13 @@ cpu_usage_t sys_cpu_usage(void);
 mem_usage_t sys_mem_usage(void);
 proc_cpu_usage_t proc_cpu_usage(const pid_t pid);
 proc_mem_usage_t proc_mem_usage(const pid_t pid);
+proc_cpu_usage_t thread_cpu_usage(const pid_t pid, const pid_t tid);
+proc_mem_usage_t thread_mem_usage(const pid_t pid, const pid_t tid);
+
+int proc_set_affinity(const pid_t pid, const int core);
+int proc_get_affinity(const pid_t pid);
+int thread_set_affinity(const pid_t tid, const int core);
+int thread_get_affinity(const pid_t tid);
 
 /*******************************************************************************
  * DATA
