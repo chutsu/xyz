@@ -7953,6 +7953,16 @@ void gnuplot_zrange(FILE *pipe, const double zmin, const double zmax) {
   fprintf(pipe, "set zrange [%f:%f]\n", zmin, zmax);
 }
 
+/**
+ * Make one unit the same length on every axis of `pipe`'s next 3D
+ * (`splot`) plot, so shapes aren't stretched to fill the terminal/window --
+ * e.g. axes3d_draw()'s X/Y/Z triad renders as an actual right angle instead
+ * of whatever the auto-scaled xrange/yrange/zrange happen to skew it into.
+ */
+void gnuplot_axes_equal(FILE *pipe) {
+  gnuplot_send(pipe, "set view equal xyz");
+}
+
 void gnuplot_send_xy(FILE *pipe,
                      const char *data_name,
                      const double *xvals,
@@ -8042,13 +8052,22 @@ void gnuplot_matshow(const double *A, const int m, const int n) {
  * gnuplot_matshow(), this doesn't open, configure a terminal for, or close
  * `pipe` itself -- the caller already set that up (persistent/transient,
  * interactive/dumb, etc.), so this just sends the axis data and one
- * `splot`.
+ * `splot`/`replot`.
+ *
+ * `replot` selects whether this call starts a fresh plot (false: sets the
+ * title, auto-ranges to fit this frame, and issues `splot`) or adds this
+ * frame onto whatever's already on `pipe` (true: issues `replot`, skipping
+ * the title/range so an earlier call's wider view isn't clobbered). To draw
+ * several frames in one plot, call this once with replot=false, optionally
+ * widen the range yourself (gnuplot_xrange()/yrange()/zrange()) to fit all
+ * of them, then call again with replot=true for each remaining frame.
  */
 void gnuplot_axes3d_draw(FILE *pipe,
                          const char *name,
                          const double T[4 * 4],
                          const double scale,
-                         const double thickness) {
+                         const double thickness,
+                         const bool replot) {
   char x_block[64];
   char y_block[64];
   char z_block[64];
@@ -8083,15 +8102,16 @@ void gnuplot_axes3d_draw(FILE *pipe,
     }
   }
 
-  {
+  if (!replot) {
+    gnuplot_axes_equal(pipe);
+
     char title[128];
     snprintf(title,
              sizeof(title),
              "set title '%s (X=red, Y=green, Z=blue)'",
              name);
     gnuplot_send(pipe, title);
-  }
-  {
+
     const double pad = 0.2 * scale;
     const double xs[4] = {O[0], X[0], Y[0], Z[0]};
     const double ys[4] = {O[1], X[1], Y[1], Z[1]};
@@ -8142,13 +8162,14 @@ void gnuplot_axes3d_draw(FILE *pipe,
     gnuplot_send_xyz(pipe, z_block, xvals, yvals, zvals, 2);
   }
 
-  // One splot, three datasets, one color each.
+  // One splot/replot, three datasets, one color each.
   char cmd[512];
   snprintf(cmd,
            sizeof(cmd),
-           "splot %s with lines lc rgb 'red' lw %f title '%s X', "
+           "%s %s with lines lc rgb 'red' lw %f title '%s X', "
            "%s with lines lc rgb 'green' lw %f title '%s Y', "
            "%s with lines lc rgb 'blue' lw %f title '%s Z'",
+           replot ? "replot" : "splot",
            x_block,
            thickness,
            name,

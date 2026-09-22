@@ -268,8 +268,8 @@ run_test() {
 ## XYZ-GNUPLOT
 # run_test test_xyz test_gnuplot_xyplot
 # run_test test_xyz test_gnuplot_multiplot
-run_test test_xyz test_gnuplot_3d
-# run_test test_xyz test_gnuplot_3d_axes
+# run_test test_xyz test_gnuplot_3d
+run_test test_xyz test_gnuplot_3d_axes
 # run_test test_xyz test_gnuplot_live
 ## XYZ-CONTROL
 # run_test test_xyz test_pid_ctrl

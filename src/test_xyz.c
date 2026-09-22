@@ -3451,17 +3451,38 @@ int test_gnuplot_3d_axes(void) {
   FILE *gnuplot = gnuplot_init(false);
   gnuplot_send(gnuplot, "set terminal dumb ansi256");
 
-  // Pose the axes away from the origin to exercise the T parameter --
-  // identity rotation, translated by (1, 1, 1).
+  // Three frames -- world at the origin, plus two posed elsewhere -- to
+  // exercise both the T parameter and drawing multiple frames in one plot.
   // clang-format off
-  const double T[4 * 4] = {
-    1.0, 0.0, 0.0, 1.0,
-    0.0, 1.0, 0.0, 1.0,
+  const double T_world[4 * 4] = {
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0
+  };
+  const double T_cam1[4 * 4] = {
+    1.0, 0.0, 0.0, 2.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0
+  };
+  const double T_cam2[4 * 4] = {
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 2.0,
     0.0, 0.0, 1.0, 1.0,
     0.0, 0.0, 0.0, 1.0
   };
   // clang-format on
-  gnuplot_axes3d_draw(gnuplot, "camera", T, 1.0, 2.0);
+  gnuplot_axes3d_draw(gnuplot, "world", T_world, 1.0, 2.0, false);
+
+  // "world"'s auto-range only fits itself -- widen it now to fit all three
+  // frames before adding the rest via replot.
+  gnuplot_xrange(gnuplot, -0.5, 2.5);
+  gnuplot_yrange(gnuplot, -0.5, 2.5);
+  gnuplot_zrange(gnuplot, -0.5, 1.5);
+
+  gnuplot_axes3d_draw(gnuplot, "cam1", T_cam1, 1.0, 2.0, true);
+  gnuplot_axes3d_draw(gnuplot, "cam2", T_cam2, 1.0, 2.0, true);
 
   // Clean up
   gnuplot_close(gnuplot, false);
