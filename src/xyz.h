@@ -1323,6 +1323,7 @@ void gnuplot_xrange(FILE *pipe, const double xmin, const double xmax);
 void gnuplot_yrange(FILE *pipe, const double ymin, const double ymax);
 void gnuplot_zrange(FILE *pipe, const double zmin, const double zmax);
 void gnuplot_axes_equal(FILE *pipe);
+void gnuplot_axes3d_equal(FILE *pipe);
 void gnuplot_send_xy(FILE *pipe,
                      const char *data_name,
                      const double *xvals,

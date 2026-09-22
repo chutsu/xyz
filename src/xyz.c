@@ -7954,12 +7954,18 @@ void gnuplot_zrange(FILE *pipe, const double zmin, const double zmax) {
 }
 
 /**
+ * Make one unit the same length on the x and y axes of `pipe`'s next 2D
+ * (`plot`) plot, so shapes aren't stretched to fill the terminal/window.
+ */
+void gnuplot_axes_equal(FILE *pipe) { gnuplot_send(pipe, "set size ratio -1"); }
+
+/**
  * Make one unit the same length on every axis of `pipe`'s next 3D
  * (`splot`) plot, so shapes aren't stretched to fill the terminal/window --
  * e.g. axes3d_draw()'s X/Y/Z triad renders as an actual right angle instead
  * of whatever the auto-scaled xrange/yrange/zrange happen to skew it into.
  */
-void gnuplot_axes_equal(FILE *pipe) {
+void gnuplot_axes3d_equal(FILE *pipe) {
   gnuplot_send(pipe, "set view equal xyz");
 }
 
@@ -8103,7 +8109,7 @@ void gnuplot_axes3d_draw(FILE *pipe,
   }
 
   if (!replot) {
-    gnuplot_axes_equal(pipe);
+    gnuplot_axes3d_equal(pipe);
 
     char title[128];
     snprintf(title,
