@@ -3347,8 +3347,10 @@ int test_so3_exp_log(void) {
  ******************************************************************************/
 
 int test_gnuplot_xyplot(void) {
-  // Start gnuplot
-  FILE *gnuplot = gnuplot_init();
+  // Start gnuplot. `set terminal dumb` renders as ASCII text instead of
+  // opening a window, so this runs fine headless / in CI.
+  FILE *gnuplot = gnuplot_init(false);
+  gnuplot_send(gnuplot, "set terminal dumb");
 
   // First dataset
   {
@@ -3371,14 +3373,16 @@ int test_gnuplot_xyplot(void) {
   gnuplot_send(gnuplot, "plot $DATA1 with lines, $DATA2 with lines");
 
   // Clean up
-  gnuplot_close(gnuplot);
+  gnuplot_close(gnuplot, false);
 
   return 0;
 }
 
 int test_gnuplot_multiplot(void) {
-  // Start gnuplot
-  FILE *gnuplot = gnuplot_init();
+  // Start gnuplot. `set terminal dumb` renders as ASCII text instead of
+  // opening a window, so this runs fine headless / in CI.
+  FILE *gnuplot = gnuplot_init(false);
+  gnuplot_send(gnuplot, "set terminal dumb");
 
   // Setup multiplot
   const int num_rows = 1;
@@ -3406,7 +3410,102 @@ int test_gnuplot_multiplot(void) {
   }
 
   // Clean up
-  gnuplot_close(gnuplot);
+  gnuplot_close(gnuplot, false);
+
+  return 0;
+}
+
+int test_gnuplot_3d(void) {
+  // Start gnuplot. `set terminal dumb` renders as ASCII text instead of
+  // opening a window, so this runs fine headless / in CI.
+  FILE *gnuplot = gnuplot_init(false);
+  gnuplot_send(gnuplot, "set terminal dumb");
+  gnuplot_send(gnuplot, "set title '3D Helix'");
+
+  // Helix: x = cos(t), y = sin(t), z = t
+  const int num_points = 50;
+  real_t xvals[50] = {0};
+  real_t yvals[50] = {0};
+  real_t zvals[50] = {0};
+  for (int i = 0; i < num_points; i++) {
+    const real_t t = i * (4.0 * M_PI / (num_points - 1));
+    xvals[i] = cos(t);
+    yvals[i] = sin(t);
+    zvals[i] = t;
+  }
+
+  // splot (not plot) is gnuplot's 3D-plot command.
+  gnuplot_send_xyz(gnuplot, "$DATA", xvals, yvals, zvals, num_points);
+  gnuplot_send(gnuplot, "splot $DATA with lines notitle");
+
+  // Clean up
+  gnuplot_close(gnuplot, false);
+
+  return 0;
+}
+
+int test_gnuplot_3d_axes(void) {
+  // Start gnuplot. `set terminal dumb ansi256` renders as ANSI-colored
+  // ASCII text instead of opening a window, so this still shows X/Y/Z
+  // as distinct colors while running fine headless / in CI.
+  FILE *gnuplot = gnuplot_init(false);
+  gnuplot_send(gnuplot, "set terminal dumb ansi256");
+
+  // Pose the axes away from the origin to exercise the T parameter --
+  // identity rotation, translated by (1, 1, 1).
+  // clang-format off
+  const double T[4 * 4] = {
+    1.0, 0.0, 0.0, 1.0,
+    0.0, 1.0, 0.0, 1.0,
+    0.0, 0.0, 1.0, 1.0,
+    0.0, 0.0, 0.0, 1.0
+  };
+  // clang-format on
+  gnuplot_axes3d_draw(gnuplot, "camera", T, 1.0, 2.0);
+
+  // Clean up
+  gnuplot_close(gnuplot, false);
+
+  return 0;
+}
+
+int test_gnuplot_live(void) {
+  // Start gnuplot
+  FILE *gnuplot = gnuplot_init(false);
+  gnuplot_send(gnuplot, "set title 'Live Plot: sin(x + t)'");
+
+  // Fix the axes so they don't jump around every frame -- gnuplot would
+  // otherwise autoscale to whatever this frame's data happens to be.
+  gnuplot_xrange(gnuplot, 0.0, 2.0 * M_PI);
+  gnuplot_yrange(gnuplot, -1.5, 1.5);
+
+  // Animate a sine wave sweeping across the plot, one frame at a time.
+  const int num_points = 100;
+  const int num_frames = 50;
+  real_t xvals[100] = {0};
+  real_t yvals[100] = {0};
+  for (int i = 0; i < num_points; i++) {
+    xvals[i] = i * (2.0 * M_PI / (num_points - 1));
+  }
+
+  for (int frame = 0; frame < num_frames; frame++) {
+    const real_t t = frame * (2.0 * M_PI / num_frames);
+    for (int i = 0; i < num_points; i++) {
+      yvals[i] = sin(xvals[i] + t);
+    }
+
+    gnuplot_send_xy(gnuplot, "$DATA", xvals, yvals, num_points);
+    gnuplot_send(gnuplot, "plot $DATA with lines notitle");
+
+    // gnuplot_send()/gnuplot_send_xy() already fflush() internally, so
+    // this frame's commands are guaranteed to have reached gnuplot by
+    // the time we get here -- the sleep is only to make the animation
+    // visible at a watchable pace, not to work around any buffering.
+    usleep(50000); // 50ms per frame, ~20fps
+  }
+
+  // Clean up
+  gnuplot_close(gnuplot, false);
 
   return 0;
 }
@@ -10792,9 +10891,12 @@ void test_suite(void) {
   MU_ADD_TEST(test_so3_exp_log);
 
   // GNUPLOT
+  MU_ADD_TEST(test_gnuplot_xyplot);
+  MU_ADD_TEST(test_gnuplot_multiplot);
+  MU_ADD_TEST(test_gnuplot_3d);
+  MU_ADD_TEST(test_gnuplot_3d_axes);
 #if CI_MODE == 0
-  // MU_ADD_TEST(test_gnuplot_xyplot);
-  // MU_ADD_TEST(test_gnuplot_multiplot);
+  // MU_ADD_TEST(test_gnuplot_live);
 #endif
 
   // CONTROL

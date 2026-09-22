@@ -268,6 +268,9 @@ run_test() {
 ## XYZ-GNUPLOT
 # run_test test_xyz test_gnuplot_xyplot
 # run_test test_xyz test_gnuplot_multiplot
+run_test test_xyz test_gnuplot_3d
+# run_test test_xyz test_gnuplot_3d_axes
+# run_test test_xyz test_gnuplot_live
 ## XYZ-CONTROL
 # run_test test_xyz test_pid_ctrl
 ## XYZ-MAV
@@ -395,7 +398,7 @@ run_test() {
 # run_test test_xyz test_sim_camera_data_save_load
 # run_test test_xyz test_sim_camera_circle_trajectory
 ## XYZ-CAMERA-CALIBRATION
-run_test test_xyz test_calib_camera_mono_batch
+# run_test test_xyz test_calib_camera_mono_batch
 ## XYZ-EUROC
 # run_test test_xyz test_euroc_imu_load
 # run_test test_xyz test_euroc_camera_load

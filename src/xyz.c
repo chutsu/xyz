@@ -544,6 +544,10 @@ static int stat_cpu_ticks_read(const char *path,
   return (n == 13) ? 0 : -1;
 }
 
+/**
+ * stat_cpu_ticks_read() for /proc/<pid>/stat, i.e. ticks summed across
+ * all of `pid`'s threads.
+ */
 static int proc_stat_cpu_ticks(const pid_t pid,
                                uint64_t *utime,
                                uint64_t *stime) {
@@ -552,6 +556,10 @@ static int proc_stat_cpu_ticks(const pid_t pid,
   return stat_cpu_ticks_read(path, utime, stime);
 }
 
+/**
+ * stat_cpu_ticks_read() for /proc/<pid>/task/<tid>/stat, i.e. ticks for
+ * just the one thread `tid`.
+ */
 static int thread_stat_cpu_ticks(const pid_t pid,
                                  const pid_t tid,
                                  uint64_t *utime,
@@ -7913,15 +7921,25 @@ void s2_log_map(const real_t t[3], const real_t p[3], real_t v[3]) {
  * GNUPLOT
  ******************************************************************************/
 
-FILE *gnuplot_init(void) { return popen("gnuplot -persistent", "w"); }
+FILE *gnuplot_init(const bool persistent) {
+  return popen(persistent ? "gnuplot -persistent" : "gnuplot", "w");
+}
 
-void gnuplot_close(FILE *pipe) { fclose(pipe); }
+void gnuplot_close(FILE *pipe, const bool wait) {
+  if (wait) {
+    gnuplot_send(pipe, "pause mouse close");
+  }
+  pclose(pipe);
+}
 
 void gnuplot_multiplot(FILE *pipe, const int num_rows, const int num_cols) {
   fprintf(pipe, "set multiplot layout %d, %d\n", num_rows, num_cols);
 }
 
-void gnuplot_send(FILE *pipe, const char *cmd) { fprintf(pipe, "%s\n", cmd); }
+void gnuplot_send(FILE *pipe, const char *cmd) {
+  fprintf(pipe, "%s\n", cmd);
+  fflush(pipe);
+}
 
 void gnuplot_xrange(FILE *pipe, const double xmin, const double xmax) {
   fprintf(pipe, "set xrange [%f:%f]\n", xmin, xmax);
@@ -7929,6 +7947,10 @@ void gnuplot_xrange(FILE *pipe, const double xmin, const double xmax) {
 
 void gnuplot_yrange(FILE *pipe, const double ymin, const double ymax) {
   fprintf(pipe, "set yrange [%f:%f]\n", ymin, ymax);
+}
+
+void gnuplot_zrange(FILE *pipe, const double zmin, const double zmax) {
+  fprintf(pipe, "set zrange [%f:%f]\n", zmin, zmax);
 }
 
 void gnuplot_send_xy(FILE *pipe,
@@ -7941,6 +7963,21 @@ void gnuplot_send_xy(FILE *pipe,
     fprintf(pipe, "%lf %lf\n", xvals[i], yvals[i]);
   }
   fprintf(pipe, "EOD\n");
+  fflush(pipe);
+}
+
+void gnuplot_send_xyz(FILE *pipe,
+                      const char *data_name,
+                      const double *xvals,
+                      const double *yvals,
+                      const double *zvals,
+                      const int n) {
+  fprintf(pipe, "%s << EOD \n", data_name);
+  for (int i = 0; i < n; i++) {
+    fprintf(pipe, "%lf %lf %lf\n", xvals[i], yvals[i], zvals[i]);
+  }
+  fprintf(pipe, "EOD\n");
+  fflush(pipe);
 }
 
 void gnuplot_send_matrix(FILE *pipe,
@@ -7973,7 +8010,7 @@ void gnuplot_send_matrix(FILE *pipe,
 
 void gnuplot_matshow(const double *A, const int m, const int n) {
   // Open gnuplot
-  FILE *gnuplot = gnuplot_init();
+  FILE *gnuplot = gnuplot_init(true);
 
   // Set color scheme
   gnuplot_send(gnuplot, "set palette gray");
@@ -7990,10 +8027,138 @@ void gnuplot_matshow(const double *A, const int m, const int n) {
   // Plot
   gnuplot_send_matrix(gnuplot, "$A", A, m, n);
   gnuplot_send(gnuplot, "plot $A matrix with image notitle axes x2y1");
-  gnuplot_send(gnuplot, "pause mouse close");
 
   // Close gnuplot
-  gnuplot_close(gnuplot);
+  gnuplot_close(gnuplot, true);
+}
+
+/**
+ * Draw 3D coordinate axes (X=red, Y=green, Z=blue) named `name` onto
+ * `pipe`, `scale` long and `thickness` wide, posed by the 4x4 row-major
+ * homogeneous transform `T` (NULL for identity, i.e. axes at the origin,
+ * axis-aligned). `name` prefixes the gnuplot data block names, so multiple
+ * axes (e.g. different frames) can be drawn on the same `pipe` without
+ * colliding, and labels each axis in the legend, e.g. "<name> X". Unlike
+ * gnuplot_matshow(), this doesn't open, configure a terminal for, or close
+ * `pipe` itself -- the caller already set that up (persistent/transient,
+ * interactive/dumb, etc.), so this just sends the axis data and one
+ * `splot`.
+ */
+void gnuplot_axes3d_draw(FILE *pipe,
+                         const char *name,
+                         const double T[4 * 4],
+                         const double scale,
+                         const double thickness) {
+  char x_block[64];
+  char y_block[64];
+  char z_block[64];
+  snprintf(x_block, sizeof(x_block), "$%s_X", name);
+  snprintf(y_block, sizeof(y_block), "$%s_Y", name);
+  snprintf(z_block, sizeof(z_block), "$%s_Z", name);
+
+  // Axis endpoints in the local frame, transformed by T into `pipe`'s frame.
+  const double pts_in[4][3] = {
+      {0.0, 0.0, 0.0},
+      {scale, 0.0, 0.0},
+      {0.0, scale, 0.0},
+      {0.0, 0.0, scale},
+  };
+  double O[3];
+  double X[3];
+  double Y[3];
+  double Z[3];
+  double *pts_out[4] = {O, X, Y, Z};
+  for (int i = 0; i < 4; i++) {
+    const double *p = pts_in[i];
+    if (T == NULL) {
+      pts_out[i][0] = p[0];
+      pts_out[i][1] = p[1];
+      pts_out[i][2] = p[2];
+    } else {
+      const double hp[4] = {p[0], p[1], p[2], 1.0};
+      for (int r = 0; r < 3; r++) {
+        pts_out[i][r] = T[r * 4 + 0] * hp[0] + T[r * 4 + 1] * hp[1] +
+                        T[r * 4 + 2] * hp[2] + T[r * 4 + 3] * hp[3];
+      }
+    }
+  }
+
+  {
+    char title[128];
+    snprintf(title,
+             sizeof(title),
+             "set title '%s (X=red, Y=green, Z=blue)'",
+             name);
+    gnuplot_send(pipe, title);
+  }
+  {
+    const double pad = 0.2 * scale;
+    const double xs[4] = {O[0], X[0], Y[0], Z[0]};
+    const double ys[4] = {O[1], X[1], Y[1], Z[1]};
+    const double zs[4] = {O[2], X[2], Y[2], Z[2]};
+    double xmin = xs[0], xmax = xs[0];
+    double ymin = ys[0], ymax = ys[0];
+    double zmin = zs[0], zmax = zs[0];
+    for (int i = 1; i < 4; i++) {
+      if (xs[i] < xmin)
+        xmin = xs[i];
+      if (xs[i] > xmax)
+        xmax = xs[i];
+      if (ys[i] < ymin)
+        ymin = ys[i];
+      if (ys[i] > ymax)
+        ymax = ys[i];
+      if (zs[i] < zmin)
+        zmin = zs[i];
+      if (zs[i] > zmax)
+        zmax = zs[i];
+    }
+    gnuplot_xrange(pipe, xmin - pad, xmax + pad);
+    gnuplot_yrange(pipe, ymin - pad, ymax + pad);
+    gnuplot_zrange(pipe, zmin - pad, zmax + pad);
+  }
+
+  // X axis (red): O -> X
+  {
+    double xvals[2] = {O[0], X[0]};
+    double yvals[2] = {O[1], X[1]};
+    double zvals[2] = {O[2], X[2]};
+    gnuplot_send_xyz(pipe, x_block, xvals, yvals, zvals, 2);
+  }
+
+  // Y axis (green): O -> Y
+  {
+    double xvals[2] = {O[0], Y[0]};
+    double yvals[2] = {O[1], Y[1]};
+    double zvals[2] = {O[2], Y[2]};
+    gnuplot_send_xyz(pipe, y_block, xvals, yvals, zvals, 2);
+  }
+
+  // Z axis (blue): O -> Z
+  {
+    double xvals[2] = {O[0], Z[0]};
+    double yvals[2] = {O[1], Z[1]};
+    double zvals[2] = {O[2], Z[2]};
+    gnuplot_send_xyz(pipe, z_block, xvals, yvals, zvals, 2);
+  }
+
+  // One splot, three datasets, one color each.
+  char cmd[512];
+  snprintf(cmd,
+           sizeof(cmd),
+           "splot %s with lines lc rgb 'red' lw %f title '%s X', "
+           "%s with lines lc rgb 'green' lw %f title '%s Y', "
+           "%s with lines lc rgb 'blue' lw %f title '%s Z'",
+           x_block,
+           thickness,
+           name,
+           y_block,
+           thickness,
+           name,
+           z_block,
+           thickness,
+           name);
+  gnuplot_send(pipe, cmd);
 }
 
 /******************************************************************************
@@ -8251,7 +8416,7 @@ void mav_model_telem_update(mav_model_telem_t *telem,
 
 void mav_model_telem_plot(const mav_model_telem_t *telem) {
   // Plot
-  FILE *g = gnuplot_init();
+  FILE *g = gnuplot_init(true);
 
   // -- Plot settings
   gnuplot_send(g, "set multiplot layout 3,1");
@@ -8288,11 +8453,11 @@ void mav_model_telem_plot(const mav_model_telem_t *telem) {
   gnuplot_send(g, "plot $vx with lines, $vy with lines, $vz with lines");
 
   // Clean up
-  gnuplot_close(g);
+  gnuplot_close(g, false);
 }
 
 void mav_model_telem_plot_xy(const mav_model_telem_t *telem) {
-  FILE *g = gnuplot_init();
+  FILE *g = gnuplot_init(true);
 
   real_t x_min = vec_min(telem->x, telem->num_events);
   real_t x_max = vec_max(telem->x, telem->num_events);
@@ -8309,7 +8474,7 @@ void mav_model_telem_plot_xy(const mav_model_telem_t *telem) {
   gnuplot_send(g, "set ylabel 'Y [m]'");
   gnuplot_send(g, "plot $DATA with lines lt 1 lw 2");
 
-  gnuplot_close(g);
+  gnuplot_close(g, false);
 }
 
 void mav_att_ctrl_setup(mav_att_ctrl_t *ctrl) {
