@@ -18855,10 +18855,12 @@ void marg_factor_free(marg_factor_t *marg) {
   }
   free(marg->params);
   free(marg->r);
-  for (int i = 0; i < marg->num_params; i++) {
-    free(marg->jacs[i]);
+  if (marg->jacs) {
+    for (int i = 0; i < marg->num_params; i++) {
+      free(marg->jacs[i]);
+    }
+    free(marg->jacs);
   }
-  free(marg->jacs);
 
   free(marg);
 }
@@ -18904,7 +18906,7 @@ void marg_factor_add(marg_factor_t *marg, int factor_type, void *factor_ptr) {
 
   switch (factor_type) {
     case MARG_FACTOR:
-      assert(marg->marg_factor != NULL); // Implementation error!
+      assert(marg->marg_factor == NULL); // Implementation error!
       marg->marg_factor = factor_ptr;
       break;
     case BA_FACTOR: list_push(marg->ba_factors, factor_ptr); break;
@@ -19041,7 +19043,7 @@ static void marg_factor_hessian_form(marg_factor_t *marg) {
   // -- Track marginalization factor params
   if (marg->marg_factor) {
     for (int i = 0; i < marg->marg_factor->num_params; i++) {
-      void *param = marg->marg_factor->param_ptrs[i];
+      void *param = marg->marg_factor->params[i];
       int param_type = marg->marg_factor->param_types[i];
       marg_track_factor(marg, param_type, param);
     }
@@ -19386,6 +19388,14 @@ void marg_factor_marginalize(marg_factor_t *marg,
   marg_factor_hessian_decomp(marg);
   marg->time_hessian_decomp = toc();
   marg->time_total += marg->time_hessian_decomp;
+
+  // marg_factor_hessian_decomp() may fail to eigen-decompose H_marg (e.g.
+  // LAPACK failing to converge on a rank-deficient / ill-conditioned
+  // matrix), in which case marg->J0 / marg->J0_inv are left NULL. Bail out
+  // here rather than have marg_factor_form_fejs() dereference them.
+  if (marg->eigen_decomp_ok == 0) {
+    return;
+  }
 
   // Form FEJs
   tic();
@@ -21576,31 +21586,9 @@ calib_frame_t *calib_frame_malloc(const timestamp_t ts,
   view->cam_idx = cam_idx;
   view->num_corners = num_corners;
 
-  // Measurements
-  if (num_corners) {
-    view->tag_ids = malloc(sizeof(int) * num_corners);
-    view->corner_indices = malloc(sizeof(int) * num_corners);
-    view->pts = malloc(sizeof(real_t) * num_corners * 3);
-    view->kps = malloc(sizeof(real_t) * num_corners * 2);
-    assert(view->tag_ids != NULL);
-    assert(view->corner_indices != NULL);
-    assert(view->pts != NULL);
-    assert(view->kps != NULL);
-  }
-
   // Factors
   view->factors = malloc(sizeof(calib_camera_factor_t) * num_corners);
   assert(view->factors != NULL);
-
-  for (int i = 0; i < num_corners; i++) {
-    view->tag_ids[i] = tag_ids[i];
-    view->corner_indices[i] = corner_indices[i];
-    view->pts[i * 3] = pts[i * 3];
-    view->pts[i * 3 + 1] = pts[i * 3 + 1];
-    view->pts[i * 3 + 2] = pts[i * 3 + 2];
-    view->kps[i * 2] = kps[i * 2];
-    view->kps[i * 2 + 1] = kps[i * 2 + 1];
-  }
 
   const real_t var[2] = {1.0, 1.0};
   for (int i = 0; i < view->num_corners; i++) {
@@ -21608,14 +21596,6 @@ calib_frame_t *calib_frame_malloc(const timestamp_t ts,
     const int corner_idx = corner_indices[i];
     const real_t *p_FFi = &pts[i * 3];
     const real_t *z = &kps[i * 2];
-
-    view->tag_ids[i] = tag_id;
-    view->corner_indices[i] = corner_idx;
-    view->pts[i * 3] = p_FFi[0];
-    view->pts[i * 3 + 1] = p_FFi[1];
-    view->pts[i * 3 + 2] = p_FFi[2];
-    view->kps[i * 2] = z[0];
-    view->kps[i * 2 + 1] = z[1];
 
     calib_camera_factor_setup(&view->factors[i],
                               pose,
@@ -21637,10 +21617,6 @@ calib_frame_t *calib_frame_malloc(const timestamp_t ts,
  */
 void calib_frame_free(calib_frame_t *view) {
   if (view) {
-    free(view->tag_ids);
-    free(view->corner_indices);
-    free(view->pts);
-    free(view->kps);
     free(view->factors);
     free(view);
   }
@@ -21708,7 +21684,7 @@ void calib_frameset_add(calib_frameset_t *fs,
                                            pts,
                                            kps,
                                            fs->pose,
-                                           &fs->cam_exts[cam_idx],
+                                           &fs->cam_exts[cam_idx * 7],
                                            &fs->cameras[cam_idx]);
 }
 
@@ -21739,16 +21715,13 @@ calib_camera_t *calib_camera_malloc(void) {
   // Variables
   calib->timestamps = arr_malloc(8);
   calib->poses = rbt_malloc(ts_cmp);
-  // calib->timestamps holds the same timestamp_t* pointers as
-  // calib->poses's keys (calib_camera_add_view() pushes ts_ptr to both).
-  // Let the rbt own and free them via kfree, so calib_camera_free()
-  // doesn't need to (and must not) free them a second time itself.
   calib->poses->kfree = free;
   calib->cam_exts = NULL;
   calib->camera = NULL;
 
   // Factors
-  calib->framesets = NULL;
+  calib->framesets = rbt_malloc(ts_cmp);
+  calib->marg = NULL;
 
   return calib;
 }
@@ -21762,6 +21735,23 @@ void calib_camera_free(calib_camera_t *calib) {
   }
   free(calib->cam_exts);
   free(calib->camera);
+  marg_factor_free(calib->marg);
+
+  // Framesets: free each frameset (the rbt's values -- rbt_free() only
+  // ever frees keys, via kfree, never values), then the tree itself.
+  // This must happen before calib->poses is freed below: framesets'
+  // keys are the same timestamp_t* pointers as calib->poses's keys, and
+  // freeing/searching this tree dereferences those keys via ts_cmp.
+  const size_t num_framesets = rbt_size(calib->framesets);
+  if (num_framesets > 0) {
+    arr_t *fs_keys = arr_malloc(num_framesets);
+    rbt_keys(calib->framesets, fs_keys);
+    for (size_t i = 0; i < num_framesets; ++i) {
+      calib_frameset_free(rbt_search(calib->framesets, fs_keys->data[i]));
+    }
+    arr_free(fs_keys);
+  }
+  rbt_free(calib->framesets);
 
   // Poses: free each pose vector (the rbt's values -- rbt_free() only
   // ever frees keys, via kfree, never values), then the tree itself,
@@ -21782,7 +21772,6 @@ void calib_camera_free(calib_camera_t *calib) {
   // elements it points to are the same ones calib->poses just freed
   // above via kfree, so freeing them again here would double-free.
   arr_free(calib->timestamps);
-  // rbt_free(calib->framesets);
 
   free(calib);
 }
@@ -21800,23 +21789,28 @@ void calib_camera_errors(calib_camera_t *calib,
   real_t *r = calloc(r_size, sizeof(real_t));
 
   // Evaluate residuals
-  // int r_idx = 0;
-  // for (int view_idx = 0; view_idx < calib->num_views; view_idx++) {
-  //   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-  //     const timestamp_t ts = calib->timestamps[view_idx];
-  //     calib_frame_t *view = hmgets(calib->framesets, ts).value[cam_idx];
-  //     if (view == NULL) {
-  //       continue;
-  //     }
-  //
-  //     for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
-  //       struct calib_camera_factor_t *factor = &view->factors[factor_idx];
-  //       calib_camera_factor_eval(factor);
-  //       vec_copy(factor->r, factor->r_size, &r[r_idx]);
-  //       r_idx += factor->r_size;
-  //     } // For each calib factor
-  //   }   // For each cameras
-  // }     // For each views
+  int r_idx = 0;
+  for (size_t view_idx = 0; view_idx < calib->timestamps->size; view_idx++) {
+    const timestamp_t ts = *(timestamp_t *) calib->timestamps->data[view_idx];
+    calib_frameset_t *fs = rbt_search(calib->framesets, &ts);
+    if (fs == NULL) {
+      continue;
+    }
+
+    for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+      calib_frame_t *view = fs->frames[cam_idx];
+      if (view == NULL) {
+        continue;
+      }
+
+      for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
+        calib_camera_factor_t *factor = &view->factors[factor_idx];
+        calib_camera_factor_eval(factor);
+        vec_copy(factor->r, factor->r_size, &r[r_idx]);
+        r_idx += factor->r_size;
+      } // For each calib factor
+    }   // For each cameras
+  }     // For each views
 
   // Calculate reprojection errors
   real_t *errors = calloc(N, sizeof(real_t));
@@ -21961,6 +21955,7 @@ void calib_camera_add_view(calib_camera_t *calib,
 
   // Pose T_C0F
   real_t *pose_ptr = rbt_search(calib->poses, &ts);
+  calib_frameset_t *fs = rbt_search(calib->framesets, &ts);
   if (pose_ptr == NULL) {
     // Estimate relative pose T_CiF
     real_t T_CiF[4 * 4] = {0};
@@ -21981,85 +21976,141 @@ void calib_camera_add_view(calib_camera_t *calib,
     pose_ptr = malloc(sizeof(real_t) * 7);
     vec_copy(pose_vector, 7, pose_ptr);
     rbt_insert(calib->poses, ts_ptr, pose_ptr);
+
+    // New frameset. Keyed by the same ts_ptr as calib->poses above --
+    // calib->framesets doesn't own it (see calib_camera_malloc()).
+    fs = calib_frameset_malloc(ts,
+                               pose_ptr,
+                               calib->cam_exts,
+                               calib->camera,
+                               calib->num_cams);
+    rbt_insert(calib->framesets, ts_ptr, fs);
+    calib->num_views++;
   }
 
   // Form new view
-  // calib_frame_t **cam_views = hmgets(calib->framesets, ts).value;
-  // if (cam_views == NULL) {
-  //   cam_views = calloc(calib->num_cams, sizeof(calib_frame_t **));
-  //   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-  //     cam_views[cam_idx] = NULL;
-  //   }
-  //   hmput(calib->framesets, ts, cam_views);
-  //   calib->num_views++;
-  // }
-
-  // calib_frame_t *view =
-  //     calib_frame_malloc(ts,
-  //                              view_idx,
-  //                              cam_idx,
-  //                              num_corners,
-  //                              tag_ids,
-  //                              corner_indices,
-  //                              pts,
-  //                              kps,
-  //                              pose_ptr,
-  //                              &calib->cam_exts[cam_idx],
-  //                              &calib->camera[cam_idx]);
-  // cam_views[cam_idx] = view;
-  // calib->num_factors += num_corners;
+  calib_frameset_add(fs,
+                     ts,
+                     view_idx,
+                     cam_idx,
+                     num_corners,
+                     tag_ids,
+                     corner_indices,
+                     pts,
+                     kps);
+  calib->num_factors += num_corners;
 }
 
-// void calib_camera_marginalize(calib_camera_t *calib) {
-//   // Setup marginalization factor
-//   marg_factor_t *marg = marg_factor_malloc();
-//
-//   // Get first timestamp
-//   const timestamp_t ts = calib->timestamps[0];
-//
-//   // Mark the pose at timestamp to be marginalized
-//   pose_t *pose = hmgets(calib->poses, ts).value;
-//   pose->marginalize = 1;
-//
-//   // Add calib camera factors to marginalization factor
-//   calib_frame_t **cam_views = hmgets(calib->framesets, ts).value;
-//   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-//     calib_frame_t *view = cam_views[cam_idx];
-//     if (view == NULL) {
-//       continue;
-//     }
-//
-//     for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
-//       marg_factor_add(marg, CALIB_CAMERA_FACTOR, &view->factors[factor_idx]);
-//     }
-//   }
-//
-//   // Add previous marginalization factor to new marginalization factor
-//   if (calib->marg) {
-//     marg_factor_add(marg, MARG_FACTOR, calib->marg);
-//   }
-//
-//   // Marginalize
-//   marg_factor_marginalize(marg);
-//   if (calib->marg) {
-//     marg_factor_free(calib->marg);
-//   }
-//   calib->marg = marg;
-//
-//   // Remove viewset
-//   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-//     calib_frame_free(cam_views[cam_idx]);
-//   }
-//   free(cam_views);
-//   (void) hmdel(calib->framesets, ts);
-//   // ^ (void) cast required for now: https://github.com/nothings/stb/issues/1574
-//
-//   // Remove timestamp
-//   arrdel(calib->timestamps, 0);
-//
-//   // Update number of views
-//   calib->num_views--;
-// }
+/**
+ * Whether the given camera's extrinsics are held fixed during
+ * optimization. Camera 0 defines the calibration's reference frame
+ * (T_C0C0 = identity), so it's always fixed regardless of
+ * calib->fix_cam_exts.
+ */
+static int calib_camera_extrinsic_fixed(const calib_camera_t *calib,
+                                        const int cam_idx) {
+  return (cam_idx == 0) || calib->fix_cam_exts;
+}
+
+/**
+ * Marginalize out the oldest view in the camera calibration problem,
+ * folding its calib camera factors (and any previous marginalization
+ * prior) into a new marginalization prior over the remaining camera
+ * extrinsics and intrinsics.
+ */
+void calib_camera_marginalize(calib_camera_t *calib) {
+  assert(calib != NULL);
+  if (calib->num_views == 0) {
+    return;
+  }
+
+  // Oldest view to marginalize out
+  timestamp_t ts = *(timestamp_t *) calib->timestamps->data[0];
+  real_t *pose = rbt_search(calib->poses, &ts);
+  calib_frameset_t *fs = rbt_search(calib->framesets, &ts);
+  assert(pose != NULL);
+  assert(fs != NULL);
+
+  // Mark the pose being removed for marginalization. Also keep the set of
+  // params calib_camera_param_index() always holds fixed (cam0's
+  // extrinsic, and camera intrinsics / non-cam0 extrinsics if the
+  // corresponding calib->fix_* flag is set) in sync here, so the marginal
+  // prior doesn't absorb information for parameters the main problem
+  // never updates.
+  rbt_t *marg_params = rbt_malloc(default_cmp);
+  rbt_t *fix_params = rbt_malloc(default_cmp);
+  rbt_insert(marg_params, pose, NULL);
+  for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+    if (calib_camera_extrinsic_fixed(calib, cam_idx)) {
+      rbt_insert(fix_params, &calib->cam_exts[cam_idx * 7], NULL);
+    }
+    if (calib->fix_camera) {
+      rbt_insert(fix_params, calib->camera[cam_idx].data, NULL);
+    }
+  }
+
+  // Add this view's calib camera factors -- and the previous
+  // marginalization prior, if any -- to a new marginalization factor
+  marg_factor_t *marg = marg_factor_malloc();
+  if (calib->marg) {
+    marg_factor_add(marg, MARG_FACTOR, calib->marg);
+  }
+  for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+    calib_frame_t *view = fs->frames[cam_idx];
+    if (view == NULL) {
+      continue;
+    }
+    for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
+      marg_factor_add(marg, CALIB_CAMERA_FACTOR, &view->factors[factor_idx]);
+    }
+  }
+
+  // Marginalize. This can fail (e.g. H_marg is rank-deficient/
+  // ill-conditioned -- easy to hit with very few views in the window,
+  // since a handful of calib camera factors alone may not fully
+  // constrain all camera intrinsics) in which case marg_factor_marginalize()
+  // leaves marg->marginalized == 0 rather than a half-built prior. When
+  // that happens we drop this view without folding it into a prior --
+  // losing its information is preferable to keeping a broken one, which
+  // marg_factor_eval() would later assert on.
+  marg_factor_marginalize(marg, marg_params, fix_params);
+  rbt_free(marg_params);
+  rbt_free(fix_params);
+  if (marg->marginalized) {
+    if (calib->marg) {
+      marg_factor_free(calib->marg);
+    }
+    calib->marg = marg;
+  } else {
+    LOG_WARN("calib_camera_marginalize: failed to marginalize view "
+             "ts=%ld, dropping it without updating the prior\n",
+             ts);
+    marg_factor_free(marg);
+  }
+
+  // Remove the frameset. calib->framesets doesn't own `ts`'s key (see
+  // calib_camera_malloc()) -- drop it here first, while the key pointer,
+  // shared with calib->poses below, is still valid for ts_cmp to
+  // dereference during the tree search.
+  rbt_delete(calib->framesets, &ts);
+  calib_frameset_free(fs);
+
+  // Remove the pose. calib->poses owns and frees the shared timestamp_t*
+  // key.
+  rbt_delete(calib->poses, &ts);
+  free(pose);
+
+  // Remove timestamp bookkeeping -- the slot's timestamp_t* was just
+  // freed above via calib->poses' kfree, so just shift the array down.
+  arr_t *timestamps = calib->timestamps;
+  for (size_t i = 1; i < timestamps->size; ++i) {
+    timestamps->data[i - 1] = timestamps->data[i];
+  }
+  timestamps->size--;
+
+  // Update number of views
+  calib->num_views--;
+}
 
 /**
  * Add camera calibration data.
@@ -22114,184 +22165,216 @@ int calib_camera_add_data(calib_camera_t *calib,
   return 0;
 }
 
-// int calib_camera_shannon_entropy(calib_camera_t *calib, real_t *entropy) {
-//   // Determine parameter order
-//   int sv_size = 0;
-//   int r_size = 0;
-//   param_order_t *hash = calib_camera_param_order(calib, &sv_size, &r_size);
-//
-//   // Form Hessian H
-//   real_t *H = calloc(sv_size * sv_size, sizeof(real_t));
-//   real_t *g = calloc(sv_size, sizeof(real_t));
-//   real_t *r = calloc(r_size, sizeof(real_t));
-//   calib_camera_linearize_compact(calib, sv_size, hash, H, g, r);
-//
-//   // Estimate covariance
-//   real_t *covar = calloc(sv_size * sv_size, sizeof(real_t));
-//   pinv(H, sv_size, sv_size, covar);
-//
-//   // Grab the rows and columns corresponding to calib parameters
-//   // In the following we assume the state vector x is ordered:
-//   //
-//   //   x = [ poses [1..k], N camera extrinsics, N camera parameters]
-//   //
-//   // We are only interested in the Shannon-Entropy, or the uncertainty of the
-//   // calibration parameters. In this case the N camera extrinsics and
-//   // parameters, so once we have formed the full Hessian H matrix, inverted it
-//   // to form the covariance matrix, we can extract the lower right block matrix
-//   // that corresponds to the uncertainty of the calibration parameters, then
-//   // use it to calculate the shannon entropy.
-//   const timestamp_t last_ts = calib->timestamps[calib->num_views - 1];
-//   void *data = hmgets(calib->poses, last_ts).value->data;
-//   const int idx_s = hmgets(hash, data).idx + 6;
-//   const int idx_e = sv_size - 1;
-//   const int m = idx_e - idx_s + 1;
-//   real_t *covar_params = calloc(m * m, sizeof(real_t));
-//   mat_block_get(covar, sv_size, idx_s, idx_e, idx_s, idx_e, covar_params);
-//
-//   // Calculate shannon-entropy
-//   int status = 0;
-//   if (shannon_entropy(covar_params, m, entropy) != 0) {
-//     status = -1;
-//   }
-//
-//   // Clean up
-//   hmfree(hash);
-//   free(covar_params);
-//   free(covar);
-//   free(H);
-//   free(g);
-//   free(r);
-//
-//   return status;
-// }
-//
-// /**
-//  * Camera calibration parameter order.
-//  */
-// param_order_t *calib_camera_param_order(const void *data,
-//                                         int *sv_size,
-//                                         int *r_size) {
-//   // Setup parameter order
-//   calib_camera_t *calib = (calib_camera_t *) data;
-//   param_order_t *hash = NULL;
-//   int col_idx = 0;
-//
-//   // -- Add body poses
-//   for (int i = 0; i < hmlen(calib->poses); i++) {
-//     param_order_add_pose(&hash, calib->poses[i].value, &col_idx);
-//   }
-//
-//   // -- Add camera extrinsic
-//   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-//     param_order_add_extrinsic(&hash, &calib->cam_exts[cam_idx], &col_idx);
-//   }
-//
-//   // -- Add camera parameters
-//   for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-//     param_order_add_camera(&hash, &calib->camera[cam_idx], &col_idx);
-//   }
-//
-//   // Set state-vector and residual size
-//   *sv_size = col_idx;
-//   *r_size = (calib->num_factors * 2);
-//   if (calib->marg) {
-//     *r_size += calib->marg->r_size;
-//   }
-//
-//   return hash;
-// }
+/**
+ * Estimate the camera calibration problem's Shannon-Entropy -- the
+ * uncertainty of the camera extrinsics and intrinsics.
+ */
+int calib_camera_shannon_entropy(calib_camera_t *calib, real_t *entropy) {
+  // Determine parameter order
+  int sv_size = 0;
+  int r_size = 0;
+  rbt_t *param_index = calib_camera_param_index(calib, &sv_size, &r_size);
 
-// /**
-//  * Calculate camera calibration problem cost.
-//  */
-// void calib_camera_cost(const void *data, real_t *r) {
-//   // Evaluate factors
-//   calib_camera_t *calib = (calib_camera_t *) data;
-//
-//   // -- Evaluate calib camera factors
-//   int r_idx = 0;
-//   for (int view_idx = 0; view_idx < calib->num_views; view_idx++) {
-//     for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-//       const timestamp_t ts = calib->timestamps[view_idx];
-//       calib_frame_t *view = hmgets(calib->framesets, ts).value[cam_idx];
-//       if (view == NULL) {
-//         continue;
-//       }
-//
-//       for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
-//         struct calib_camera_factor_t *factor = &view->factors[factor_idx];
-//         calib_camera_factor_eval(factor);
-//         vec_copy(factor->r, factor->r_size, &r[r_idx]);
-//         r_idx += factor->r_size;
-//       } // For each calib factor
-//     }   // For each cameras
-//   }     // For each views
-//
-//   // -- Evaluate marginalization factor
-//   if (calib->marg) {
-//     marg_factor_eval(calib->marg);
-//     vec_copy(calib->marg->r, calib->marg->r_size, &r[r_idx]);
-//   }
-// }
+  // Form Hessian H
+  real_t *H = calloc(sv_size * sv_size, sizeof(real_t));
+  real_t *g = calloc(sv_size, sizeof(real_t));
+  real_t *r = calloc(r_size, sizeof(real_t));
+  calib_camera_linearize_compact(calib, sv_size, param_index, H, g, r);
 
-// /**
-//  * Linearize camera calibration problem.
-//  */
-// void calib_camera_linearize_compact(const void *data,
-//                                     const int sv_size,
-//                                     param_order_t *hash,
-//                                     real_t *H,
-//                                     real_t *g,
-//                                     real_t *r) {
-//   // Evaluate factors
-//   calib_camera_t *calib = (calib_camera_t *) data;
-//   int r_idx = 0;
-//
-//   // -- Evaluate calib camera factors
-//   for (int view_idx = 0; view_idx < calib->num_views; view_idx++) {
-//     for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
-//       const timestamp_t ts = calib->timestamps[view_idx];
-//       calib_frame_t *view = hmgets(calib->framesets, ts).value[cam_idx];
-//       if (view == NULL) {
-//         continue;
-//       }
-//
-//       for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
-//         struct calib_camera_factor_t *factor = &view->factors[factor_idx];
-//         calib_camera_factor_eval(factor);
-//         vec_copy(factor->r, factor->r_size, &r[r_idx]);
-//
-//         solver_fill_hessian(hash,
-//                             factor->num_params,
-//                             factor->params,
-//                             factor->jacs,
-//                             factor->r,
-//                             factor->r_size,
-//                             sv_size,
-//                             H,
-//                             g);
-//         r_idx += factor->r_size;
-//       } // For each calib factor
-//     }   // For each cameras
-//   }     // For each views
-//
-//   // -- Evaluate marginalization factor
-//   if (calib->marg) {
-//     marg_factor_eval(calib->marg);
-//     vec_copy(calib->marg->r, calib->marg->r_size, &r[r_idx]);
-//
-//     solver_fill_hessian(hash,
-//                         calib->marg->num_params,
-//                         calib->marg->params,
-//                         calib->marg->jacs,
-//                         calib->marg->r,
-//                         calib->marg->r_size,
-//                         sv_size,
-//                         H,
-//                         g);
-//   }
-// }
+  // Estimate covariance
+  real_t *covar = calloc(sv_size * sv_size, sizeof(real_t));
+  pinv(H, sv_size, sv_size, covar);
+
+  // Grab the rows and columns corresponding to calib parameters.
+  // calib_camera_param_index() orders the state vector as:
+  //
+  //   x = [ poses [1..num_views], N camera extrinsics, N camera parameters]
+  //
+  // with poses never fixed, so they occupy a contiguous
+  // [0, num_views * 6) block. We are only interested in the
+  // Shannon-Entropy, or the uncertainty of the calibration parameters. In
+  // this case the N camera extrinsics and parameters, so once we have
+  // formed the full Hessian H matrix, inverted it to form the covariance
+  // matrix, we can extract the lower right block matrix that corresponds
+  // to the uncertainty of the calibration parameters, then use it to
+  // calculate the shannon entropy.
+  const int idx_s = calib->num_views * 6;
+  const int idx_e = sv_size - 1;
+  const int m = idx_e - idx_s + 1;
+  real_t *covar_params = calloc(m * m, sizeof(real_t));
+  mat_block_get(covar, sv_size, idx_s, idx_e, idx_s, idx_e, covar_params);
+
+  // Calculate shannon-entropy
+  int status = 0;
+  if (shannon_entropy(covar_params, m, entropy) != 0) {
+    status = -1;
+  }
+
+  // Clean up
+  param_index_free(param_index);
+  free(covar_params);
+  free(covar);
+  free(H);
+  free(g);
+  free(r);
+
+  return status;
+}
+
+/**
+ * Camera calibration parameter index.
+ */
+rbt_t *calib_camera_param_index(const void *data, int *sv_size, int *r_size) {
+  // Setup parameter index
+  calib_camera_t *calib = (calib_camera_t *) data;
+  rbt_t *param_index = param_index_malloc();
+  int col_idx = 0;
+
+  // -- Add body poses. Poses are never fixed and are added first, so
+  // they occupy a contiguous [0, num_views * 6) block --
+  // calib_camera_linsolve() relies on this to Schur-complement them out
+  // as block-diagonal.
+  const size_t num_poses = rbt_size(calib->poses);
+  arr_t *pose_keys = arr_malloc(num_poses);
+  arr_t *pose_vals = arr_malloc(num_poses);
+  rbt_keys_values(calib->poses, pose_keys, pose_vals);
+  for (size_t i = 0; i < num_poses; ++i) {
+    param_index_add(param_index, POSE_PARAM, 0, pose_vals->data[i], &col_idx);
+  }
+  arr_free(pose_keys);
+  arr_free(pose_vals);
+
+  // -- Add camera extrinsics
+  for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+    const int fix = calib_camera_extrinsic_fixed(calib, cam_idx);
+    param_index_add(param_index,
+                    EXTRINSIC_PARAM,
+                    fix,
+                    &calib->cam_exts[cam_idx * 7],
+                    &col_idx);
+  }
+
+  // -- Add camera parameters
+  for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+    param_index_add(param_index,
+                    CAMERA_PARAM,
+                    calib->fix_camera,
+                    calib->camera[cam_idx].data,
+                    &col_idx);
+  }
+
+  // Set state-vector and residual size
+  *sv_size = col_idx;
+  *r_size = (calib->num_factors * 2);
+  if (calib->marg) {
+    *r_size += calib->marg->r_lsize;
+  }
+
+  return param_index;
+}
+
+/**
+ * Calculate camera calibration problem cost.
+ */
+void calib_camera_cost(const void *data, real_t *r) {
+  // Evaluate factors
+  calib_camera_t *calib = (calib_camera_t *) data;
+  int r_idx = 0;
+
+  // -- Evaluate calib camera factors
+  const size_t num_ts = calib->timestamps->size;
+  for (size_t view_idx = 0; view_idx < num_ts; view_idx++) {
+    const timestamp_t ts = *(timestamp_t *) calib->timestamps->data[view_idx];
+    calib_frameset_t *fs = rbt_search(calib->framesets, &ts);
+    if (fs == NULL) {
+      continue;
+    }
+
+    for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+      calib_frame_t *view = fs->frames[cam_idx];
+      if (view == NULL) {
+        continue;
+      }
+
+      for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
+        calib_camera_factor_t *factor = &view->factors[factor_idx];
+        calib_camera_factor_eval(factor);
+        vec_copy(factor->r, factor->r_size, &r[r_idx]);
+        r_idx += factor->r_size;
+      } // For each calib factor
+    }   // For each cameras
+  }     // For each views
+
+  // -- Evaluate marginalization factor
+  if (calib->marg) {
+    marg_factor_eval(calib->marg);
+    vec_copy(calib->marg->r, calib->marg->r_lsize, &r[r_idx]);
+  }
+}
+
+/**
+ * Linearize camera calibration problem.
+ */
+void calib_camera_linearize_compact(const void *data,
+                                    const int sv_size,
+                                    rbt_t *hash,
+                                    real_t *H,
+                                    real_t *g,
+                                    real_t *r) {
+  // Evaluate factors
+  calib_camera_t *calib = (calib_camera_t *) data;
+  int r_idx = 0;
+
+  // -- Evaluate calib camera factors
+  const size_t num_ts = calib->timestamps->size;
+  for (size_t view_idx = 0; view_idx < num_ts; view_idx++) {
+    const timestamp_t ts = *(timestamp_t *) calib->timestamps->data[view_idx];
+    calib_frameset_t *fs = rbt_search(calib->framesets, &ts);
+    if (fs == NULL) {
+      continue;
+    }
+
+    for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+      calib_frame_t *view = fs->frames[cam_idx];
+      if (view == NULL) {
+        continue;
+      }
+
+      for (int factor_idx = 0; factor_idx < view->num_corners; factor_idx++) {
+        calib_camera_factor_t *factor = &view->factors[factor_idx];
+        calib_camera_factor_eval(factor);
+        vec_copy(factor->r, factor->r_size, &r[r_idx]);
+
+        solver_fill_hessian(hash,
+                            factor->num_params,
+                            factor->params,
+                            factor->jacs,
+                            factor->r,
+                            factor->r_size,
+                            sv_size,
+                            H,
+                            g);
+        r_idx += factor->r_size;
+      } // For each calib factor
+    }   // For each cameras
+  }     // For each views
+
+  // -- Evaluate marginalization factor
+  if (calib->marg) {
+    marg_factor_eval(calib->marg);
+    vec_copy(calib->marg->r, calib->marg->r_lsize, &r[r_idx]);
+
+    solver_fill_hessian(hash,
+                        calib->marg->num_params,
+                        calib->marg->params,
+                        calib->marg->jacs,
+                        calib->marg->r,
+                        calib->marg->r_lsize,
+                        sv_size,
+                        H,
+                        g);
+  }
+}
 
 /**
  * Reduce camera calibration problem via Schur-Complement.
@@ -22333,94 +22416,95 @@ int calib_camera_add_data(calib_camera_t *calib,
  *   Berlin Heidelberg, 2000.
  *
  */
-// void calib_camera_linsolve(const void *data,
-//                            const int sv_size,
-//                            param_order_t *hash,
-//                            real_t *H,
-//                            real_t *g,
-//                            real_t *dx) {
-//   calib_camera_t *calib = (calib_camera_t *) data;
-//   const int m = calib->num_views * 6;
-//   const int r = sv_size - m;
-//   const int H_size = sv_size;
-//   const int bs = 6; // Diagonal block size
-//
-//   // Extract sub-blocks of matrix H
-//   // H = [A, B,
-//   //      C, D]
-//   real_t *B = malloc(sizeof(real_t) * m * r);
-//   real_t *C = malloc(sizeof(real_t) * r * m);
-//   real_t *D = malloc(sizeof(real_t) * r * r);
-//   real_t *A_inv = malloc(sizeof(real_t) * m * m);
-//   mat_block_get(H, H_size, 0, m - 1, m, H_size - 1, B);
-//   mat_block_get(H, H_size, m, H_size - 1, 0, m - 1, C);
-//   mat_block_get(H, H_size, m, H_size - 1, m, H_size - 1, D);
-//
-//   // Extract sub-blocks of vector b
-//   // b = [b0, b1]
-//   real_t *b0 = malloc(sizeof(real_t) * m);
-//   real_t *b1 = malloc(sizeof(real_t) * r);
-//   vec_copy(g, m, b0);
-//   vec_copy(g + m, r, b1);
-//
-//   // Invert A
-//   bdiag_inv_sub(H, sv_size, m, bs, A_inv);
-//
-//   // Reduce H * dx = b with Shur-Complement
-//   // D_bar = D - C * A_inv * B
-//   // b1_bar = b1 - C * A_inv * b0
-//   real_t *D_bar = malloc(sizeof(real_t) * r * r);
-//   real_t *b1_bar = malloc(sizeof(real_t) * r * 1);
-//   dot3(C, r, m, A_inv, m, m, B, m, r, D_bar);
-//   dot3(C, r, m, A_inv, m, m, b0, m, 1, b1_bar);
-//   for (int i = 0; i < (r * r); i++) {
-//     D_bar[i] = D[i] - D_bar[i];
-//   }
-//   for (int i = 0; i < r; i++) {
-//     b1_bar[i] = b1[i] - b1_bar[i];
-//   }
-//
-//   // Solve reduced system: D_bar * dx_r = b1_bar
-//   real_t *dx_r = malloc(sizeof(real_t) * r * 1);
-//   // Hack: precondition D_bar so linear-solver doesn't complain
-//   for (int i = 0; i < r; i++) {
-//     D_bar[i * r + i] += 1e-4;
-//   }
-//   chol_solve(D_bar, b1_bar, dx_r, r);
-//
-//   // Back-subsitute
-//   real_t *B_dx_r = calloc(m * 1, sizeof(real_t));
-//   real_t *dx_m = calloc(m * 1, sizeof(real_t));
-//   dot(B, m, r, dx_r, r, 1, B_dx_r);
-//   for (int i = 0; i < m; i++) {
-//     b0[i] = b0[i] - B_dx_r[i];
-//   }
-//   bdiag_dot(A_inv, m, m, bs, b0, dx_m);
-//
-//   // Form full dx vector
-//   for (int i = 0; i < m; i++) {
-//     dx[i] = dx_m[i];
-//   }
-//   for (int i = 0; i < r; i++) {
-//     dx[i + m] = dx_r[i];
-//   }
-//
-//   // Clean-up
-//   free(B);
-//   free(C);
-//   free(D);
-//   free(A_inv);
-//
-//   free(b0);
-//   free(b1);
-//
-//   free(D_bar);
-//   free(b1_bar);
-//
-//   free(B_dx_r);
-//   free(dx_m);
-//   free(dx_r);
-// }
+void calib_camera_linsolve(const void *data,
+                           const int sv_size,
+                           rbt_t *hash,
+                           real_t *H,
+                           real_t *g,
+                           real_t *dx) {
+  UNUSED(hash);
+  calib_camera_t *calib = (calib_camera_t *) data;
+  const int m = calib->num_views * 6;
+  const int r = sv_size - m;
+  const int H_size = sv_size;
+  const int bs = 6; // Diagonal block size
+
+  // Extract sub-blocks of matrix H
+  // H = [A, B,
+  //      C, D]
+  real_t *B = malloc(sizeof(real_t) * m * r);
+  real_t *C = malloc(sizeof(real_t) * r * m);
+  real_t *D = malloc(sizeof(real_t) * r * r);
+  real_t *A_inv = malloc(sizeof(real_t) * m * m);
+  mat_block_get(H, H_size, 0, m - 1, m, H_size - 1, B);
+  mat_block_get(H, H_size, m, H_size - 1, 0, m - 1, C);
+  mat_block_get(H, H_size, m, H_size - 1, m, H_size - 1, D);
+
+  // Extract sub-blocks of vector b
+  // b = [b0, b1]
+  real_t *b0 = malloc(sizeof(real_t) * m);
+  real_t *b1 = malloc(sizeof(real_t) * r);
+  vec_copy(g, m, b0);
+  vec_copy(g + m, r, b1);
+
+  // Invert A
+  bdiag_inv_sub(H, sv_size, m, bs, A_inv);
+
+  // Reduce H * dx = b with Shur-Complement
+  // D_bar = D - C * A_inv * B
+  // b1_bar = b1 - C * A_inv * b0
+  real_t *D_bar = malloc(sizeof(real_t) * r * r);
+  real_t *b1_bar = malloc(sizeof(real_t) * r * 1);
+  dot3(C, r, m, A_inv, m, m, B, m, r, D_bar);
+  dot3(C, r, m, A_inv, m, m, b0, m, 1, b1_bar);
+  for (int i = 0; i < (r * r); i++) {
+    D_bar[i] = D[i] - D_bar[i];
+  }
+  for (int i = 0; i < r; i++) {
+    b1_bar[i] = b1[i] - b1_bar[i];
+  }
+
+  // Solve reduced system: D_bar * dx_r = b1_bar
+  real_t *dx_r = malloc(sizeof(real_t) * r * 1);
+  // Hack: precondition D_bar so linear-solver doesn't complain
+  for (int i = 0; i < r; i++) {
+    D_bar[i * r + i] += 1e-4;
+  }
+  chol_solve(D_bar, b1_bar, dx_r, r);
+
+  // Back-subsitute
+  real_t *B_dx_r = calloc(m * 1, sizeof(real_t));
+  real_t *dx_m = calloc(m * 1, sizeof(real_t));
+  dot(B, m, r, dx_r, r, 1, B_dx_r);
+  for (int i = 0; i < m; i++) {
+    b0[i] = b0[i] - B_dx_r[i];
+  }
+  bdiag_dot(A_inv, m, m, bs, b0, dx_m);
+
+  // Form full dx vector
+  for (int i = 0; i < m; i++) {
+    dx[i] = dx_m[i];
+  }
+  for (int i = 0; i < r; i++) {
+    dx[i + m] = dx_r[i];
+  }
+
+  // Clean-up
+  free(B);
+  free(C);
+  free(D);
+  free(A_inv);
+
+  free(b0);
+  free(b1);
+
+  free(D_bar);
+  free(b1_bar);
+
+  free(B_dx_r);
+  free(dx_m);
+  free(dx_r);
+}
 
 /**
  * Solve camera calibration problem.
@@ -22436,10 +22520,10 @@ void calib_camera_solve(calib_camera_t *calib) {
   solver_setup(&solver);
   solver.verbose = calib->verbose;
   solver.max_iter = calib->max_iter;
-  // solver.cost_func = &calib_camera_cost;
-  // solver.param_order_func = &calib_camera_param_order;
-  // solver.linearize_func = &calib_camera_linearize_compact;
-  // solver.linsolve_func = &calib_camera_linsolve;
+  solver.param_index_func = &calib_camera_param_index;
+  solver.cost_func = &calib_camera_cost;
+  solver.linearize_func = &calib_camera_linearize_compact;
+  solver.linsolve_func = &calib_camera_linsolve;
   solver_solve(&solver, calib);
 
   if (calib->verbose) {

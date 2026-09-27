@@ -8683,7 +8683,7 @@ int test_calib_camera_mono_batch(void) {
 
   // Setup camera calibration problem
   calib_camera_t *calib = calib_camera_malloc();
-  calib->verbose = 0;
+  calib->verbose = 1;
   calib->max_iter = 30;
   calib_camera_add_camera(calib,
                           0,
@@ -8731,16 +8731,16 @@ int test_calib_camera_mono_batch(void) {
 
   // Batch solve
   calib_camera_add_data(calib, 0, cam0_outdir);
-  // calib_camera_solve(calib);
+  calib_camera_solve(calib);
 
-  // // Asserts
-  // double reproj_rmse = 0.0;
-  // double reproj_mean = 0.0;
-  // double reproj_median = 0.0;
-  // calib_camera_errors(calib, &reproj_rmse, &reproj_mean, &reproj_median);
-  // MU_ASSERT(reproj_rmse < 0.5);
-  // MU_ASSERT(reproj_mean < 0.5);
-  // MU_ASSERT(reproj_median < 0.5);
+  // Asserts
+  double reproj_rmse = 0.0;
+  double reproj_mean = 0.0;
+  double reproj_median = 0.0;
+  calib_camera_errors(calib, &reproj_rmse, &reproj_mean, &reproj_median);
+  MU_ASSERT(reproj_rmse < 0.5);
+  MU_ASSERT(reproj_mean < 0.5);
+  MU_ASSERT(reproj_median < 0.5);
 
   // Clean up
   list_files_free(cam0_files, num_files);
@@ -8750,84 +8750,144 @@ int test_calib_camera_mono_batch(void) {
   return 0;
 }
 
-// int test_calib_camera_mono_incremental(void) {
-//   const char *data_path = TEST_CAM_APRIL "/cam0";
-//
-//   // Initialize camera intrinsics
-//   const int res[2] = {752, 480};
-//   const char *pm = "pinhole";
-//   const char *dm = "radtan4";
-//   const real_t cam_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
-//   const real_t cam_vec[8] =
-//       {495.864541, 495.864541, 375.500000, 239.500000, 0, 0, 0, 0};
-//
-//   // Setup camera calibration problem
-//   calib_camera_t *calib = calib_camera_malloc();
-//   calib->verbose = 0;
-//   calib_camera_add_camera(calib, 0, res, pm, dm, cam_vec, cam_ext);
-//
-//   // Incremental solve
-//   int window_size = 2;
-//   int cam_idx = 0;
-//   int num_files = 0;
-//   char **files = list_files(data_path, &num_files);
-//
-//   calib->verbose = 0;
-//   // TIC(calib_camera_loop);
-//
-//   for (int view_idx = 0; view_idx < num_files; view_idx++) {
-//     // Load aprilgrid
-//     aprilgrid_t *grid = aprilgrid_load(files[view_idx]);
-//
-//     // Get aprilgrid measurements
-//     const timestamp_t ts = grid->timestamp;
-//     const int num_corners = grid->corners_detected;
-//     int *tag_ids = MALLOC(int, num_corners);
-//     int *corner_indices = MALLOC(int, num_corners);
-//     real_t *kps = MALLOC(real_t, num_corners * 2);
-//     real_t *pts = MALLOC(real_t, num_corners * 3);
-//     aprilgrid_measurements(grid, tag_ids, corner_indices, kps, pts);
-//
-//     // Add view
-//     calib_camera_add_view(calib,
-//                           ts,
-//                           view_idx,
-//                           cam_idx,
-//                           num_corners,
-//                           tag_ids,
-//                           corner_indices,
-//                           pts,
-//                           kps);
-//
-//     // Incremental solve
-//     if (calib->num_views >= window_size) {
-//       calib_camera_marginalize(calib);
-//     }
-//     calib_camera_solve(calib);
-//
-//     // Clean up
-//     free(tag_ids);
-//     free(corner_indices);
-//     free(kps);
-//     free(pts);
-//     aprilgrid_free(grid);
-//   }
-//
-//   // calib_camera_print(calib);
-//   // const real_t time_taken = TOC(calib_camera_loop);
-//   // const real_t rate_hz = num_files / time_taken;
-//   // printf("%d frames in %.2f [s] or %.2f Hz\n", num_files, time_taken, rate_hz);
-//
-//   // Clean up
-//   for (int view_idx = 0; view_idx < num_files; view_idx++) {
-//     free(files[view_idx]);
-//   }
-//   free(files);
-//   calib_camera_free(calib);
-//
-//   return 0;
-// }
-//
+int test_calib_camera_mono_incremental(void) {
+  // Initialize camera intrinsics
+  const int res[2] = {752, 480};
+  const char *pm = "pinhole";
+  const char *dm = "radtan4";
+  const real_t cam_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+  const real_t cam_vec[8] =
+      {495.864541, 495.864541, 375.500000, 239.500000, 0, 0, 0, 0};
+
+  // Setup aprilgrid detector
+  const int tag_rows = 6;
+  const int tag_cols = 6;
+  const real_t tag_size = 0.088;
+  const real_t tag_spacing = 0.3;
+  aprilgrid_detector_t *det =
+      aprilgrid_detector_malloc(tag_rows, tag_cols, tag_size, tag_spacing);
+
+  // Setup camera calibration problem
+  calib_camera_t *calib = calib_camera_malloc();
+  calib->verbose = 1;
+  calib_camera_add_camera(calib, 0, res, pm, dm, cam_vec, cam_ext);
+
+  // Detect and cache aprilgrids (shared cache with test_calib_camera_mono_batch)
+  const char *cam0_dir = TEST_CAM_APRIL "/mav0/cam0/data";
+  const char *cam0_outdir = "/tmp/cam0-aprilgrids";
+
+  if (path_exists(cam0_outdir) == 0) {
+    if (path_mkdir(cam0_outdir, 0755) == -1) {
+      printf("Failed to create output directory: %s\n", cam0_outdir);
+    }
+  }
+
+  int num_raw_files = 0;
+  char **cam0_files = list_files(cam0_dir, &num_raw_files);
+  for (int i = 0; i < num_raw_files; ++i) {
+    // Parse timestamp from filename
+    char ts_str[20] = {0};
+    path_stem(cam0_files[i], ts_str);
+    const timestamp_t ts = str2ts(ts_str);
+
+    // Form output path
+    char output_path[100] = {0};
+    snprintf(output_path, 100, "%s/%ld.csv", cam0_outdir, ts);
+    if (path_exists(output_path)) {
+      continue;
+    }
+
+    // Detect aprilgrid and save
+    image_t *image = image_load(cam0_files[i]);
+    aprilgrid_t *grid = aprilgrid_detector_detect(det,
+                                                  ts,
+                                                  image->width,
+                                                  image->height,
+                                                  image->width,
+                                                  image->data);
+    aprilgrid_save(grid, output_path);
+    aprilgrid_free(grid);
+    image_free(image);
+  }
+  list_files_free(cam0_files, num_raw_files);
+  aprilgrid_detector_free(det);
+
+  // Incremental solve. Burn-in batch-solves first so intrinsics are
+  // reasonably converged before marginalizing -- doing so from view 1
+  // rarely leaves enough info to constrain all 8 intrinsics, and
+  // marg_factor_marginalize()'s eigen-decomposition fails. Draining to
+  // window_size loops since each call only removes the oldest view.
+  const int burn_in = 30;
+  const int window_size = 2;
+  const int cam_idx = 0;
+  int num_files = 0;
+  char **files = list_files(cam0_outdir, &num_files);
+  bool solved_burn_in = false;
+
+  for (int view_idx = 0; view_idx < num_files; view_idx++) {
+    // Load aprilgrid
+    aprilgrid_t *grid = aprilgrid_load(files[view_idx]);
+
+    // Get aprilgrid measurements
+    const timestamp_t ts = grid->timestamp;
+    const int num_corners = grid->corners_detected;
+    if (num_corners == 0) {
+      aprilgrid_free(grid);
+      continue;
+    }
+    int *tag_ids = malloc(sizeof(int) * num_corners);
+    int *corner_indices = malloc(sizeof(int) * num_corners);
+    real_t *kps = malloc(sizeof(real_t) * num_corners * 2);
+    real_t *pts = malloc(sizeof(real_t) * num_corners * 3);
+    aprilgrid_measurements(grid, tag_ids, corner_indices, kps, pts);
+
+    // Add view
+    const int num_views_before = calib->num_views;
+    calib_camera_add_view(calib,
+                          ts,
+                          view_idx,
+                          cam_idx,
+                          num_corners,
+                          tag_ids,
+                          corner_indices,
+                          pts,
+                          kps);
+    const bool added = calib->num_views > num_views_before;
+
+    if (added && !solved_burn_in && calib->num_views >= burn_in) {
+      // Burn-in: batch solve once intrinsics have enough views to be
+      // reasonably well constrained.
+      calib_camera_solve(calib);
+      solved_burn_in = true;
+    } else if (added && solved_burn_in) {
+      // Steady-state sliding window.
+      while (calib->num_views > window_size) {
+        calib_camera_marginalize(calib);
+      }
+      calib_camera_solve(calib);
+    }
+
+    // Clean up
+    free(tag_ids);
+    free(corner_indices);
+    free(kps);
+    free(pts);
+    aprilgrid_free(grid);
+  }
+  MU_ASSERT(solved_burn_in);
+  MU_ASSERT(calib->num_views <= window_size);
+  MU_ASSERT(calib->marg != NULL); // Confirms marginalization succeeded.
+
+  // Clean up
+  for (int view_idx = 0; view_idx < num_files; view_idx++) {
+    free(files[view_idx]);
+  }
+  free(files);
+  calib_camera_free(calib);
+
+  return 0;
+}
+
 // int test_calib_camera_stereo_batch(void) {
 //   // Initialize camera intrinsics
 //   int num_cams = 2;
@@ -11070,6 +11130,7 @@ void test_suite(void) {
 
   // CAMERA CALIBRATION
   MU_ADD_TEST(test_calib_camera_mono_batch);
+  MU_ADD_TEST(test_calib_camera_mono_incremental);
 
   // EUROC
   MU_ADD_TEST(test_euroc_imu_load);

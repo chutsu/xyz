@@ -3334,12 +3334,6 @@ typedef struct calib_frame_t {
   int view_idx;
   int cam_idx;
   int num_corners;
-
-  int *tag_ids;
-  int *corner_indices;
-  real_t *pts;
-  real_t *kps;
-
   calib_camera_factor_t *factors;
 } calib_frame_t;
 
@@ -3411,7 +3405,8 @@ typedef struct calib_camera_t {
   camera_t *camera;
 
   // Factors
-  calib_frameset_t *framesets;
+  rbt_t *framesets; // [timestamp_t, calib_frameset_t]
+  marg_factor_t *marg;
 } calib_camera_t;
 
 calib_camera_t *calib_camera_malloc(void);
@@ -3440,6 +3435,22 @@ void calib_camera_add_view(calib_camera_t *calib,
 int calib_camera_add_data(calib_camera_t *calib,
                           const int cam_idx,
                           const char *data_path);
+void calib_camera_marginalize(calib_camera_t *calib);
+int calib_camera_shannon_entropy(calib_camera_t *calib, real_t *entropy);
+rbt_t *calib_camera_param_index(const void *data, int *sv_size, int *r_size);
+void calib_camera_cost(const void *data, real_t *r);
+void calib_camera_linearize_compact(const void *data,
+                                    const int sv_size,
+                                    rbt_t *hash,
+                                    real_t *H,
+                                    real_t *g,
+                                    real_t *r);
+void calib_camera_linsolve(const void *data,
+                           const int sv_size,
+                           rbt_t *hash,
+                           real_t *H,
+                           real_t *g,
+                           real_t *dx);
 void calib_camera_solve(calib_camera_t *calib);
 
 /******************************************************************************
