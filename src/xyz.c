@@ -12990,6 +12990,48 @@ int hedborg_essential_matrix(const real_t *hpts_i,
   return 0;
 }
 
+/**
+ * Form a camera-to-target look-at transform. Returns `T_WC`, the camera's
+ * pose (`cam_pos`, oriented towards `target`) in the same frame `cam_pos`,
+ * `target` and `up_axis` are expressed in -- following the convention
+ * that in robotics (unlike OpenGL) the camera looks down its own +z axis.
+ */
+void lookat(const real_t cam_pos[3],
+            const real_t target[3],
+            const real_t up_axis[3],
+            real_t T_WC[4 * 4]) {
+  // Camera basis vectors expressed in the world frame
+  real_t cam_dir[3] = {0};
+  vec3_sub(target, cam_pos, cam_dir);
+  vec3_normalize(cam_dir);
+
+  real_t cam_right[3] = {0};
+  vec3_cross(up_axis, cam_dir, cam_right);
+  vec3_normalize(cam_right);
+
+  real_t cam_up[3] = {0};
+  vec3_cross(cam_dir, cam_right, cam_up);
+
+  // clang-format off
+  const real_t C_CW[3 * 3] = {
+    cam_right[0], cam_right[1], cam_right[2],
+    cam_up[0],    cam_up[1],    cam_up[2],
+    cam_dir[0],   cam_dir[1],   cam_dir[2]
+  };
+  // clang-format on
+
+  // World-to-camera transform: T_CW = [C_CW | -C_CW * cam_pos]
+  real_t r_CW[3] = {0};
+  dot(C_CW, 3, 3, cam_pos, 3, 1, r_CW);
+  vec3_scale(r_CW, -1.0, r_CW);
+
+  real_t T_CW[4 * 4] = {0};
+  tf_cr(C_CW, r_CW, T_CW);
+
+  // Camera pose in the world frame is the inverse of the above
+  tf_inv(T_CW, T_WC);
+}
+
 /*******************************************************************************
  * APRILGRID
  ******************************************************************************/

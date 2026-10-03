@@ -1890,6 +1890,11 @@ int hedborg_essential_matrix(const real_t *pts_i,
                              real_t R[3 * 3],
                              real_t t[3]);
 
+void lookat(const real_t cam_pos[3],
+            const real_t target[3],
+            const real_t up_axis[3],
+            real_t T_WC[4 * 4]);
+
 /*******************************************************************************
  * APRILGRID
  ******************************************************************************/
@@ -2979,6 +2984,25 @@ void marg_factor_marginalize(marg_factor_t *marg,
                              const rbt_t *marg_params,
                              const rbt_t *fix_params);
 int marg_factor_eval(void *marg_ptr);
+
+//////////////
+// KEYFRAME //
+//////////////
+
+typedef struct keyframe_t {
+  size_t kf_id;
+  timestamp_t ts;
+} keyframe_t;
+
+////////////
+// SUBMAP //
+////////////
+
+typedef struct submap_t {
+  size_t sm_id;
+  size_t *kf_ids;
+  size_t num_kfs;
+} submap_t;
 
 ////////////////
 // DATA UTILS //
