@@ -3300,6 +3300,54 @@ sim_camera_data_t *sim_camera_circle_trajectory(const sim_circle_t *conf,
                                                 const real_t *features,
                                                 const int num_features);
 
+///////////////////////
+// SIM CALIB TARGET  //
+///////////////////////
+
+/** Sim Calibration Target Config **/
+typedef struct sim_target_config_t {
+  int target_id;
+  int num_rows;
+  int num_cols;
+  real_t tag_size;
+  real_t tag_spacing;
+  real_t pose[7]; // T_WT
+} sim_target_config_t;
+
+/**
+ * Sim Calibration Target View
+ */
+typedef struct sim_target_t {
+  timestamp_t ts;
+  int target_id;
+  camera_t camera;
+  real_t cam_pose[7];
+
+  int num_corners;
+  int *tag_ids;
+  int *corner_indices;
+  real_t *object_points; // p_Tj (target frame), 3 per corner
+  real_t *keypoints;     // z (pixel), 2 per corner
+} sim_target_t;
+
+sim_target_t *sim_target_malloc(const timestamp_t ts,
+                                const int target_id,
+                                const camera_t *camera,
+                                const real_t cam_pose[7],
+                                const int num_corners,
+                                int *tag_ids,
+                                int *corner_indices,
+                                real_t *object_points,
+                                real_t *keypoints);
+void sim_target_free(sim_target_t *target);
+int sim_target_save(const sim_target_config_t *target,
+                    const sim_target_t *view,
+                    const char *save_path);
+sim_target_t *sim_target_view(const sim_target_config_t *target,
+                              const camera_t *cam_params,
+                              const real_t cam_pose[7],
+                              const timestamp_t ts);
+
 /////////////////////////
 // SIM CAMERA IMU DATA //
 /////////////////////////

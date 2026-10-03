@@ -21477,6 +21477,167 @@ sim_camera_data_t *sim_camera_circle_trajectory(const sim_circle_t *conf,
   return data;
 }
 
+///////////////////////
+// SIM CALIB TARGET  //
+///////////////////////
+
+/**
+ * Allocate a simulated calibration target view.
+ */
+sim_target_t *sim_target_malloc(const timestamp_t ts,
+                                const int target_id,
+                                const camera_t *camera,
+                                const real_t cam_pose[7],
+                                const int num_corners,
+                                int *tag_ids,
+                                int *corner_indices,
+                                real_t *object_points,
+                                real_t *keypoints) {
+  sim_target_t *target = calloc(1, sizeof(sim_target_t));
+
+  target->ts = ts;
+  target->target_id = target_id;
+  target->camera = *camera;
+  vec_copy(cam_pose, 7, target->cam_pose);
+
+  target->num_corners = num_corners;
+  target->tag_ids = tag_ids;
+  target->corner_indices = corner_indices;
+  target->object_points = object_points;
+  target->keypoints = keypoints;
+
+  return target;
+}
+
+/**
+ * Free a simulated calibration target view.
+ */
+void sim_target_free(sim_target_t *target) {
+  if (target == NULL) {
+    return;
+  }
+  free(target->tag_ids);
+  free(target->corner_indices);
+  free(target->object_points);
+  free(target->keypoints);
+  free(target);
+}
+
+/**
+ * Save a simulated calibration target view's detection to `save_path` --
+ * the same on-disk CSV format calib_camera_add_data() reads. `target`
+ * supplies the grid dimensions (not stored in sim_target_t). Builds a
+ * throwaway aprilgrid_t purely to reuse aprilgrid_save()'s format --
+ * sim_target_t itself never holds one.
+ */
+int sim_target_save(const sim_target_config_t *target,
+                    const sim_target_t *view,
+                    const char *save_path) {
+  assert(target != NULL);
+  assert(view != NULL);
+  assert(save_path != NULL);
+
+  aprilgrid_t *grid = aprilgrid_malloc(target->num_rows,
+                                       target->num_cols,
+                                       target->tag_size,
+                                       target->tag_spacing);
+  grid->timestamp = view->ts;
+  for (int i = 0; i < view->num_corners; i++) {
+    aprilgrid_add_corner(grid,
+                         view->tag_ids[i],
+                         view->corner_indices[i],
+                         &view->keypoints[i * 2]);
+  }
+
+  const int retval = aprilgrid_save(grid, save_path);
+  aprilgrid_free(grid);
+  return retval;
+}
+
+/**
+ * Simulate a single camera view of a calibration target: projects the
+ * target's corners through `cam_params` at `cam_pose`, keeping only the
+ * ones that land in front of the camera and within its image bounds.
+ */
+sim_target_t *sim_target_view(const sim_target_config_t *target,
+                              const camera_t *cam_params,
+                              const real_t cam_pose[7],
+                              const timestamp_t ts) {
+  assert(target != NULL);
+  assert(target->num_rows > 0 && target->num_cols > 0);
+  assert(cam_params != NULL);
+  assert(cam_pose != NULL);
+
+  const int num_rows = target->num_rows;
+  const int num_cols = target->num_cols;
+  const real_t tag_size = target->tag_size;
+  const real_t tag_spacing = target->tag_spacing;
+  const int num_tags = num_rows * num_cols;
+  const int max_corners = num_tags * 4;
+
+  // aprilgrid_object_point() only reads these four config fields, so a
+  // transient, unallocated grid works fine here -- no aprilgrid_t needs
+  // to be stored.
+  const aprilgrid_t grid_cfg = {
+      .num_rows = num_rows,
+      .num_cols = num_cols,
+      .tag_size = tag_size,
+      .tag_spacing = tag_spacing,
+  };
+
+  real_t T_WT[4 * 4] = {0};
+  real_t T_WC[4 * 4] = {0};
+  real_t T_CW[4 * 4] = {0};
+  tf(target->pose, T_WT);
+  tf(cam_pose, T_WC);
+  tf_inv(T_WC, T_CW);
+
+  int *tag_ids = malloc(sizeof(int) * max_corners);
+  int *corner_indices = malloc(sizeof(int) * max_corners);
+  real_t *object_points = malloc(sizeof(real_t) * 3 * max_corners);
+  real_t *keypoints = malloc(sizeof(real_t) * 2 * max_corners);
+  int num_corners = 0;
+
+  for (int tag_id = 0; tag_id < num_tags; tag_id++) {
+    for (int corner_idx = 0; corner_idx < 4; corner_idx++) {
+      real_t p_Tj[3] = {0};
+      aprilgrid_object_point(&grid_cfg, tag_id, corner_idx, p_Tj);
+      real_t p_Wj[3] = {0};
+      tf_point(T_WT, p_Tj, p_Wj);
+      real_t p_C[3] = {0};
+      tf_point(T_CW, p_Wj, p_C);
+      if (p_C[2] < 0) {
+        continue;
+      }
+
+      real_t kp[2] = {0};
+      camera_project(cam_params, p_C, kp);
+      const int x_ok = (kp[0] >= 0 && kp[0] < cam_params->resolution[0]);
+      const int y_ok = (kp[1] >= 0 && kp[1] < cam_params->resolution[1]);
+      if (x_ok == 0 || y_ok == 0) {
+        continue;
+      }
+
+      tag_ids[num_corners] = tag_id;
+      corner_indices[num_corners] = corner_idx;
+      vec_copy(p_Tj, 3, &object_points[num_corners * 3]);
+      vec_copy(kp, 2, &keypoints[num_corners * 2]);
+      num_corners++;
+    }
+  }
+
+  sim_target_t *sim = sim_target_malloc(ts,
+                                        target->target_id,
+                                        cam_params,
+                                        cam_pose,
+                                        num_corners,
+                                        tag_ids,
+                                        corner_indices,
+                                        object_points,
+                                        keypoints);
+  return sim;
+}
+
 /////////////////////////
 // SIM CAMERA IMU DATA //
 /////////////////////////

@@ -8657,6 +8657,114 @@ int test_sim_camera_circle_trajectory(void) {
   return 0;
 }
 
+int test_sim_target_view(void) {
+  // Ground-truth camera
+  const int cam_res[2] = {752, 480};
+  const char *proj_model = "pinhole";
+  const char *dist_model = "radtan4";
+  const real_t cam_vec[8] =
+      {460.0, 460.0, 376.0, 240.0, -0.28, 0.07, 0.0002, 0.0002};
+  camera_t camera;
+  camera_setup(&camera, 0, cam_res, proj_model, dist_model, cam_vec);
+
+  // Target: AprilGrid sitting at the origin, facing +z
+  sim_target_config_t target = {
+      .target_id = 0,
+      .num_rows = 6,
+      .num_cols = 6,
+      .tag_size = 0.088,
+      .tag_spacing = 0.3,
+      .pose = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0},
+  };
+  real_t T_WT[4 * 4] = {0};
+  tf(target.pose, T_WT);
+
+  // Camera pose: standing off from the target, looking at its center
+  real_t cx = 0.0;
+  real_t cy = 0.0;
+  const real_t center_T[3] = {cx, cy, 0.0};
+  TF_POINT(T_WT, center_T, center_W);
+  const real_t cam_pos_T[3] = {cx + 0.1, cy - 0.05, 1.0};
+  TF_POINT(T_WT, cam_pos_T, cam_pos_W);
+
+  const real_t world_up[3] = {0.0, 0.0, 1.0};
+  real_t T_WC[4 * 4] = {0};
+  lookat(cam_pos_W, center_W, world_up, T_WC);
+  TF_VECTOR(T_WC, cam_pose);
+
+  // Simulate the view
+  const timestamp_t ts = 123;
+  sim_target_t *sim = sim_target_view(&target, &camera, cam_pose, ts);
+
+  // Ground truth is retained
+  MU_ASSERT(sim->target_id == target.target_id);
+  for (int i = 0; i < 7; i++) {
+    MU_ASSERT(fltcmp(sim->cam_pose[i], cam_pose[i]) == 0);
+  }
+  for (int i = 0; i < 8; i++) {
+    MU_ASSERT(fltcmp(sim->camera.data[i], camera.data[i]) == 0);
+  }
+  MU_ASSERT(sim->camera.resolution[0] == cam_res[0]);
+  MU_ASSERT(sim->camera.resolution[1] == cam_res[1]);
+
+  // The recorded corners must exactly match a fresh re-projection of their
+  // known 3D points -- confirms sim_target_view()'s internal
+  // projection/visibility logic independently.
+  MU_ASSERT(sim->ts == ts);
+  MU_ASSERT(sim->num_corners > 0);
+
+  real_t T_CW[4 * 4] = {0};
+  tf_inv(T_WC, T_CW);
+
+  for (int i = 0; i < sim->num_corners; i++) {
+    const real_t *p_Tj = &sim->object_points[i * 3];
+    TF_POINT(T_WT, p_Tj, p_Wj);
+    TF_POINT(T_CW, p_Wj, p_Cj);
+    MU_ASSERT(p_Cj[2] >= 0);
+
+    real_t z[2] = {0};
+    camera_project(&camera, p_Cj, z);
+    MU_ASSERT(z[0] >= 0 && z[0] < cam_res[0]);
+    MU_ASSERT(z[1] >= 0 && z[1] < cam_res[1]);
+
+    const real_t *kp = &sim->keypoints[i * 2];
+    MU_ASSERT(fltcmp(kp[0], z[0]) == 0);
+    MU_ASSERT(fltcmp(kp[1], z[1]) == 0);
+  }
+
+  // Save / load round-trip. aprilgrid_save() writes keypoints with %f (6
+  // decimal places), so loosen the tolerance to comfortably clear that
+  // truncation error -- exact equality only holds for round numbers,
+  // which these simulated keypoints aren't.
+  const char *save_path = "/tmp/test_sim_target.csv";
+  MU_ASSERT(sim_target_save(&target, sim, save_path) == 0);
+
+  aprilgrid_t *loaded = aprilgrid_load(save_path);
+  MU_ASSERT(loaded->num_rows == target.num_rows);
+  MU_ASSERT(loaded->num_cols == target.num_cols);
+  MU_ASSERT(loaded->corners_detected == sim->num_corners);
+
+  const int max_corners = target.num_rows * target.num_cols * 4;
+  int tag_ids[max_corners];
+  int corner_idxs[max_corners];
+  real_t kps[max_corners * 2];
+  real_t obj_pts[max_corners * 3];
+  aprilgrid_measurements(loaded, tag_ids, corner_idxs, kps, obj_pts);
+  for (int i = 0; i < sim->num_corners; i++) {
+    MU_ASSERT(tag_ids[i] == sim->tag_ids[i]);
+    MU_ASSERT(corner_idxs[i] == sim->corner_indices[i]);
+    MU_ASSERT(fabs(kps[i * 2 + 0] - sim->keypoints[i * 2 + 0]) < 1e-5);
+    MU_ASSERT(fabs(kps[i * 2 + 1] - sim->keypoints[i * 2 + 1]) < 1e-5);
+  }
+  aprilgrid_free(loaded);
+  remove(save_path);
+
+  // Clean up
+  sim_target_free(sim);
+
+  return 0;
+}
+
 /******************************************************************************
  * CAMERA CALIBRATION
  *****************************************************************************/
@@ -11130,6 +11238,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_sim_camera_frame_save_load);
   MU_ADD_TEST(test_sim_camera_data_save_load);
   MU_ADD_TEST(test_sim_camera_circle_trajectory);
+  MU_ADD_TEST(test_sim_target_view);
 
   // CAMERA CALIBRATION
   MU_ADD_TEST(test_calib_camera_mono_batch);
