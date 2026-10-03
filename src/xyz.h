@@ -2985,25 +2985,6 @@ void marg_factor_marginalize(marg_factor_t *marg,
                              const rbt_t *fix_params);
 int marg_factor_eval(void *marg_ptr);
 
-//////////////
-// KEYFRAME //
-//////////////
-
-typedef struct keyframe_t {
-  size_t kf_id;
-  timestamp_t ts;
-} keyframe_t;
-
-////////////
-// SUBMAP //
-////////////
-
-typedef struct submap_t {
-  size_t sm_id;
-  size_t *kf_ids;
-  size_t num_kfs;
-} submap_t;
-
 ////////////////
 // DATA UTILS //
 ////////////////
