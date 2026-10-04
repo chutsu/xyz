@@ -397,10 +397,13 @@ run_test() {
 # run_test test_xyz test_sim_camera_frame_save_load
 # run_test test_xyz test_sim_camera_data_save_load
 # run_test test_xyz test_sim_camera_circle_trajectory
-run_test test_xyz test_sim_target_view
+# run_test test_xyz test_sim_target_view
 ## XYZ-CAMERA-CALIBRATION
+# run_test test_xyz test_calib_camera_env
 # run_test test_xyz test_calib_camera_mono_batch
 # run_test test_xyz test_calib_camera_mono_incremental
+## XYZ-IMUCAM-CALIBRATION
+run_test test_xyz test_calib_imucam_env
 ## XYZ-EUROC
 # run_test test_xyz test_euroc_imu_load
 # run_test test_xyz test_euroc_camera_load

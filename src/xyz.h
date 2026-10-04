@@ -665,6 +665,7 @@ int flteqs(const real_t x, const real_t y);
 int streqs(const char *x, const char *y);
 void cumsum(const real_t *x, const size_t n, real_t *s);
 void logspace(const real_t a, const real_t b, const size_t n, real_t *x);
+void linspace(const real_t a, const real_t b, const size_t n, real_t *x);
 real_t pythag(const real_t a, const real_t b);
 real_t clip_value(const real_t x, const real_t vmin, const real_t vmax);
 void clip(real_t *x, const size_t n, const real_t vmin, const real_t vmax);
@@ -2985,6 +2986,25 @@ void marg_factor_marginalize(marg_factor_t *marg,
                              const rbt_t *fix_params);
 int marg_factor_eval(void *marg_ptr);
 
+//////////////
+// KEYFRAME //
+//////////////
+
+typedef struct keyframe_t {
+  size_t kf_id;
+  timestamp_t ts;
+} keyframe_t;
+
+////////////
+// SUBMAP //
+////////////
+
+typedef struct submap_t {
+  size_t sm_id;
+  size_t *kf_ids;
+  size_t num_kfs;
+} submap_t;
+
 ////////////////
 // DATA UTILS //
 ////////////////
@@ -3304,49 +3324,38 @@ sim_camera_data_t *sim_camera_circle_trajectory(const sim_circle_t *conf,
 // SIM CALIB TARGET  //
 ///////////////////////
 
-/** Sim Calibration Target Config **/
-typedef struct sim_target_config_t {
+/** Sim Calibration Target **/
+typedef struct sim_target_t {
   int target_id;
   int num_rows;
   int num_cols;
   real_t tag_size;
   real_t tag_spacing;
   real_t pose[7]; // T_WT
-} sim_target_config_t;
-
-/**
- * Sim Calibration Target View
- */
-typedef struct sim_target_t {
-  timestamp_t ts;
-  int target_id;
-  camera_t camera;
-  real_t cam_pose[7];
-
-  int num_corners;
-  int *tag_ids;
-  int *corner_indices;
-  real_t *object_points; // p_Tj (target frame), 3 per corner
-  real_t *keypoints;     // z (pixel), 2 per corner
 } sim_target_t;
 
-sim_target_t *sim_target_malloc(const timestamp_t ts,
-                                const int target_id,
-                                const camera_t *camera,
-                                const real_t cam_pose[7],
-                                const int num_corners,
-                                int *tag_ids,
-                                int *corner_indices,
-                                real_t *object_points,
-                                real_t *keypoints);
-void sim_target_free(sim_target_t *target);
-int sim_target_save(const sim_target_config_t *target,
-                    const sim_target_t *view,
+real_t sim_target_width(const sim_target_t *target);
+real_t sim_target_height(const sim_target_t *target);
+void sim_target_center_xy(const sim_target_t *target, real_t *cx, real_t *cy);
+void sim_target_center_pos(const sim_target_t *target, real_t center_W[3]);
+void sim_target_center_pose(const sim_target_t *target, real_t center_pose[7]);
+void sim_target_center_tf(const sim_target_t *target, real_t T_center[4 * 4]);
+
+int sim_target_view(const sim_target_t *target,
+                    const camera_t *cam_params,
+                    const real_t cam_pose[7],
+                    int *tag_ids,
+                    int *corner_indices,
+                    real_t *object_points,
+                    real_t *keypoints);
+
+int sim_target_save(const sim_target_t *target,
+                    const timestamp_t ts,
+                    const int num_corners,
+                    const int *tag_ids,
+                    const int *corner_indices,
+                    const real_t *keypoints,
                     const char *save_path);
-sim_target_t *sim_target_view(const sim_target_config_t *target,
-                              const camera_t *cam_params,
-                              const real_t cam_pose[7],
-                              const timestamp_t ts);
 
 /////////////////////////
 // SIM CAMERA IMU DATA //
@@ -3505,6 +3514,175 @@ void calib_camera_linsolve(const void *data,
                            real_t *g,
                            real_t *dx);
 void calib_camera_solve(calib_camera_t *calib);
+
+/*******************************************************************************
+ * IMU-CAMERA CALIBRATION
+ ******************************************************************************/
+
+////////////////////////
+// CALIB IMUCAM FRAME  //
+////////////////////////
+
+typedef struct calib_imucam_frame_t {
+  timestamp_t ts;
+  int view_idx;
+  int cam_idx;
+  int num_corners;
+  calib_imucam_factor_t *factors;
+} calib_imucam_frame_t;
+
+calib_imucam_frame_t *calib_imucam_frame_malloc(const timestamp_t ts,
+                                                const int view_idx,
+                                                const int cam_idx,
+                                                const int num_corners,
+                                                const int *tag_ids,
+                                                const int *corner_indices,
+                                                const real_t *pts,
+                                                const real_t *kps,
+                                                real_t *fiducial,
+                                                real_t *imu_pose,
+                                                real_t *imu_ext,
+                                                real_t *cam_ext,
+                                                camera_t *camera,
+                                                real_t *time_delay);
+void calib_imucam_frame_free(calib_imucam_frame_t *frame);
+
+///////////////////////////
+// CALIB IMUCAM FRAMESET //
+///////////////////////////
+
+typedef struct calib_imucam_frameset_t {
+  timestamp_t ts;
+  real_t *pose;       // T_WS, aliases calib_imucam_t->poses value (not owned)
+  real_t *vel;        // aliases calib_imucam_t->velocities value (not owned)
+  real_t *biases;     // aliases calib_imucam_t->biases value (not owned)
+  real_t *fiducial;   // T_WF, aliases calib_imucam_t->fiducial (not owned)
+  real_t *imu_ext;    // T_SC0, aliases calib_imucam_t->imu_ext (not owned)
+  real_t *cam_exts;   // aliases calib_imucam_t->cam_exts array (not owned)
+  camera_t *cameras;  // aliases calib_imucam_t->camera array (not owned)
+  real_t *time_delay; // aliases calib_imucam_t->time_delay (not owned)
+  int num_cameras;
+  calib_imucam_frame_t **frames; // [num_cameras] slots
+
+  // IMU factor edge FROM the previous timestamp TO this one. NULL for the
+  // very first state. Owned by this frameset (freed in
+  // calib_imucam_frameset_free(), except when a marginalize() call has
+  // already detached and consumed it -- see calib_imucam_marginalize()).
+  imu_factor_t *imu_factor;
+} calib_imucam_frameset_t;
+
+calib_imucam_frameset_t *calib_imucam_frameset_malloc(const timestamp_t ts,
+                                                      real_t *pose,
+                                                      real_t *vel,
+                                                      real_t *biases,
+                                                      real_t *fiducial,
+                                                      real_t *imu_ext,
+                                                      real_t *cam_exts,
+                                                      camera_t *cameras,
+                                                      real_t *time_delay,
+                                                      int num_cameras);
+void calib_imucam_frameset_free(calib_imucam_frameset_t *fs);
+void calib_imucam_frameset_add(calib_imucam_frameset_t *fs,
+                               const timestamp_t ts,
+                               const int view_idx,
+                               const int cam_idx,
+                               const int num_corners,
+                               const int *tag_ids,
+                               const int *corner_indices,
+                               const real_t *pts,
+                               const real_t *kps);
+
+////////////////////////////
+// IMU-CAMERA CALIBRATOR  //
+////////////////////////////
+
+typedef struct calib_imucam_t {
+  // Settings
+  int fix_fiducial; // default 1 -- world-frame gauge anchor (see malloc())
+  int fix_imu_ext;
+  int fix_cam_exts; // cam0 is always fixed regardless -- it's the reference
+  int fix_cam_params;
+  int fix_time_delay; // default 1 -- unobservable without real optical flow
+  int verbose;
+  int max_iter;
+
+  // Flags
+  int imu_ok;
+  int cams_ok;
+  int state_initialized;
+
+  // Counters
+  int num_cams;
+  int num_views;
+  int num_cam_factors;
+  int num_imu_factors;
+
+  // Variables -- per-timestamp state
+  arr_t *timestamps; // timestamp_t*, same pointers as poses' keys
+  rbt_t *poses;      // [timestamp_t*, real_t*7] T_WS -- owns the ts keys
+  rbt_t *velocities; // [timestamp_t*, real_t*3] v_WS -- shares poses' keys
+  rbt_t *biases;     // [timestamp_t*, real_t*6] ba;bg -- shares poses' keys
+
+  // Variables -- calibration parameters (not per-timestamp)
+  real_t fiducial[7]; // T_WF
+  real_t imu_ext[7];  // T_SC0
+  real_t *cam_exts;   // num_cams*7, T_C0Ci
+  camera_t *camera;   // num_cams
+  real_t time_delay[1];
+
+  // IMU bookkeeping
+  imu_params_t imu_params;
+  imu_buffer_t imu_buf; // samples accumulated since the newest state
+
+  // Factors
+  rbt_t *
+      framesets; // [timestamp_t*, calib_imucam_frameset_t*] -- shares poses' keys
+  marg_factor_t *marg;
+} calib_imucam_t;
+
+calib_imucam_t *calib_imucam_malloc(void);
+void calib_imucam_free(calib_imucam_t *calib);
+void calib_imucam_add_camera(calib_imucam_t *calib,
+                             const int cam_idx,
+                             const int cam_res[2],
+                             const char *proj_model,
+                             const char *dist_model,
+                             const real_t *camera,
+                             const real_t *cam_ext);
+void calib_imucam_add_imu(calib_imucam_t *calib,
+                          const real_t imu_rate,
+                          const real_t sigma_aw,
+                          const real_t sigma_gw,
+                          const real_t sigma_a,
+                          const real_t sigma_g,
+                          const real_t g,
+                          const real_t *imu_ext);
+void calib_imucam_add_imu_measurement(calib_imucam_t *calib,
+                                      const timestamp_t ts,
+                                      const real_t acc[3],
+                                      const real_t gyr[3]);
+void calib_imucam_add_view(calib_imucam_t *calib,
+                           const timestamp_t ts,
+                           const int view_idx,
+                           const int cam_idx,
+                           const int num_corners,
+                           const int *tag_ids,
+                           const int *corner_indices,
+                           const real_t *pts,
+                           const real_t *kps);
+void calib_imucam_errors(calib_imucam_t *calib,
+                         real_t *reproj_rmse,
+                         real_t *reproj_mean,
+                         real_t *reproj_median);
+rbt_t *calib_imucam_param_index(const void *data, int *sv_size, int *r_size);
+void calib_imucam_cost(const void *data, real_t *r);
+void calib_imucam_linearize_compact(const void *data,
+                                    const int sv_size,
+                                    rbt_t *hash,
+                                    real_t *H,
+                                    real_t *g,
+                                    real_t *r);
+void calib_imucam_solve(calib_imucam_t *calib);
 
 /******************************************************************************
  * EUROC

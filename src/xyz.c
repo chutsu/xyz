@@ -3281,6 +3281,20 @@ void logspace(const real_t a, const real_t b, const size_t n, real_t *x) {
 }
 
 /**
+ * Linspace. Generates `n` evenly spaced points between `a` and `b`
+ * (inclusive).
+ */
+void linspace(const real_t a, const real_t b, const size_t n, real_t *x) {
+  const real_t h = (b - a) / (n - 1);
+
+  real_t c = a;
+  for (size_t i = 0; i < n; i++) {
+    x[i] = c;
+    c += h;
+  }
+}
+
+/**
  * Pythagoras
  *
  *   c = sqrt(a^2 + b^2)
@@ -12194,6 +12208,15 @@ int homography_pose(const real_t *proj_params,
   // and h is the vectorized Homography matrix h, N is the number of points.
   // if N == 4, the matrix has more columns than rows. The solution is to add
   // an extra line with zeros.
+  //
+  // A homography has 8 DOF (9 entries up to scale), so N < 4 leaves the
+  // system underdetermined (num_rows < num_cols) -- bail out rather than
+  // feed svd() a rank-deficient, wider-than-tall matrix it isn't prepared
+  // for (this used to corrupt memory inside the LAPACK path's
+  // mat_block_get() call for such inputs).
+  if (N < 4) {
+    return -1;
+  }
   const int num_rows = 2 * N + ((N == 4) ? 1 : 0);
   const int num_cols = 9;
   const real_t fx = proj_params[0];
@@ -21482,98 +21505,126 @@ sim_camera_data_t *sim_camera_circle_trajectory(const sim_circle_t *conf,
 ///////////////////////
 
 /**
- * Allocate a simulated calibration target view.
+ * Calculate a calibration target's physical width [m] (its x-axis
+ * extent in the target frame).
  */
-sim_target_t *sim_target_malloc(const timestamp_t ts,
-                                const int target_id,
-                                const camera_t *camera,
-                                const real_t cam_pose[7],
-                                const int num_corners,
-                                int *tag_ids,
-                                int *corner_indices,
-                                real_t *object_points,
-                                real_t *keypoints) {
-  sim_target_t *target = calloc(1, sizeof(sim_target_t));
-
-  target->ts = ts;
-  target->target_id = target_id;
-  target->camera = *camera;
-  vec_copy(cam_pose, 7, target->cam_pose);
-
-  target->num_corners = num_corners;
-  target->tag_ids = tag_ids;
-  target->corner_indices = corner_indices;
-  target->object_points = object_points;
-  target->keypoints = keypoints;
-
-  return target;
+real_t sim_target_width(const sim_target_t *target) {
+  real_t cx = 0.0;
+  real_t cy = 0.0;
+  sim_target_center_xy(target, &cx, &cy);
+  return 2.0 * cx;
 }
 
 /**
- * Free a simulated calibration target view.
+ * Calculate a calibration target's physical height [m] (its y-axis
+ * extent in the target frame).
  */
-void sim_target_free(sim_target_t *target) {
-  if (target == NULL) {
-    return;
-  }
-  free(target->tag_ids);
-  free(target->corner_indices);
-  free(target->object_points);
-  free(target->keypoints);
-  free(target);
+real_t sim_target_height(const sim_target_t *target) {
+  real_t cx = 0.0;
+  real_t cy = 0.0;
+  sim_target_center_xy(target, &cx, &cy);
+  return 2.0 * cy;
 }
 
 /**
- * Save a simulated calibration target view's detection to `save_path` --
- * the same on-disk CSV format calib_camera_add_data() reads. `target`
- * supplies the grid dimensions (not stored in sim_target_t). Builds a
- * throwaway aprilgrid_t purely to reuse aprilgrid_save()'s format --
- * sim_target_t itself never holds one.
+ * Calculate the target-frame (x, y) position of a calibration target's
+ * center.
  */
-int sim_target_save(const sim_target_config_t *target,
-                    const sim_target_t *view,
-                    const char *save_path) {
+void sim_target_center_xy(const sim_target_t *target, real_t *cx, real_t *cy) {
   assert(target != NULL);
-  assert(view != NULL);
-  assert(save_path != NULL);
+  assert(cx != NULL);
+  assert(cy != NULL);
 
-  aprilgrid_t *grid = aprilgrid_malloc(target->num_rows,
-                                       target->num_cols,
-                                       target->tag_size,
-                                       target->tag_spacing);
-  grid->timestamp = view->ts;
-  for (int i = 0; i < view->num_corners; i++) {
-    aprilgrid_add_corner(grid,
-                         view->tag_ids[i],
-                         view->corner_indices[i],
-                         &view->keypoints[i * 2]);
-  }
-
-  const int retval = aprilgrid_save(grid, save_path);
-  aprilgrid_free(grid);
-  return retval;
+  const aprilgrid_t grid_cfg = {
+      .num_rows = target->num_rows,
+      .num_cols = target->num_cols,
+      .tag_size = target->tag_size,
+      .tag_spacing = target->tag_spacing,
+  };
+  aprilgrid_center(&grid_cfg, cx, cy);
 }
 
 /**
- * Simulate a single camera view of a calibration target: projects the
- * target's corners through `cam_params` at `cam_pose`, keeping only the
- * ones that land in front of the camera and within its image bounds.
+ * Calculate the world-frame position of a calibration target's center.
  */
-sim_target_t *sim_target_view(const sim_target_config_t *target,
-                              const camera_t *cam_params,
-                              const real_t cam_pose[7],
-                              const timestamp_t ts) {
+void sim_target_center_pos(const sim_target_t *target, real_t center_W[3]) {
+  assert(target != NULL);
+  assert(center_W != NULL);
+
+  real_t cx = 0.0;
+  real_t cy = 0.0;
+  sim_target_center_xy(target, &cx, &cy);
+
+  real_t T_WT[4 * 4] = {0};
+  tf(target->pose, T_WT);
+  const real_t center_T[3] = {cx, cy, 0.0};
+  tf_point(T_WT, center_T, center_W);
+}
+
+/**
+ * Calculate the world-frame pose of a calibration target's center --
+ * its position (sim_target_center_pos()) with the target's own
+ * orientation.
+ */
+void sim_target_center_pose(const sim_target_t *target, real_t center_pose[7]) {
+  assert(target != NULL);
+  assert(center_pose != NULL);
+
+  real_t center_W[3] = {0};
+  sim_target_center_pos(target, center_W);
+
+  center_pose[0] = center_W[0];
+  center_pose[1] = center_W[1];
+  center_pose[2] = center_W[2];
+  center_pose[3] = target->pose[3];
+  center_pose[4] = target->pose[4];
+  center_pose[5] = target->pose[5];
+  center_pose[6] = target->pose[6];
+}
+
+/**
+ * Calculate the world-frame transform of a calibration target's center
+ * (see sim_target_center_pose()).
+ */
+void sim_target_center_tf(const sim_target_t *target, real_t T_center[4 * 4]) {
+  assert(target != NULL);
+  assert(T_center != NULL);
+
+  real_t center_pose[7] = {0};
+  sim_target_center_pose(target, center_pose);
+  tf(center_pose, T_center);
+}
+
+/**
+ * Simulate a single camera view of `target`: projects its corners
+ * through `cam_params` at `cam_pose`, keeping only the ones that land
+ * in front of the camera and within its image bounds. Returns the
+ * number of visible corners written into `tag_ids`, `corner_indices`,
+ * `object_points` (3 per corner, target frame) and `keypoints` (2 per
+ * corner, pixels) -- the caller must size all four for the worst case,
+ * target->num_rows * target->num_cols * 4.
+ */
+int sim_target_view(const sim_target_t *target,
+                    const camera_t *cam_params,
+                    const real_t cam_pose[7],
+                    int *tag_ids,
+                    int *corner_indices,
+                    real_t *object_points,
+                    real_t *keypoints) {
   assert(target != NULL);
   assert(target->num_rows > 0 && target->num_cols > 0);
   assert(cam_params != NULL);
   assert(cam_pose != NULL);
+  assert(tag_ids != NULL);
+  assert(corner_indices != NULL);
+  assert(object_points != NULL);
+  assert(keypoints != NULL);
 
   const int num_rows = target->num_rows;
   const int num_cols = target->num_cols;
   const real_t tag_size = target->tag_size;
   const real_t tag_spacing = target->tag_spacing;
   const int num_tags = num_rows * num_cols;
-  const int max_corners = num_tags * 4;
 
   // aprilgrid_object_point() only reads these four config fields, so a
   // transient, unallocated grid works fine here -- no aprilgrid_t needs
@@ -21592,12 +21643,7 @@ sim_target_t *sim_target_view(const sim_target_config_t *target,
   tf(cam_pose, T_WC);
   tf_inv(T_WC, T_CW);
 
-  int *tag_ids = malloc(sizeof(int) * max_corners);
-  int *corner_indices = malloc(sizeof(int) * max_corners);
-  real_t *object_points = malloc(sizeof(real_t) * 3 * max_corners);
-  real_t *keypoints = malloc(sizeof(real_t) * 2 * max_corners);
   int num_corners = 0;
-
   for (int tag_id = 0; tag_id < num_tags; tag_id++) {
     for (int corner_idx = 0; corner_idx < 4; corner_idx++) {
       real_t p_Tj[3] = {0};
@@ -21626,16 +21672,39 @@ sim_target_t *sim_target_view(const sim_target_config_t *target,
     }
   }
 
-  sim_target_t *sim = sim_target_malloc(ts,
-                                        target->target_id,
-                                        cam_params,
-                                        cam_pose,
-                                        num_corners,
-                                        tag_ids,
-                                        corner_indices,
-                                        object_points,
-                                        keypoints);
-  return sim;
+  return num_corners;
+}
+
+/**
+ * Save a simulated calibration target detection to `save_path` -- the
+ * same on-disk CSV format calib_camera_add_data() reads. Builds a
+ * throwaway aprilgrid_t purely to reuse aprilgrid_save()'s format.
+ */
+int sim_target_save(const sim_target_t *target,
+                    const timestamp_t ts,
+                    const int num_corners,
+                    const int *tag_ids,
+                    const int *corner_indices,
+                    const real_t *keypoints,
+                    const char *save_path) {
+  assert(target != NULL);
+  assert(save_path != NULL);
+
+  aprilgrid_t *grid = aprilgrid_malloc(target->num_rows,
+                                       target->num_cols,
+                                       target->tag_size,
+                                       target->tag_spacing);
+  grid->timestamp = ts;
+  for (int i = 0; i < num_corners; i++) {
+    aprilgrid_add_corner(grid,
+                         tag_ids[i],
+                         corner_indices[i],
+                         &keypoints[i * 2]);
+  }
+
+  const int retval = aprilgrid_save(grid, save_path);
+  aprilgrid_free(grid);
+  return retval;
 }
 
 /////////////////////////
@@ -22732,6 +22801,804 @@ void calib_camera_solve(calib_camera_t *calib) {
   if (calib->verbose) {
     calib_camera_print(calib);
   }
+}
+
+/*******************************************************************************
+ * IMU-CAMERA CALIBRATION
+ ******************************************************************************/
+
+////////////////////////
+// CALIB IMUCAM FRAME  //
+////////////////////////
+
+/**
+ * Malloc imu-camera calibration frame.
+ */
+calib_imucam_frame_t *calib_imucam_frame_malloc(const timestamp_t ts,
+                                                const int view_idx,
+                                                const int cam_idx,
+                                                const int num_corners,
+                                                const int *tag_ids,
+                                                const int *corner_indices,
+                                                const real_t *pts,
+                                                const real_t *kps,
+                                                real_t *fiducial,
+                                                real_t *imu_pose,
+                                                real_t *imu_ext,
+                                                real_t *cam_ext,
+                                                camera_t *camera,
+                                                real_t *time_delay) {
+  calib_imucam_frame_t *frame = malloc(sizeof(calib_imucam_frame_t) * 1);
+  frame->ts = ts;
+  frame->view_idx = view_idx;
+  frame->cam_idx = cam_idx;
+  frame->num_corners = num_corners;
+
+  frame->factors = malloc(sizeof(calib_imucam_factor_t) * num_corners);
+  assert(frame->factors != NULL);
+
+  const real_t var[2] = {1.0, 1.0};
+  const real_t v[2] = {0.0, 0.0}; // No optical flow -- see calib_imucam_t docs
+  for (int i = 0; i < num_corners; i++) {
+    const int tag_id = tag_ids[i];
+    const int corner_idx = corner_indices[i];
+    const real_t *p_FFi = &pts[i * 3];
+    const real_t *z = &kps[i * 2];
+
+    calib_imucam_factor_setup(&frame->factors[i],
+                              fiducial,
+                              imu_pose,
+                              imu_ext,
+                              cam_ext,
+                              camera,
+                              time_delay,
+                              cam_idx,
+                              tag_id,
+                              corner_idx,
+                              p_FFi,
+                              z,
+                              v,
+                              var);
+  }
+
+  return frame;
+}
+
+/**
+ * Free imu-camera calibration frame.
+ */
+void calib_imucam_frame_free(calib_imucam_frame_t *frame) {
+  if (frame) {
+    free(frame->factors);
+    free(frame);
+  }
+}
+
+///////////////////////////
+// CALIB IMUCAM FRAMESET //
+///////////////////////////
+
+/**
+ * Malloc imu-camera calibration frameset.
+ */
+calib_imucam_frameset_t *calib_imucam_frameset_malloc(const timestamp_t ts,
+                                                      real_t *pose,
+                                                      real_t *vel,
+                                                      real_t *biases,
+                                                      real_t *fiducial,
+                                                      real_t *imu_ext,
+                                                      real_t *cam_exts,
+                                                      camera_t *cameras,
+                                                      real_t *time_delay,
+                                                      int num_cameras) {
+  calib_imucam_frameset_t *fs = malloc(sizeof(calib_imucam_frameset_t));
+  fs->ts = ts;
+  fs->pose = pose;
+  fs->vel = vel;
+  fs->biases = biases;
+  fs->fiducial = fiducial;
+  fs->imu_ext = imu_ext;
+  fs->cam_exts = cam_exts;
+  fs->cameras = cameras;
+  fs->time_delay = time_delay;
+  fs->num_cameras = num_cameras;
+  fs->frames = malloc(sizeof(calib_imucam_frame_t *) * num_cameras);
+  for (int i = 0; i < num_cameras; ++i) {
+    fs->frames[i] = NULL;
+  }
+  fs->imu_factor = NULL;
+  return fs;
+}
+
+/**
+ * Free imu-camera calibration frameset. fs->imu_factor is a single flat
+ * struct (its jacs[] point into its own embedded arrays, and its
+ * imu_buf is copied by value -- see imu_factor_setup()), so a plain
+ * free() is enough, no deep-free needed.
+ */
+void calib_imucam_frameset_free(calib_imucam_frameset_t *fs) {
+  if (fs == NULL) {
+    return;
+  }
+  for (int i = 0; i < fs->num_cameras; ++i) {
+    calib_imucam_frame_free(fs->frames[i]);
+  }
+  free(fs->frames);
+  free(fs->imu_factor);
+  free(fs);
+}
+
+/**
+ * Add camera frame to imu-camera calibration frameset.
+ */
+void calib_imucam_frameset_add(calib_imucam_frameset_t *fs,
+                               const timestamp_t ts,
+                               const int view_idx,
+                               const int cam_idx,
+                               const int num_corners,
+                               const int *tag_ids,
+                               const int *corner_indices,
+                               const real_t *pts,
+                               const real_t *kps) {
+  assert(fs->ts == ts);
+  assert(fs->frames[cam_idx] == NULL);
+  fs->frames[cam_idx] = calib_imucam_frame_malloc(ts,
+                                                  view_idx,
+                                                  cam_idx,
+                                                  num_corners,
+                                                  tag_ids,
+                                                  corner_indices,
+                                                  pts,
+                                                  kps,
+                                                  fs->fiducial,
+                                                  fs->pose,
+                                                  fs->imu_ext,
+                                                  &fs->cam_exts[cam_idx * 7],
+                                                  &fs->cameras[cam_idx],
+                                                  fs->time_delay);
+}
+
+////////////////////////////
+// IMU-CAMERA CALIBRATOR  //
+////////////////////////////
+
+/**
+ * Malloc imu-camera calibration problem.
+ */
+calib_imucam_t *calib_imucam_malloc(void) {
+  calib_imucam_t *calib = malloc(sizeof(calib_imucam_t) * 1);
+
+  // Settings
+  calib->fix_fiducial = 1; // World-frame gauge anchor -- see struct docs
+  calib->fix_imu_ext = 0;
+  calib->fix_cam_exts = 0;
+  calib->fix_cam_params = 0;
+  calib->fix_time_delay = 1; // Unobservable without real optical flow
+  calib->verbose = 1;
+  calib->max_iter = 30;
+
+  // Flags
+  calib->imu_ok = 0;
+  calib->cams_ok = 0;
+  calib->state_initialized = 0;
+
+  // Counters
+  calib->num_cams = 0;
+  calib->num_views = 0;
+  calib->num_cam_factors = 0;
+  calib->num_imu_factors = 0;
+
+  // Variables
+  calib->timestamps = arr_malloc(8);
+  calib->poses = rbt_malloc(ts_cmp);
+  // calib->velocities/biases/framesets share calib->poses's timestamp_t*
+  // keys (calib_imucam_add_view() pushes one ts_ptr to all of them). Let
+  // calib->poses own and free them via kfree -- the others must not.
+  calib->poses->kfree = free;
+  calib->velocities = rbt_malloc(ts_cmp);
+  calib->biases = rbt_malloc(ts_cmp);
+
+  memset(calib->fiducial, 0, sizeof(calib->fiducial));
+  memset(calib->imu_ext, 0, sizeof(calib->imu_ext));
+  calib->cam_exts = NULL;
+  calib->camera = NULL;
+  calib->time_delay[0] = 0.0;
+
+  imu_buffer_setup(&calib->imu_buf);
+
+  // Factors
+  calib->framesets = rbt_malloc(ts_cmp);
+  calib->marg = NULL;
+
+  return calib;
+}
+
+/**
+ * Free imu-camera calibration problem.
+ */
+void calib_imucam_free(calib_imucam_t *calib) {
+  if (calib == NULL) {
+    return;
+  }
+
+  free(calib->cam_exts);
+  free(calib->camera);
+  marg_factor_free(calib->marg);
+
+  // Framesets: free each frameset (and its owned imu_factor), then the
+  // tree itself. This must happen before poses is freed below: framesets'
+  // keys are the same timestamp_t* pointers as poses's keys, and
+  // freeing/searching this tree dereferences those keys via ts_cmp.
+  const size_t num_framesets = rbt_size(calib->framesets);
+  if (num_framesets > 0) {
+    arr_t *keys = arr_malloc(num_framesets);
+    rbt_keys(calib->framesets, keys);
+    for (size_t i = 0; i < num_framesets; ++i) {
+      calib_imucam_frameset_free(rbt_search(calib->framesets, keys->data[i]));
+    }
+    arr_free(keys);
+  }
+  rbt_free(calib->framesets);
+
+  // Velocities: same reasoning -- free values, then the tree (kfree=NULL
+  // here, shares poses's keys), before poses frees the keys themselves.
+  const size_t num_vels = rbt_size(calib->velocities);
+  if (num_vels > 0) {
+    arr_t *keys = arr_malloc(num_vels);
+    rbt_keys(calib->velocities, keys);
+    for (size_t i = 0; i < num_vels; ++i) {
+      free(rbt_search(calib->velocities, keys->data[i]));
+    }
+    arr_free(keys);
+  }
+  rbt_free(calib->velocities);
+
+  // Biases: same reasoning.
+  const size_t num_biases = rbt_size(calib->biases);
+  if (num_biases > 0) {
+    arr_t *keys = arr_malloc(num_biases);
+    rbt_keys(calib->biases, keys);
+    for (size_t i = 0; i < num_biases; ++i) {
+      free(rbt_search(calib->biases, keys->data[i]));
+    }
+    arr_free(keys);
+  }
+  rbt_free(calib->biases);
+
+  // Poses: free each pose vector, then the tree itself, which frees each
+  // shared timestamp_t* key via kfree set in calib_imucam_malloc().
+  const size_t num_poses = rbt_size(calib->poses);
+  if (num_poses > 0) {
+    arr_t *keys = arr_malloc(num_poses);
+    rbt_keys(calib->poses, keys);
+    for (size_t i = 0; i < num_poses; ++i) {
+      free(rbt_search(calib->poses, keys->data[i]));
+    }
+    arr_free(keys);
+  }
+  rbt_free(calib->poses);
+
+  // Timestamps: just the array bookkeeping -- the timestamp_t* elements
+  // it points to were already freed above via calib->poses's kfree.
+  arr_free(calib->timestamps);
+
+  free(calib);
+}
+
+/**
+ * Add camera to imu-camera calibration problem.
+ */
+void calib_imucam_add_camera(calib_imucam_t *calib,
+                             const int cam_idx,
+                             const int cam_res[2],
+                             const char *proj_model,
+                             const char *dist_model,
+                             const real_t *camera,
+                             const real_t *cam_ext) {
+  assert(calib != NULL);
+  assert(cam_idx <= calib->num_cams);
+  assert(cam_res != NULL);
+  assert(proj_model != NULL);
+  assert(dist_model != NULL);
+  assert(camera != NULL);
+  assert(cam_ext != NULL);
+
+  if (cam_idx > (calib->num_cams - 1)) {
+    const int new_size = calib->num_cams + 1;
+    calib->camera = realloc(calib->camera, sizeof(camera_t) * new_size);
+    calib->cam_exts = realloc(calib->cam_exts, sizeof(real_t) * 7 * new_size);
+  }
+
+  camera_setup(&calib->camera[cam_idx],
+               cam_idx,
+               cam_res,
+               proj_model,
+               dist_model,
+               camera);
+
+  for (int i = 0; i < 7; i++) {
+    calib->cam_exts[cam_idx * 7 + i] = cam_ext[i];
+  }
+
+  calib->num_cams++;
+  calib->cams_ok = 1;
+}
+
+/**
+ * Add IMU to imu-camera calibration problem.
+ */
+void calib_imucam_add_imu(calib_imucam_t *calib,
+                          const real_t imu_rate,
+                          const real_t sigma_aw,
+                          const real_t sigma_gw,
+                          const real_t sigma_a,
+                          const real_t sigma_g,
+                          const real_t g,
+                          const real_t *imu_ext) {
+  assert(calib != NULL);
+  assert(imu_rate > 0);
+  assert(sigma_aw > 0);
+  assert(sigma_gw > 0);
+  assert(sigma_a > 0);
+  assert(sigma_g > 0);
+  assert(g > 9.0);
+  assert(imu_ext != NULL);
+
+  calib->imu_params.imu_idx = 0;
+  calib->imu_params.rate = imu_rate;
+  calib->imu_params.sigma_aw = sigma_aw;
+  calib->imu_params.sigma_gw = sigma_gw;
+  calib->imu_params.sigma_a = sigma_a;
+  calib->imu_params.sigma_g = sigma_g;
+  calib->imu_params.g = g;
+
+  vec_copy(imu_ext, 7, calib->imu_ext);
+
+  calib->imu_ok = 1;
+}
+
+/**
+ * Add IMU measurement to imu-camera calibration problem.
+ */
+void calib_imucam_add_imu_measurement(calib_imucam_t *calib,
+                                      const timestamp_t ts,
+                                      const real_t acc[3],
+                                      const real_t gyr[3]) {
+  assert(calib != NULL);
+  assert(calib->imu_ok);
+  imu_buffer_add(&calib->imu_buf, ts, acc, gyr);
+}
+
+/**
+ * Add imu-camera calibration view. The first camera to report a given
+ * new timestamp creates a new state (pose/velocity/biases, and the IMU
+ * factor edge from the previous state through the buffered IMU samples);
+ * every other camera reporting that same timestamp just adds another
+ * frame into the already-existing frameset.
+ */
+void calib_imucam_add_view(calib_imucam_t *calib,
+                           const timestamp_t ts,
+                           const int view_idx,
+                           const int cam_idx,
+                           const int num_corners,
+                           const int *tag_ids,
+                           const int *corner_indices,
+                           const real_t *pts,
+                           const real_t *kps) {
+  assert(calib != NULL);
+  assert(calib->imu_ok);
+  assert(calib->cams_ok);
+  if (num_corners == 0) {
+    return;
+  }
+
+  real_t *pose = rbt_search(calib->poses, &ts);
+  calib_imucam_frameset_t *fs = rbt_search(calib->framesets, &ts);
+
+  if (pose == NULL) {
+    // New state -- this is the first camera to report timestamp `ts`.
+    if (calib->imu_buf.size == 0) {
+      return; // Nothing to bootstrap/chain from yet.
+    }
+
+    // Estimate relative pose T_CiF via PnP using this camera's corners.
+    real_t T_CiF[4 * 4] = {0};
+    camera_t *camera = &calib->camera[cam_idx];
+    const int status = solvepnp_camera(camera, kps, pts, num_corners, T_CiF);
+    if (status != 0) {
+      return;
+    }
+
+    real_t pose_k[7] = {0};
+    real_t vel_k[3] = {0};
+    real_t biases_k[6] = {0};
+    timestamp_t ts_prev = 0;
+    real_t *pose_prev = NULL;
+    real_t *vel_prev = NULL;
+    real_t *biases_prev = NULL;
+
+    if (calib->state_initialized == 0) {
+      // Bootstrap the very first state: gravity-aligned attitude, origin
+      // position, zero velocity/biases.
+      real_t q_WS[4] = {0};
+      imu_initial_attitude(&calib->imu_buf, q_WS);
+      const real_t r_WS[3] = {0};
+      real_t T_WS[4 * 4] = {0};
+      tf_qr(q_WS, r_WS, T_WS);
+      tf_vector(T_WS, pose_k);
+
+      // Initialize the fiducial now -- held fixed from here on, it's the
+      // world-frame gauge anchor: T_WF = T_WS * T_SC0 * T_C0Ci * T_CiF
+      POSE2TF(calib->imu_ext, T_SC0);
+      POSE2TF(&calib->cam_exts[cam_idx * 7], T_C0Ci);
+      TF_CHAIN(T_WF, 4, T_WS, T_SC0, T_C0Ci, T_CiF);
+      tf_vector(T_WF, calib->fiducial);
+
+      calib->state_initialized = 1;
+    } else {
+      // Chain the new pose through the now-fixed fiducial and this fresh
+      // (vision-only) PnP solve, rather than through pure IMU propagation
+      // -- avoids compounding IMU drift into the seed:
+      //   T_WS = T_WF * inv(T_CiF) * inv(T_C0Ci) * inv(T_SC0)
+      POSE2TF(calib->fiducial, T_WF);
+      TF_INV(T_CiF, T_FCi);
+      POSE2TF(&calib->cam_exts[cam_idx * 7], T_C0Ci);
+      TF_INV(T_C0Ci, T_CiC0);
+      POSE2TF(calib->imu_ext, T_SC0);
+      TF_INV(T_SC0, T_C0S);
+      TF_CHAIN(T_WS, 4, T_WF, T_FCi, T_CiC0, T_C0S);
+      tf_vector(T_WS, pose_k);
+
+      // Look up the previous (newest-so-far) state.
+      ts_prev =
+          *(timestamp_t *) calib->timestamps->data[calib->timestamps->size - 1];
+      pose_prev = rbt_search(calib->poses, &ts_prev);
+      vel_prev = rbt_search(calib->velocities, &ts_prev);
+      biases_prev = rbt_search(calib->biases, &ts_prev);
+
+      // Seed velocity via IMU propagation through the buffered samples;
+      // carry biases over unchanged from the previous state.
+      real_t pose_prop[7] = {0};
+      real_t vel_prop[3] = {0};
+      imu_propagate(pose_prev, vel_prev, &calib->imu_buf, pose_prop, vel_prop);
+      vec_copy(vel_prop, 3, vel_k);
+      vec_copy(biases_prev, 6, biases_k);
+    }
+
+    // Allocate and insert the new state's storage BEFORE building the IMU
+    // factor edge below -- the factor's pose_j/vel_j/biases_j must be
+    // these exact heap pointers, not the stack locals above.
+    timestamp_t *ts_ptr = timestamp_malloc(ts);
+    arr_push_back(calib->timestamps, ts_ptr);
+    real_t *pose_ptr = malloc(sizeof(real_t) * 7);
+    vec_copy(pose_k, 7, pose_ptr);
+    real_t *vel_ptr = malloc(sizeof(real_t) * 3);
+    vec_copy(vel_k, 3, vel_ptr);
+    real_t *biases_ptr = malloc(sizeof(real_t) * 6);
+    vec_copy(biases_k, 6, biases_ptr);
+    rbt_insert(calib->poses, ts_ptr, pose_ptr);
+    rbt_insert(calib->velocities, ts_ptr, vel_ptr);
+    rbt_insert(calib->biases, ts_ptr, biases_ptr);
+
+    // Build the IMU factor edge from the previous state, if any.
+    imu_factor_t *imu_factor = NULL;
+    if (pose_prev != NULL) {
+      imu_factor = malloc(sizeof(imu_factor_t));
+      imu_factor_setup(imu_factor,
+                       &calib->imu_params,
+                       &calib->imu_buf,
+                       ts_prev,
+                       ts,
+                       pose_prev,
+                       vel_prev,
+                       biases_prev,
+                       pose_ptr,
+                       vel_ptr,
+                       biases_ptr);
+      calib->num_imu_factors++;
+    }
+    imu_buffer_clear(&calib->imu_buf);
+
+    // New frameset, keyed by the same ts_ptr as poses/velocities/biases --
+    // calib->framesets doesn't own it (see calib_imucam_malloc()).
+    fs = calib_imucam_frameset_malloc(ts,
+                                      pose_ptr,
+                                      vel_ptr,
+                                      biases_ptr,
+                                      calib->fiducial,
+                                      calib->imu_ext,
+                                      calib->cam_exts,
+                                      calib->camera,
+                                      calib->time_delay,
+                                      calib->num_cams);
+    fs->imu_factor = imu_factor; // NULL for the very first state
+    rbt_insert(calib->framesets, ts_ptr, fs);
+    calib->num_views++;
+  }
+
+  // Either way: add this camera's corner factors into the (possibly
+  // just-created, possibly pre-existing) frameset's per-camera slot.
+  calib_imucam_frameset_add(fs,
+                            ts,
+                            view_idx,
+                            cam_idx,
+                            num_corners,
+                            tag_ids,
+                            corner_indices,
+                            pts,
+                            kps);
+  calib->num_cam_factors += num_corners;
+}
+
+/**
+ * Imu-camera calibration reprojection errors (camera factors only).
+ */
+void calib_imucam_errors(calib_imucam_t *calib,
+                         real_t *reproj_rmse,
+                         real_t *reproj_mean,
+                         real_t *reproj_median) {
+  const int N = calib->num_cam_factors;
+  const int r_size = N * 2;
+  real_t *r = calloc(r_size, sizeof(real_t));
+
+  int r_idx = 0;
+  const size_t num_ts = calib->timestamps->size;
+  for (size_t k = 0; k < num_ts; k++) {
+    const timestamp_t ts = *(timestamp_t *) calib->timestamps->data[k];
+    calib_imucam_frameset_t *fs = rbt_search(calib->framesets, &ts);
+    if (fs == NULL) {
+      continue;
+    }
+
+    for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+      calib_imucam_frame_t *frame = fs->frames[cam_idx];
+      if (frame == NULL) {
+        continue;
+      }
+      for (int i = 0; i < frame->num_corners; i++) {
+        calib_imucam_factor_t *factor = &frame->factors[i];
+        calib_imucam_factor_eval(factor);
+        vec_copy(factor->r, factor->r_size, &r[r_idx]);
+        r_idx += factor->r_size;
+      }
+    }
+  }
+
+  real_t *errors = calloc(N, sizeof(real_t));
+  for (int i = 0; i < N; i++) {
+    const real_t x = r[i * 2 + 0];
+    const real_t y = r[i * 2 + 1];
+    errors[i] = sqrt(x * x + y * y);
+  }
+
+  real_t sum = 0.0;
+  real_t sse = 0.0;
+  for (int i = 0; i < N; i++) {
+    sum += errors[i];
+    sse += errors[i] * errors[i];
+  }
+  *reproj_rmse = sqrt(sse / N);
+  *reproj_mean = sum / N;
+  *reproj_median = median(errors, N);
+
+  free(errors);
+  free(r);
+}
+
+/**
+ * Imu-camera calibration parameter index.
+ */
+rbt_t *calib_imucam_param_index(const void *data, int *sv_size, int *r_size) {
+  calib_imucam_t *calib = (calib_imucam_t *) data;
+  rbt_t *param_index = param_index_malloc();
+  int col_idx = 0;
+
+  // -- Add per-state poses, velocities, biases
+  const size_t num_states = rbt_size(calib->poses);
+  arr_t *ts_keys = arr_malloc(num_states);
+  arr_t *pose_vals = arr_malloc(num_states);
+  rbt_keys_values(calib->poses, ts_keys, pose_vals);
+  for (size_t i = 0; i < num_states; ++i) {
+    timestamp_t *ts_ptr = ts_keys->data[i];
+    real_t *vel = rbt_search(calib->velocities, ts_ptr);
+    real_t *biases = rbt_search(calib->biases, ts_ptr);
+    param_index_add(param_index, POSE_PARAM, 0, pose_vals->data[i], &col_idx);
+    param_index_add(param_index, VELOCITY_PARAM, 0, vel, &col_idx);
+    param_index_add(param_index, IMU_BIASES_PARAM, 0, biases, &col_idx);
+  }
+  arr_free(ts_keys);
+  arr_free(pose_vals);
+
+  // -- Add fiducial
+  param_index_add(param_index,
+                  FIDUCIAL_PARAM,
+                  calib->fix_fiducial,
+                  calib->fiducial,
+                  &col_idx);
+
+  // -- Add IMU-camera extrinsic
+  param_index_add(param_index,
+                  EXTRINSIC_PARAM,
+                  calib->fix_imu_ext,
+                  calib->imu_ext,
+                  &col_idx);
+
+  // -- Add camera extrinsics (cam0 is always fixed -- it's the reference)
+  for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+    const int fix = (cam_idx == 0) || calib->fix_cam_exts;
+    param_index_add(param_index,
+                    EXTRINSIC_PARAM,
+                    fix,
+                    &calib->cam_exts[cam_idx * 7],
+                    &col_idx);
+  }
+
+  // -- Add camera parameters
+  for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+    param_index_add(param_index,
+                    CAMERA_PARAM,
+                    calib->fix_cam_params,
+                    calib->camera[cam_idx].data,
+                    &col_idx);
+  }
+
+  // -- Add time delay
+  param_index_add(param_index,
+                  TIME_DELAY_PARAM,
+                  calib->fix_time_delay,
+                  calib->time_delay,
+                  &col_idx);
+
+  // Set state-vector and residual size
+  *sv_size = col_idx;
+  *r_size = (calib->num_cam_factors * 2) + (calib->num_imu_factors * 15);
+  if (calib->marg) {
+    *r_size += calib->marg->r_lsize;
+  }
+
+  return param_index;
+}
+
+/**
+ * Calculate imu-camera calibration problem cost.
+ */
+void calib_imucam_cost(const void *data, real_t *r) {
+  calib_imucam_t *calib = (calib_imucam_t *) data;
+  int r_idx = 0;
+
+  const size_t num_ts = calib->timestamps->size;
+  for (size_t k = 0; k < num_ts; k++) {
+    const timestamp_t ts = *(timestamp_t *) calib->timestamps->data[k];
+    calib_imucam_frameset_t *fs = rbt_search(calib->framesets, &ts);
+    if (fs == NULL) {
+      continue;
+    }
+
+    for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+      calib_imucam_frame_t *frame = fs->frames[cam_idx];
+      if (frame == NULL) {
+        continue;
+      }
+      for (int i = 0; i < frame->num_corners; i++) {
+        calib_imucam_factor_t *factor = &frame->factors[i];
+        calib_imucam_factor_eval(factor);
+        vec_copy(factor->r, factor->r_size, &r[r_idx]);
+        r_idx += factor->r_size;
+      }
+    }
+
+    if (fs->imu_factor) {
+      imu_factor_eval(fs->imu_factor);
+      vec_copy(fs->imu_factor->r, fs->imu_factor->r_size, &r[r_idx]);
+      r_idx += fs->imu_factor->r_size;
+    }
+  }
+
+  if (calib->marg) {
+    marg_factor_eval(calib->marg);
+    vec_copy(calib->marg->r, calib->marg->r_lsize, &r[r_idx]);
+  }
+}
+
+/**
+ * Linearize imu-camera calibration problem.
+ */
+void calib_imucam_linearize_compact(const void *data,
+                                    const int sv_size,
+                                    rbt_t *hash,
+                                    real_t *H,
+                                    real_t *g,
+                                    real_t *r) {
+  calib_imucam_t *calib = (calib_imucam_t *) data;
+  int r_idx = 0;
+
+  const size_t num_ts = calib->timestamps->size;
+  for (size_t k = 0; k < num_ts; k++) {
+    const timestamp_t ts = *(timestamp_t *) calib->timestamps->data[k];
+    calib_imucam_frameset_t *fs = rbt_search(calib->framesets, &ts);
+    if (fs == NULL) {
+      continue;
+    }
+
+    for (int cam_idx = 0; cam_idx < calib->num_cams; cam_idx++) {
+      calib_imucam_frame_t *frame = fs->frames[cam_idx];
+      if (frame == NULL) {
+        continue;
+      }
+      for (int i = 0; i < frame->num_corners; i++) {
+        calib_imucam_factor_t *factor = &frame->factors[i];
+        calib_imucam_factor_eval(factor);
+        vec_copy(factor->r, factor->r_size, &r[r_idx]);
+
+        solver_fill_hessian(hash,
+                            factor->num_params,
+                            factor->params,
+                            factor->jacs,
+                            factor->r,
+                            factor->r_size,
+                            sv_size,
+                            H,
+                            g);
+        r_idx += factor->r_size;
+      }
+    }
+
+    if (fs->imu_factor) {
+      imu_factor_t *imu_factor = fs->imu_factor;
+      imu_factor_eval(imu_factor);
+      vec_copy(imu_factor->r, imu_factor->r_size, &r[r_idx]);
+
+      solver_fill_hessian(hash,
+                          imu_factor->num_params,
+                          imu_factor->params,
+                          imu_factor->jacs,
+                          imu_factor->r,
+                          imu_factor->r_size,
+                          sv_size,
+                          H,
+                          g);
+      r_idx += imu_factor->r_size;
+    }
+  }
+
+  if (calib->marg) {
+    marg_factor_eval(calib->marg);
+    vec_copy(calib->marg->r, calib->marg->r_lsize, &r[r_idx]);
+
+    solver_fill_hessian(hash,
+                        calib->marg->num_params,
+                        calib->marg->params,
+                        calib->marg->jacs,
+                        calib->marg->r,
+                        calib->marg->r_lsize,
+                        sv_size,
+                        H,
+                        g);
+  }
+}
+
+/**
+ * Solve imu-camera calibration problem. No linsolve_func is set -- unlike
+ * calib_camera_t, consecutive (pose,vel,biases) states are coupled to
+ * each other through imu_factor_t (block-tridiagonal, not block-diagonal),
+ * so the camera-only Schur trick doesn't apply here. solver_solve() falls
+ * back to a full dense chol_solve(), which is fine at these problem sizes.
+ */
+void calib_imucam_solve(calib_imucam_t *calib) {
+  assert(calib != NULL);
+
+  if (calib->num_views == 0) {
+    return;
+  }
+
+  solver_t solver;
+  solver_setup(&solver);
+  solver.verbose = calib->verbose;
+  solver.max_iter = calib->max_iter;
+  solver.param_index_func = &calib_imucam_param_index;
+  solver.cost_func = &calib_imucam_cost;
+  solver.linearize_func = &calib_imucam_linearize_compact;
+  solver_solve(&solver, calib);
 }
 
 /******************************************************************************

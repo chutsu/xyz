@@ -1439,6 +1439,19 @@ int test_logspace(void) {
   return 0;
 }
 
+int test_linspace(void) {
+  real_t x[5] = {0};
+  linspace(0.0, 1.0, 5, x);
+
+  MU_ASSERT(flteqs(x[0], 0.00));
+  MU_ASSERT(flteqs(x[1], 0.25));
+  MU_ASSERT(flteqs(x[2], 0.50));
+  MU_ASSERT(flteqs(x[3], 0.75));
+  MU_ASSERT(flteqs(x[4], 1.00));
+
+  return 0;
+}
+
 int test_pythag(void) {
   MU_ASSERT(fltcmp(pythag(3.0, 4.0), 5.0) == 0);
   return 0;
@@ -8668,7 +8681,7 @@ int test_sim_target_view(void) {
   camera_setup(&camera, 0, cam_res, proj_model, dist_model, cam_vec);
 
   // Target: AprilGrid sitting at the origin, facing +z
-  sim_target_config_t target = {
+  sim_target_t target = {
       .target_id = 0,
       .num_rows = 6,
       .num_cols = 6,
@@ -8694,30 +8707,28 @@ int test_sim_target_view(void) {
 
   // Simulate the view
   const timestamp_t ts = 123;
-  sim_target_t *sim = sim_target_view(&target, &camera, cam_pose, ts);
-
-  // Ground truth is retained
-  MU_ASSERT(sim->target_id == target.target_id);
-  for (int i = 0; i < 7; i++) {
-    MU_ASSERT(fltcmp(sim->cam_pose[i], cam_pose[i]) == 0);
-  }
-  for (int i = 0; i < 8; i++) {
-    MU_ASSERT(fltcmp(sim->camera.data[i], camera.data[i]) == 0);
-  }
-  MU_ASSERT(sim->camera.resolution[0] == cam_res[0]);
-  MU_ASSERT(sim->camera.resolution[1] == cam_res[1]);
+  const int max_corners = target.num_rows * target.num_cols * 4;
+  int tag_ids[max_corners];
+  int corner_indices[max_corners];
+  real_t object_points[max_corners * 3];
+  real_t keypoints[max_corners * 2];
+  const int num_corners = sim_target_view(&target,
+                                          &camera,
+                                          cam_pose,
+                                          tag_ids,
+                                          corner_indices,
+                                          object_points,
+                                          keypoints);
+  MU_ASSERT(num_corners > 0);
 
   // The recorded corners must exactly match a fresh re-projection of their
   // known 3D points -- confirms sim_target_view()'s internal
   // projection/visibility logic independently.
-  MU_ASSERT(sim->ts == ts);
-  MU_ASSERT(sim->num_corners > 0);
-
   real_t T_CW[4 * 4] = {0};
   tf_inv(T_WC, T_CW);
 
-  for (int i = 0; i < sim->num_corners; i++) {
-    const real_t *p_Tj = &sim->object_points[i * 3];
+  for (int i = 0; i < num_corners; i++) {
+    const real_t *p_Tj = &object_points[i * 3];
     TF_POINT(T_WT, p_Tj, p_Wj);
     TF_POINT(T_CW, p_Wj, p_Cj);
     MU_ASSERT(p_Cj[2] >= 0);
@@ -8727,7 +8738,7 @@ int test_sim_target_view(void) {
     MU_ASSERT(z[0] >= 0 && z[0] < cam_res[0]);
     MU_ASSERT(z[1] >= 0 && z[1] < cam_res[1]);
 
-    const real_t *kp = &sim->keypoints[i * 2];
+    const real_t *kp = &keypoints[i * 2];
     MU_ASSERT(fltcmp(kp[0], z[0]) == 0);
     MU_ASSERT(fltcmp(kp[1], z[1]) == 0);
   }
@@ -8737,30 +8748,37 @@ int test_sim_target_view(void) {
   // truncation error -- exact equality only holds for round numbers,
   // which these simulated keypoints aren't.
   const char *save_path = "/tmp/test_sim_target.csv";
-  MU_ASSERT(sim_target_save(&target, sim, save_path) == 0);
+  MU_ASSERT(sim_target_save(&target,
+                            ts,
+                            num_corners,
+                            tag_ids,
+                            corner_indices,
+                            keypoints,
+                            save_path) == 0);
 
   aprilgrid_t *loaded = aprilgrid_load(save_path);
   MU_ASSERT(loaded->num_rows == target.num_rows);
   MU_ASSERT(loaded->num_cols == target.num_cols);
-  MU_ASSERT(loaded->corners_detected == sim->num_corners);
+  MU_ASSERT(loaded->timestamp == ts);
+  MU_ASSERT(loaded->corners_detected == num_corners);
 
-  const int max_corners = target.num_rows * target.num_cols * 4;
-  int tag_ids[max_corners];
-  int corner_idxs[max_corners];
-  real_t kps[max_corners * 2];
-  real_t obj_pts[max_corners * 3];
-  aprilgrid_measurements(loaded, tag_ids, corner_idxs, kps, obj_pts);
-  for (int i = 0; i < sim->num_corners; i++) {
-    MU_ASSERT(tag_ids[i] == sim->tag_ids[i]);
-    MU_ASSERT(corner_idxs[i] == sim->corner_indices[i]);
-    MU_ASSERT(fabs(kps[i * 2 + 0] - sim->keypoints[i * 2 + 0]) < 1e-5);
-    MU_ASSERT(fabs(kps[i * 2 + 1] - sim->keypoints[i * 2 + 1]) < 1e-5);
+  int loaded_tag_ids[max_corners];
+  int loaded_corner_idxs[max_corners];
+  real_t loaded_kps[max_corners * 2];
+  real_t loaded_obj_pts[max_corners * 3];
+  aprilgrid_measurements(loaded,
+                         loaded_tag_ids,
+                         loaded_corner_idxs,
+                         loaded_kps,
+                         loaded_obj_pts);
+  for (int i = 0; i < num_corners; i++) {
+    MU_ASSERT(loaded_tag_ids[i] == tag_ids[i]);
+    MU_ASSERT(loaded_corner_idxs[i] == corner_indices[i]);
+    MU_ASSERT(fabs(loaded_kps[i * 2 + 0] - keypoints[i * 2 + 0]) < 1e-5);
+    MU_ASSERT(fabs(loaded_kps[i * 2 + 1] - keypoints[i * 2 + 1]) < 1e-5);
   }
   aprilgrid_free(loaded);
   remove(save_path);
-
-  // Clean up
-  sim_target_free(sim);
 
   return 0;
 }
@@ -8768,6 +8786,447 @@ int test_sim_target_view(void) {
 /******************************************************************************
  * CAMERA CALIBRATION
  *****************************************************************************/
+
+int test_calib_camera_env(void) {
+  // Initialize camera intrinsics
+  const int cam_res[2] = {640, 480};
+  const char *proj_model = "pinhole";
+  const char *dist_model = "radtan4";
+  const real_t cam0_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+  const real_t cam0_int[8] = {320.0, 320.0, 240.0, 240.0, 0, 0, 0, 0};
+  // const real_t cam1_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+  // const real_t cam1_int[8] = {320.0, 320.0, 240.0, 240.0, 0, 0, 0, 0};
+
+  // Setup calib target
+  sim_target_t target_config;
+  target_config.target_id = 0;
+  target_config.num_rows = 6;
+  target_config.num_cols = 6;
+  target_config.tag_size = 0.08;
+  target_config.tag_spacing = 0.3;
+  const real_t target_pos[3] = {0.0, 0.0, 0.0};
+  const real_t target_ypr[3] = {-M_PI / 2.0, 0.0, -M_PI / 2.0};
+  EULER2QUAT(target_ypr, target_q);
+  target_config.pose[0] = target_pos[0];
+  target_config.pose[1] = target_pos[1];
+  target_config.pose[2] = target_pos[2];
+  target_config.pose[3] = target_q[0];
+  target_config.pose[4] = target_q[1];
+  target_config.pose[5] = target_q[2];
+  target_config.pose[6] = target_q[3];
+
+  // Target pose and center, both in the world frame
+  real_t T_WT[4 * 4] = {0};
+  tf(target_config.pose, T_WT);
+
+  real_t target_cx = 0.0;
+  real_t target_cy = 0.0;
+  sim_target_center_xy(&target_config, &target_cx, &target_cy);
+
+  real_t center_W[3] = {0};
+  sim_target_center_pos(&target_config, center_W);
+
+  // Form a grid of camera viewpoints standing off in front of the target
+  // (along its local +z), each looking at the target's center
+  const real_t grid_width = 0.4;  // [m] spread along the target's x-axis
+  const real_t grid_height = 0.4; // [m] spread along the target's y-axis
+  const real_t standoff = 0.8;    // [m] distance in front of the target
+  const int grid_rows = 5;
+  const int grid_cols = 5;
+
+  const real_t half_w = grid_width / 2.0;
+  const real_t half_h = grid_height / 2.0;
+  const real_t world_up[3] = {0.0, 0.0, 1.0};
+
+  real_t y_vals[grid_rows];
+  real_t x_vals[grid_cols];
+  linspace(-half_h, half_h, grid_rows, y_vals);
+  linspace(-half_w, half_w, grid_cols, x_vals);
+
+  const int num_poses = grid_rows * grid_cols;
+  real_t cam_poses[num_poses][7];
+  int pose_idx = 0;
+
+  for (int row = 0; row < grid_rows; ++row) {
+    const real_t y = y_vals[row];
+
+    for (int col = 0; col < grid_cols; ++col) {
+      const real_t x = x_vals[col];
+
+      // Camera position: offset from the target center in the target's
+      // own x/y plane, standing off along its z-axis
+      const real_t p_T[3] = {x + target_cx, y + target_cy, standoff};
+      real_t p_W[3] = {0};
+      tf_point(T_WT, p_T, p_W);
+
+      // Camera orientation: always facing the target center
+      real_t T_WC[4 * 4] = {0};
+      lookat(p_W, center_W, world_up, T_WC);
+
+      // Perturb the pose a little, so the viewpoints aren't perfectly
+      // regular -- a small random offset per translation and rotation axis
+      for (int i = 0; i < 3; i++) {
+        tf_perturb_trans(T_WC, randf(-0.01, 0.01), i);
+        tf_perturb_rot(T_WC, randf(-0.01, 0.01), i);
+      }
+
+      tf_vector(T_WC, cam_poses[pose_idx]);
+      pose_idx++;
+    }
+  }
+
+  // Simulate each view and calibrate against them, starting from a
+  // deliberately wrong initial guess -- since there's no noise in the
+  // simulation, the solve should recover the ground-truth intrinsics
+  // almost exactly.
+  camera_t camera;
+  camera_setup(&camera, 0, cam_res, proj_model, dist_model, cam0_int);
+
+  const real_t cam0_int_init[8] =
+      {280.0, 280.0, 220.0, 220.0, 0.0, 0.0, 0.0, 0.0};
+  calib_camera_t *calib = calib_camera_malloc();
+  calib->verbose = 1;
+  calib->max_iter = 30;
+  calib_camera_add_camera(calib,
+                          0,
+                          cam_res,
+                          proj_model,
+                          dist_model,
+                          cam0_int_init,
+                          cam0_ext);
+
+  const int max_corners = target_config.num_rows * target_config.num_cols * 4;
+  int tag_ids[max_corners];
+  int corner_indices[max_corners];
+  real_t object_points[max_corners * 3];
+  real_t keypoints[max_corners * 2];
+
+  for (int view_idx = 0; view_idx < num_poses; view_idx++) {
+    const int num_corners = sim_target_view(&target_config,
+                                            &camera,
+                                            cam_poses[view_idx],
+                                            tag_ids,
+                                            corner_indices,
+                                            object_points,
+                                            keypoints);
+    if (num_corners == 0) {
+      continue;
+    }
+
+    const timestamp_t ts = view_idx;
+    calib_camera_add_view(calib,
+                          ts,
+                          view_idx,
+                          0,
+                          num_corners,
+                          tag_ids,
+                          corner_indices,
+                          object_points,
+                          keypoints);
+  }
+  MU_ASSERT(calib->num_views == num_poses);
+
+  calib_camera_solve(calib);
+
+  real_t rmse = 0.0;
+  real_t mean = 0.0;
+  real_t median = 0.0;
+  calib_camera_errors(calib, &rmse, &mean, &median);
+  MU_ASSERT(rmse < 1e-3);
+  MU_ASSERT(mean < 1e-3);
+  MU_ASSERT(median < 1e-3);
+
+  for (int i = 0; i < 8; i++) {
+    MU_ASSERT(fabs(calib->camera[0].data[i] - cam0_int[i]) < 1e-3);
+  }
+
+  calib_camera_free(calib);
+
+  return 0;
+}
+
+// Position on a circular, vertically-bobbing orbit around `center`, always
+// `radius` away in the xy-plane and oscillating in z with amplitude
+// `z_amp`. Used by test_calib_imucam_env() to drive both the simulated
+// camera views and (via finite differences below) the simulated IMU.
+static void test_calib_imucam_env_traj_pos(const real_t center[3],
+                                           const real_t radius,
+                                           const real_t omega,
+                                           const real_t z_offset,
+                                           const real_t z_amp,
+                                           const real_t z_omega,
+                                           const real_t t,
+                                           real_t p[3]) {
+  p[0] = center[0] + radius * cos(omega * t);
+  p[1] = center[1] + radius * sin(omega * t);
+  p[2] = center[2] - z_offset + z_amp * sin(z_omega * t);
+}
+
+// World-frame acceleration of the above trajectory -- the exact analytic
+// second derivative, so the simulated IMU's specific force is physically
+// consistent with the position used for the camera views.
+static void test_calib_imucam_env_traj_acc(const real_t radius,
+                                           const real_t omega,
+                                           const real_t z_amp,
+                                           const real_t z_omega,
+                                           const real_t t,
+                                           real_t a[3]) {
+  a[0] = -radius * omega * omega * cos(omega * t);
+  a[1] = -radius * omega * omega * sin(omega * t);
+  a[2] = -z_amp * z_omega * z_omega * sin(z_omega * t);
+}
+
+// Orientation that always faces `center` from the current position on the
+// orbit, via lookat(). `up_axis` must not be near-parallel to the
+// camera-to-center direction -- since the orbit's dominant separation from
+// the target is along z (see z_offset), the world z-axis is a bad up-axis
+// here (near-degenerate cross product inside lookat()), so the x-axis is
+// used instead.
+static void test_calib_imucam_env_traj_quat(const real_t center[3],
+                                            const real_t radius,
+                                            const real_t omega,
+                                            const real_t z_offset,
+                                            const real_t z_amp,
+                                            const real_t z_omega,
+                                            const real_t t,
+                                            real_t q[4]) {
+  real_t p[3] = {0};
+  test_calib_imucam_env_traj_pos(center,
+                                 radius,
+                                 omega,
+                                 z_offset,
+                                 z_amp,
+                                 z_omega,
+                                 t,
+                                 p);
+  const real_t up_axis[3] = {1.0, 0.0, 0.0};
+  real_t T_WC[4 * 4] = {0};
+  lookat(p, center, up_axis, T_WC);
+  tf_quat_get(T_WC, q);
+}
+
+int test_calib_imucam_env(void) {
+  // Ground truth camera
+  const int cam_res[2] = {640, 480};
+  const char *proj_model = "pinhole";
+  const char *dist_model = "radtan4";
+  const real_t cam_data_gnd[8] = {320.0, 320.0, 320.0, 240.0, 0, 0, 0, 0};
+  const real_t cam_ext[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0}; // cam0, fixed
+  const real_t imu_ext_gnd[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+
+  camera_t camera; // for simulating the ground-truth views
+  camera_setup(&camera, 0, cam_res, proj_model, dist_model, cam_data_gnd);
+
+  // Target: 1.5m ahead, identity orientation
+  sim_target_t target = {
+      .target_id = 0,
+      .num_rows = 6,
+      .num_cols = 6,
+      .tag_size = 0.08,
+      .tag_spacing = 0.3,
+      .pose = {0.0, 0.0, 1.5, 1.0, 0.0, 0.0, 0.0},
+  };
+  real_t center_W[3] = {0};
+  sim_target_center_pos(&target, center_W);
+
+  // Trajectory: camera orbits the target on a circle in the xy-plane while
+  // bobbing up and down sinusoidally in depth, always looking at the
+  // target's center via lookat(). Orientation (and hence gyroscope) is
+  // derived by finite-differencing consecutive lookat() quaternions, and
+  // acceleration is the trajectory's exact analytic second derivative, so
+  // both IMU channels stay physically consistent with the simulated camera
+  // poses (up to the O(dt) finite-difference error on the gyroscope).
+  const real_t g_world[3] = {0.0, 0.0, 9.81};
+  const real_t dt = 0.01;
+  const int steps_per_transition = 50; // 0.5s per transition, fine steps
+  const int num_states = 15;
+  const real_t t_total = (num_states - 1) * steps_per_transition * dt;
+  const real_t radius = 0.3;                 // [m] orbit radius in the xy-plane
+  const real_t omega = 2.0 * M_PI / t_total; // one full revolution
+  const real_t z_offset = 1.2;               // [m] standoff in front of target
+  const real_t z_amp = 0.3;                  // [m] up/down bob amplitude
+  const real_t z_omega = 2.0 * omega;        // two bob cycles per revolution
+
+  calib_imucam_t *calib = calib_imucam_malloc();
+  calib->verbose = 0;
+  calib->max_iter = 150;
+  const real_t cam_data_init[8] = {300.0, 300.0, 310.0, 235.0, 0, 0, 0, 0};
+  calib_imucam_add_camera(calib,
+                          0,
+                          cam_res,
+                          proj_model,
+                          dist_model,
+                          cam_data_init,
+                          cam_ext);
+  calib_imucam_add_imu(calib, 1.0 / dt, 0.1, 0.1, 0.1, 0.1, 9.81, imu_ext_gnd);
+
+  timestamp_t ts = 0;
+
+  // A few IMU samples before the first view -- needed to bootstrap the
+  // initial attitude estimate (calib_imucam_add_view() bails if the IMU
+  // buffer is still empty at the very first call).
+  for (int i = 5; i > 0; i--) {
+    const real_t t0 = -i * dt;
+    real_t q0[4] = {0};
+    real_t q1[4] = {0};
+    test_calib_imucam_env_traj_quat(center_W,
+                                    radius,
+                                    omega,
+                                    z_offset,
+                                    z_amp,
+                                    z_omega,
+                                    t0,
+                                    q0);
+    test_calib_imucam_env_traj_quat(center_W,
+                                    radius,
+                                    omega,
+                                    z_offset,
+                                    z_amp,
+                                    z_omega,
+                                    t0 + dt,
+                                    q1);
+
+    real_t q0_inv[4] = {0};
+    quat_inv(q0, q0_inv);
+    real_t dq[4] = {0};
+    quat_mul(q0_inv, q1, dq);
+    const real_t gyr[3] = {2.0 * dq[1] / dt,
+                           2.0 * dq[2] / dt,
+                           2.0 * dq[3] / dt};
+
+    real_t a_world[3] = {0};
+    test_calib_imucam_env_traj_acc(radius, omega, z_amp, z_omega, t0, a_world);
+    real_t a_plus_g[3] = {0};
+    vec3_add(a_world, g_world, a_plus_g);
+    real_t acc[3] = {0};
+    quat_transform(q0_inv, a_plus_g, acc);
+
+    calib_imucam_add_imu_measurement(calib,
+                                     -i * (timestamp_t) (dt * 1e9),
+                                     acc,
+                                     gyr);
+  }
+
+  const int max_corners = target.num_rows * target.num_cols * 4;
+  int tag_ids[max_corners];
+  int corner_indices[max_corners];
+  real_t object_points[max_corners * 3];
+  real_t keypoints[max_corners * 2];
+
+  for (int s = 0; s < num_states; s++) {
+    // Ground-truth pose at this state
+    const real_t t_sec = s * steps_per_transition * dt;
+    real_t p_s[3] = {0};
+    real_t q_s[4] = {0};
+    test_calib_imucam_env_traj_pos(center_W,
+                                   radius,
+                                   omega,
+                                   z_offset,
+                                   z_amp,
+                                   z_omega,
+                                   t_sec,
+                                   p_s);
+    test_calib_imucam_env_traj_quat(center_W,
+                                    radius,
+                                    omega,
+                                    z_offset,
+                                    z_amp,
+                                    z_omega,
+                                    t_sec,
+                                    q_s);
+    real_t pose_gnd[7] =
+        {p_s[0], p_s[1], p_s[2], q_s[0], q_s[1], q_s[2], q_s[3]};
+
+    const int num_corners = sim_target_view(&target,
+                                            &camera,
+                                            pose_gnd,
+                                            tag_ids,
+                                            corner_indices,
+                                            object_points,
+                                            keypoints);
+    MU_ASSERT(num_corners > 0);
+
+    const int num_views_before = calib->num_views;
+    calib_imucam_add_view(calib,
+                          ts,
+                          s,
+                          0,
+                          num_corners,
+                          tag_ids,
+                          corner_indices,
+                          object_points,
+                          keypoints);
+    MU_ASSERT(calib->num_views > num_views_before);
+
+    // Advance ground truth + push IMU samples for the next transition
+    if (s < num_states - 1) {
+      for (int k = 0; k < steps_per_transition; k++) {
+        const real_t t0 = t_sec + k * dt;
+        ts += (timestamp_t) (dt * 1e9);
+
+        real_t q0[4] = {0};
+        real_t q1[4] = {0};
+        test_calib_imucam_env_traj_quat(center_W,
+                                        radius,
+                                        omega,
+                                        z_offset,
+                                        z_amp,
+                                        z_omega,
+                                        t0,
+                                        q0);
+        test_calib_imucam_env_traj_quat(center_W,
+                                        radius,
+                                        omega,
+                                        z_offset,
+                                        z_amp,
+                                        z_omega,
+                                        t0 + dt,
+                                        q1);
+
+        real_t q0_inv[4] = {0};
+        quat_inv(q0, q0_inv);
+        real_t dq[4] = {0};
+        quat_mul(q0_inv, q1, dq);
+        const real_t gyr[3] = {2.0 * dq[1] / dt,
+                               2.0 * dq[2] / dt,
+                               2.0 * dq[3] / dt};
+
+        real_t a_world[3] = {0};
+        test_calib_imucam_env_traj_acc(radius,
+                                       omega,
+                                       z_amp,
+                                       z_omega,
+                                       t0,
+                                       a_world);
+        real_t a_plus_g[3] = {0};
+        vec3_add(a_world, g_world, a_plus_g);
+        real_t acc[3] = {0};
+        quat_transform(q0_inv, a_plus_g, acc);
+
+        calib_imucam_add_imu_measurement(calib, ts, acc, gyr);
+      }
+    }
+  }
+
+  MU_ASSERT(calib->num_views == num_states);
+  MU_ASSERT(calib->num_imu_factors == num_states - 1);
+  calib_imucam_solve(calib);
+
+  real_t rmse = 0.0;
+  real_t mean = 0.0;
+  real_t median = 0.0;
+  calib_imucam_errors(calib, &rmse, &mean, &median);
+  MU_ASSERT(rmse < 0.1);
+  MU_ASSERT(mean < 0.1);
+  MU_ASSERT(median < 0.1);
+  for (int i = 0; i < 4; i++) {
+    MU_ASSERT(fabs(calib->camera[0].data[i] - cam_data_gnd[i]) < 30.0);
+  }
+
+  calib_imucam_free(calib);
+
+  return 0;
+}
 
 #define TEST_DATA_PATH "/data/euroc/"
 #define TEST_CAM_APRIL TEST_DATA_PATH "cam_april"
@@ -10965,6 +11424,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_fltcmp2);
   MU_ADD_TEST(test_cumsum);
   MU_ADD_TEST(test_logspace);
+  MU_ADD_TEST(test_linspace);
   MU_ADD_TEST(test_pythag);
   MU_ADD_TEST(test_lerp);
   MU_ADD_TEST(test_lerp3);
@@ -11241,6 +11701,8 @@ void test_suite(void) {
   MU_ADD_TEST(test_sim_target_view);
 
   // CAMERA CALIBRATION
+  MU_ADD_TEST(test_calib_camera_env);
+  MU_ADD_TEST(test_calib_imucam_env);
   MU_ADD_TEST(test_calib_camera_mono_batch);
   MU_ADD_TEST(test_calib_camera_mono_incremental);
 
