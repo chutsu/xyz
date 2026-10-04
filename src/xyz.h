@@ -34,6 +34,7 @@
  *   - TIMELINE .......... Sensor event ordering and loading
  *   - SIMULATION ........ Synthetic trajectories, IMU, and camera data
  *   - CALIB-CAMERA ...... Camera intrinsics/extrinsics calibration
+ *   - CALIB-IMUCAM ...... Camera-IMU calibration
  *   - EUROC ............. EuRoC MAV dataset loader
  *   - KITTI ............. KITTI dataset loader
  *   - OPENGL ............ OpenGL math, shaders, cameras
@@ -3516,7 +3517,7 @@ void calib_camera_linsolve(const void *data,
 void calib_camera_solve(calib_camera_t *calib);
 
 /*******************************************************************************
- * IMU-CAMERA CALIBRATION
+ * CAMERA-IMU CALIBRATION
  ******************************************************************************/
 
 ////////////////////////
@@ -3593,7 +3594,7 @@ void calib_imucam_frameset_add(calib_imucam_frameset_t *fs,
                                const real_t *kps);
 
 ////////////////////////////
-// IMU-CAMERA CALIBRATOR  //
+// CAMERA-IMU CALIBRATOR  //
 ////////////////////////////
 
 typedef struct calib_imucam_t {
