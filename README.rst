@@ -39,6 +39,7 @@ Modules
 - TIMELINE - Sensor event ordering and loading
 - SIMULATION - Synthetic trajectories, IMU, and camera data
 - CALIB-CAMERA - Camera intrinsics/extrinsics calibration
+- CALIB-IMUCAM - Camera-IMU calibration
 - EUROC - EuRoC MAV dataset loader
 - KITTI - KITTI dataset loader
 - OPENGL - OpenGL math, shaders, cameras
