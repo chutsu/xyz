@@ -17846,6 +17846,139 @@ int imu_factor_eval(void *factor_ptr) {
   return 0;
 }
 
+////////////////
+// GPS FACTOR //
+////////////////
+
+/**
+ * Setup GPS factor. Constrains pose_est against a GPS fix, correcting
+ * for the antenna's lever arm: p_est + R(q_est) * t_body_gps. Both pose and
+ * gps_lever are optimizable parameter blocks (pointers into the
+ * caller's own state).
+ */
+void gps_factor_setup(gps_factor_t *factor,
+                      real_t *pose,
+                      real_t *gps_lever,
+                      const real_t gps_meas[3],
+                      const real_t var[3]) {
+  assert(factor != NULL);
+  assert(pose != NULL);
+  assert(gps_lever != NULL);
+  assert(gps_meas != NULL);
+  assert(var != NULL);
+
+  // Parameters
+  factor->pose_est = pose;
+  factor->gps_lever = gps_lever;
+
+  // Measurement
+  factor->gps_meas[0] = gps_meas[0];
+  factor->gps_meas[1] = gps_meas[1];
+  factor->gps_meas[2] = gps_meas[2];
+
+  // Measurement covariance matrix
+  zeros(factor->covar, 3, 3);
+  factor->covar[0] = var[0];
+  factor->covar[4] = var[1];
+  factor->covar[8] = var[2];
+
+  // Square root information matrix
+  zeros(factor->sqrt_info, 3, 3);
+  factor->sqrt_info[0] = sqrt(1.0 / factor->covar[0]);
+  factor->sqrt_info[4] = sqrt(1.0 / factor->covar[4]);
+  factor->sqrt_info[8] = sqrt(1.0 / factor->covar[8]);
+
+  // Factor residuals, parameters and Jacobians
+  factor->r_size = 3;
+  factor->num_params = 2;
+  factor->param_types[0] = POSE_PARAM;
+  factor->param_types[1] = POSITION_PARAM;
+  factor->params[0] = factor->pose_est;
+  factor->params[1] = factor->gps_lever;
+  factor->jacs[0] = factor->J_pose;
+  factor->jacs[1] = factor->J_lever_arm;
+}
+
+/**
+ * Evaluate GPS factor
+ * @returns `0` for success, `-1` for failure
+ */
+int gps_factor_eval(void *factor_ptr) {
+  assert(factor_ptr != NULL);
+  gps_factor_t *factor = (gps_factor_t *) factor_ptr;
+
+  // Map params
+  const real_t *p_est = factor->params[0];
+  const real_t q_est[4] = {factor->params[0][3],
+                           factor->params[0][4],
+                           factor->params[0][5],
+                           factor->params[0][6]};
+
+  // Predicted antenna position: p_est + R(q_est) * t_body_gps
+  const real_t *t_body_gps = factor->params[1];
+  real_t arm_W[3] = {0};
+  quat_transform(q_est, t_body_gps, arm_W);
+  const real_t p_hat[3] = {p_est[0] + arm_W[0],
+                           p_est[1] + arm_W[1],
+                           p_est[2] + arm_W[2]};
+
+  // -- Set residuals
+  // r = factor.sqrt_info * (gps_meas - p_hat)
+  const real_t r_raw[3] = {factor->gps_meas[0] - p_hat[0],
+                           factor->gps_meas[1] - p_hat[1],
+                           factor->gps_meas[2] - p_hat[2]};
+  dot(factor->sqrt_info, 3, 3, r_raw, 3, 1, factor->r);
+
+  // Calculate Jacobians w.r.t. pose_est
+  // -- d(r)/d(dtrans) = -I3
+  // -- d(r)/d(dtheta) = R(q_est) * skew(t_body_gps), since perturbing
+  //    q_est -> q_est * dq(dtheta) rotates R(q_est) by
+  //    R(q_est) * (I + skew(dtheta)), and skew(dtheta) * t_body_gps =
+  //    -skew(t_body_gps) * dtheta.
+  real_t C_WB[3 * 3] = {0};
+  quat2rot(q_est, C_WB);
+
+  real_t lever_skew[3 * 3] = {0};
+  skew(t_body_gps, lever_skew);
+
+  real_t C_skew[3 * 3] = {0};
+  dot(C_WB, 3, 3, lever_skew, 3, 3, C_skew);
+
+  real_t J_pose[3 * 6] = {0};
+  J_pose[0] = -1.0;
+  J_pose[1] = 0.0;
+  J_pose[2] = 0.0;
+  J_pose[6] = 0.0;
+  J_pose[7] = -1.0;
+  J_pose[8] = 0.0;
+  J_pose[12] = 0.0;
+  J_pose[13] = 0.0;
+  J_pose[14] = -1.0;
+
+  J_pose[3] = C_skew[0];
+  J_pose[4] = C_skew[1];
+  J_pose[5] = C_skew[2];
+  J_pose[9] = C_skew[3];
+  J_pose[10] = C_skew[4];
+  J_pose[11] = C_skew[5];
+  J_pose[15] = C_skew[6];
+  J_pose[16] = C_skew[7];
+  J_pose[17] = C_skew[8];
+
+  dot(factor->sqrt_info, 3, 3, J_pose, 3, 6, factor->jacs[0]);
+
+  // Calculate Jacobians w.r.t. gps_lever
+  // -- d(r)/d(d_lever_arm) = -R(q_est), since p_hat is linear in t_body_gps
+  //    through R(q_est) * t_body_gps.
+  real_t J_lever_arm[3 * 3] = {0};
+  for (int i = 0; i < 9; i++) {
+    J_lever_arm[i] = -C_WB[i];
+  }
+  dot(factor->sqrt_info, 3, 3, J_lever_arm, 3, 3, factor->jacs[1]);
+
+  return 0;
+}
+
 //////////////////
 // LIDAR FACTOR //
 //////////////////

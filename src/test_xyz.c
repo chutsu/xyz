@@ -6306,6 +6306,31 @@ int test_between_factor(void) {
   return 0;
 }
 
+int test_gps_factor(void) {
+  // Body pose -- a non-trivial rotation so the lever arm's rotation
+  // Jacobian block is actually exercised
+  real_t pose[7] = {1.0, 2.0, 0.5, 0.9, 0.1, 0.2, 0.3};
+  quat_normalize(pose + 3);
+
+  // Antenna offset from the body origin, body frame
+  real_t gps_lever[3] = {0.1, 0.0, 0.05};
+
+  // GPS position fix, world frame
+  const real_t gps_meas[3] = {1.2, 1.9, 0.6};
+
+  gps_factor_t factor;
+  const real_t var[3] = {0.1, 0.1, 0.1};
+  gps_factor_setup(&factor, pose, gps_lever, gps_meas, var);
+
+  // Check Jacobians
+  const real_t step_size = 1e-8;
+  const real_t tol = 1e-4;
+  CHECK_FACTOR_J(0, factor, gps_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(1, factor, gps_factor_eval, step_size, tol, 0);
+
+  return 0;
+}
+
 int test_ba_factor(void) {
   // Camera pose
   real_t pose[7] = {0.01, 0.01, 0.0, 0.5, -0.5, 0.5, -0.5};
@@ -11350,6 +11375,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_triangulate_batch);
   MU_ADD_TEST(test_pose_factor);
   MU_ADD_TEST(test_between_factor);
+  MU_ADD_TEST(test_gps_factor);
   MU_ADD_TEST(test_ba_factor);
   MU_ADD_TEST(test_camera_factor);
   MU_ADD_TEST(test_imu_buffer_setup);

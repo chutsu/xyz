@@ -2708,6 +2708,37 @@ void imu_factor_preintegrate(imu_factor_t *factor);
 int imu_factor_residuals(imu_factor_t *factor, real_t **params, real_t *r_out);
 int imu_factor_eval(void *factor_ptr);
 
+////////////////
+// GPS FACTOR //
+////////////////
+
+typedef struct gps_factor_t {
+  real_t gps_meas[3]; // GPS position fix, world frame
+  real_t *pose_est;
+  real_t *gps_lever; // Antenna offset from body origin, body frame
+
+  real_t covar[3 * 3];
+  real_t sqrt_info[3 * 3];
+
+  real_t r[3];
+  int r_size;
+
+  int param_types[2];
+  real_t *params[2];
+  int num_params;
+
+  real_t *jacs[2];
+  real_t J_pose[3 * 6];
+  real_t J_lever_arm[3 * 3];
+} gps_factor_t;
+
+void gps_factor_setup(gps_factor_t *factor,
+                      real_t *pose,
+                      real_t *gps_lever,
+                      const real_t gps_meas[3],
+                      const real_t var[3]);
+int gps_factor_eval(void *factor_ptr);
+
 //////////////////
 // LIDAR FACTOR //
 //////////////////
