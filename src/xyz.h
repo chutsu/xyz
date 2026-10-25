@@ -3327,20 +3327,44 @@ sim_camera_data_t *sim_camera_circle_trajectory(const sim_circle_t *conf,
 
 /** Sim Calibration Target **/
 typedef struct sim_target_t {
+  // Target settings
   int target_id;
   int num_rows;
   int num_cols;
   real_t tag_size;
   real_t tag_spacing;
-  real_t pose[7]; // T_WT
+
+  // Target pose
+  real_t pose[7]; // T_world_target
+
+  // Target center
+  real_t center_cx;
+  real_t center_cy;
+  real_t center_pos[3];
 } sim_target_t;
 
+void sim_target_setup(sim_target_t *target,
+                      const int target_id,
+                      const int num_rows,
+                      const int num_cols,
+                      const real_t tag_size,
+                      const real_t tag_spacing,
+                      const real_t pose[7]);
 real_t sim_target_width(const sim_target_t *target);
 real_t sim_target_height(const sim_target_t *target);
 void sim_target_center_xy(const sim_target_t *target, real_t *cx, real_t *cy);
 void sim_target_center_pos(const sim_target_t *target, real_t center_W[3]);
 void sim_target_center_pose(const sim_target_t *target, real_t center_pose[7]);
 void sim_target_center_tf(const sim_target_t *target, real_t T_center[4 * 4]);
+
+void sim_target_cam_grid(const sim_target_t *target,
+                         const real_t grid_width,
+                         const real_t grid_height,
+                         const real_t standoff,
+                         const int grid_rows,
+                         const int grid_cols,
+                         const int max_poses,
+                         real_t cam_poses[][7]);
 
 int sim_target_view(const sim_target_t *target,
                     const camera_t *cam_params,

@@ -8787,6 +8787,24 @@ int test_sim_target_view(void) {
  * CAMERA CALIBRATION
  *****************************************************************************/
 
+static sim_target_t setup_sim_target(void) {
+  const real_t target_pos[3] = {0.0, 0.0, 0.0};
+  const real_t target_ypr[3] = {-M_PI / 2.0, 0.0, -M_PI / 2.0};
+  EULER2QUAT(target_ypr, target_q);
+  const real_t target_pose[7] = {target_pos[0],
+                                 target_pos[1],
+                                 target_pos[2],
+                                 target_q[0],
+                                 target_q[1],
+                                 target_q[2],
+                                 target_q[3]};
+
+  sim_target_t target_config;
+  sim_target_setup(&target_config, 0, 6, 6, 0.08, 0.3, target_pose);
+
+  return target_config;
+}
+
 int test_calib_camera_env(void) {
   // Initialize camera intrinsics
   const int cam_res[2] = {640, 480};
@@ -8798,82 +8816,25 @@ int test_calib_camera_env(void) {
   // const real_t cam1_int[8] = {320.0, 320.0, 240.0, 240.0, 0, 0, 0, 0};
 
   // Setup calib target
-  // -- calibration target world pose
-  const real_t target_pos[3] = {0.0, 0.0, 0.0};
-  const real_t target_ypr[3] = {-M_PI / 2.0, 0.0, -M_PI / 2.0};
-  EULER2QUAT(target_ypr, target_q);
-  // -- calibration target config
-  sim_target_t target_config;
-  target_config.target_id = 0;
-  target_config.num_rows = 6;
-  target_config.num_cols = 6;
-  target_config.tag_size = 0.08;
-  target_config.tag_spacing = 0.3;
-  target_config.pose[0] = target_pos[0];
-  target_config.pose[1] = target_pos[1];
-  target_config.pose[2] = target_pos[2];
-  target_config.pose[3] = target_q[0];
-  target_config.pose[4] = target_q[1];
-  target_config.pose[5] = target_q[2];
-  target_config.pose[6] = target_q[3];
-  // -- Form target center xy
-  real_t T_WT[4 * 4] = {0};
-  real_t target_cx = 0.0;
-  real_t target_cy = 0.0;
-  tf(target_config.pose, T_WT);
-  sim_target_center_xy(&target_config, &target_cx, &target_cy);
-  // -- Form target center 3d
-  real_t center_W[3] = {0};
-  sim_target_center_pos(&target_config, center_W);
+  sim_target_t target_config = setup_sim_target();
 
-  // Form a grid of camera viewpoints standing off in front of the target
-  // (along its local +z), each looking at the target's center
+  // Form a grid of camera viewpoints standing off in front of the target,
+  // each looking at the target's center
   const real_t grid_width = 0.4;  // [m] spread along the target's x-axis
   const real_t grid_height = 0.4; // [m] spread along the target's y-axis
   const real_t standoff = 0.8;    // [m] distance in front of the target
   const int grid_rows = 5;
   const int grid_cols = 5;
-
-  const real_t half_w = grid_width / 2.0;
-  const real_t half_h = grid_height / 2.0;
-  const real_t world_up[3] = {0.0, 0.0, 1.0};
-
-  real_t y_vals[grid_rows];
-  real_t x_vals[grid_cols];
-  linspace(-half_h, half_h, grid_rows, y_vals);
-  linspace(-half_w, half_w, grid_cols, x_vals);
-
   const int num_poses = grid_rows * grid_cols;
   real_t cam_poses[num_poses][7];
-  int pose_idx = 0;
-
-  for (int row = 0; row < grid_rows; ++row) {
-    const real_t y = y_vals[row];
-
-    for (int col = 0; col < grid_cols; ++col) {
-      const real_t x = x_vals[col];
-
-      // Camera position: offset from the target center in the target's
-      // own x/y plane, standing off along its z-axis
-      const real_t p_T[3] = {x + target_cx, y + target_cy, standoff};
-      real_t p_W[3] = {0};
-      tf_point(T_WT, p_T, p_W);
-
-      // Camera orientation: always facing the target center
-      real_t T_WC[4 * 4] = {0};
-      lookat(p_W, center_W, world_up, T_WC);
-
-      // Perturb the pose a little, so the viewpoints aren't perfectly
-      // regular -- a small random offset per translation and rotation axis
-      for (int i = 0; i < 3; i++) {
-        tf_perturb_trans(T_WC, randf(-0.01, 0.01), i);
-        tf_perturb_rot(T_WC, randf(-0.01, 0.01), i);
-      }
-
-      tf_vector(T_WC, cam_poses[pose_idx]);
-      pose_idx++;
-    }
-  }
+  sim_target_cam_grid(&target_config,
+                      grid_width,
+                      grid_height,
+                      standoff,
+                      grid_rows,
+                      grid_cols,
+                      num_poses,
+                      cam_poses);
 
   // Simulate each view and calibrate against them, starting from a
   // deliberately wrong initial guess -- since there's no noise in the

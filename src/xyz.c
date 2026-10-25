@@ -21505,6 +21505,38 @@ sim_camera_data_t *sim_camera_circle_trajectory(const sim_circle_t *conf,
 ///////////////////////
 
 /**
+ * Setup a calibration target.
+ */
+void sim_target_setup(sim_target_t *target,
+                      const int target_id,
+                      const int num_rows,
+                      const int num_cols,
+                      const real_t tag_size,
+                      const real_t tag_spacing,
+                      const real_t pose[7]) {
+  assert(target != NULL);
+  assert(pose != NULL);
+
+  memset(target, 0, sizeof(sim_target_t));
+  target->target_id = target_id;
+  target->num_rows = num_rows;
+  target->num_cols = num_cols;
+  target->tag_size = tag_size;
+  target->tag_spacing = tag_spacing;
+
+  target->pose[0] = pose[0];
+  target->pose[1] = pose[1];
+  target->pose[2] = pose[2];
+  target->pose[3] = pose[3];
+  target->pose[4] = pose[4];
+  target->pose[5] = pose[5];
+  target->pose[6] = pose[6];
+
+  sim_target_center_xy(target, &target->center_cx, &target->center_cy);
+  sim_target_center_pos(target, target->center_pos);
+}
+
+/**
  * Calculate a calibration target's physical width [m] (its x-axis
  * extent in the target frame).
  */
@@ -21593,6 +21625,71 @@ void sim_target_center_tf(const sim_target_t *target, real_t T_center[4 * 4]) {
   real_t center_pose[7] = {0};
   sim_target_center_pose(target, center_pose);
   tf(center_pose, T_center);
+}
+
+/**
+ * Form a grid of camera viewpoints standing off in front of `target`
+ * (along its local +z), each looking at the target's center, with a small
+ * random perturbation per pose so the viewpoints aren't perfectly regular.
+ * Fills `cam_poses[grid_rows * grid_cols][7]` -- `max_poses` must be the
+ * actual capacity of `cam_poses` (its number of rows), so a caller whose
+ * grid_rows/grid_cols don't match the array it allocated gets caught by
+ * the assert below instead of a silent out-of-bounds write.
+ */
+void sim_target_cam_grid(const sim_target_t *target,
+                         const real_t grid_width,
+                         const real_t grid_height,
+                         const real_t standoff,
+                         const int grid_rows,
+                         const int grid_cols,
+                         const int max_poses,
+                         real_t cam_poses[][7]) {
+  assert(target != NULL);
+  assert(cam_poses != NULL);
+  assert(grid_rows * grid_cols <= max_poses);
+
+  real_t T_WT[4 * 4] = {0};
+  tf(target->pose, T_WT);
+
+  const real_t half_w = grid_width / 2.0;
+  const real_t half_h = grid_height / 2.0;
+  const real_t world_up[3] = {0.0, 0.0, 1.0};
+
+  real_t y_vals[grid_rows];
+  real_t x_vals[grid_cols];
+  linspace(-half_h, half_h, grid_rows, y_vals);
+  linspace(-half_w, half_w, grid_cols, x_vals);
+
+  int pose_idx = 0;
+  for (int row = 0; row < grid_rows; ++row) {
+    const real_t y = y_vals[row];
+
+    for (int col = 0; col < grid_cols; ++col) {
+      const real_t x = x_vals[col];
+
+      // Camera position: offset from the target center in the target's
+      // own x/y plane, standing off along its z-axis
+      const real_t p_T[3] = {x + target->center_cx,
+                             y + target->center_cy,
+                             standoff};
+      real_t p_W[3] = {0};
+      tf_point(T_WT, p_T, p_W);
+
+      // Camera orientation: always facing the target center
+      real_t T_WC[4 * 4] = {0};
+      lookat(p_W, target->center_pos, world_up, T_WC);
+
+      // Perturb the pose a little, so the viewpoints aren't perfectly
+      // regular -- a small random offset per translation and rotation axis
+      for (int i = 0; i < 3; i++) {
+        tf_perturb_trans(T_WC, randf(-0.01, 0.01), i);
+        tf_perturb_rot(T_WC, randf(-0.01, 0.01), i);
+      }
+
+      tf_vector(T_WC, cam_poses[pose_idx]);
+      pose_idx++;
+    }
+  }
 }
 
 /**
