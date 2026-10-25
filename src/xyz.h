@@ -2461,13 +2461,24 @@ int check_factor_so3_jacobian(const void *factor,
                               const real_t tol,
                               const int verbose);
 
-/////////////////
-// POSE FACTOR //
-/////////////////
+//////////////////
+// PRIOR FACTOR //
+//////////////////
 
-typedef struct pose_factor_t {
-  real_t pose_meas[7]; // [pos_meas(3); quat_meas(4)]
-  real_t *pose_est;
+// Pins a parameter block to its current value as a prior. Handles two
+// families of param_type, same as CHECK_FACTOR_J's own dispatch:
+//  - Pose-like (POSE_PARAM, EXTRINSIC_PARAM, FIDUCIAL_PARAM): raw
+//    storage is a 7-vector [pos(3); quat(4)], minimal/residual size is
+//    6, and the rotation block uses the same quaternion-aware
+//    residual/Jacobian pose_factor_t used to compute on its own.
+//  - Plain-additive (POSITION_PARAM, VELOCITY_PARAM, FEATURE_PARAM,
+//    IMU_BIASES_PARAM, ...): raw storage == minimal size == r_size,
+//    residual is meas - est, Jacobian is -I.
+// meas[] holds whichever of those the param_type calls for -- only the
+// first `r_size` (plain-additive) or 7 (pose-like) entries are used.
+typedef struct prior_factor_t {
+  real_t meas[7];
+  real_t *param_est;
 
   real_t covar[6 * 6];
   real_t sqrt_info[6 * 6];
@@ -2480,13 +2491,14 @@ typedef struct pose_factor_t {
   int num_params;
 
   real_t *jacs[1];
-  real_t J_pose[6 * 6];
-} pose_factor_t;
+  real_t J[6 * 6];
+} prior_factor_t;
 
-void pose_factor_setup(pose_factor_t *factor,
-                       real_t *pose,
-                       const real_t var[6]);
-int pose_factor_eval(void *factor);
+void prior_factor_setup(prior_factor_t *factor,
+                        real_t *param,
+                        const int param_type,
+                        const real_t var[6]);
+int prior_factor_eval(void *factor_ptr);
 
 ////////////////////
 // BETWEEN FACTOR //

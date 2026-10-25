@@ -6264,19 +6264,34 @@ int test_triangulate_batch(void) {
   return 0;
 }
 
-int test_pose_factor(void) {
+int test_prior_factor_vec3(void) {
+  real_t vec[3] = {0.1, 0.2, 0.3};
+
+  prior_factor_t factor;
+  const real_t var[6] = {0.1, 0.1, 0.1, 0.0, 0.0, 0.0};
+  prior_factor_setup(&factor, vec, POSITION_PARAM, var);
+
+  // Check Jacobians
+  const real_t step_size = 1e-8;
+  const real_t tol = 1e-4;
+  CHECK_FACTOR_J(0, factor, prior_factor_eval, step_size, tol, 0);
+
+  return 0;
+}
+
+int test_prior_factor_pose(void) {
   /* Pose */
   real_t pose[7] = {0.1, 0.2, 0.3, 1.0, 0.0, 0.0, 0.0};
 
-  /* Setup pose factor */
-  pose_factor_t factor;
+  /* Setup prior factor */
+  prior_factor_t factor;
   real_t var[6] = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1};
-  pose_factor_setup(&factor, pose, var);
+  prior_factor_setup(&factor, pose, POSE_PARAM, var);
 
   /* Check Jacobians */
   const real_t step_size = 1e-8;
   const real_t tol = 1e-4;
-  CHECK_FACTOR_J(0, factor, pose_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(0, factor, prior_factor_eval, step_size, tol, 0);
 
   return 0;
 }
@@ -11373,7 +11388,8 @@ void test_suite(void) {
   MU_ADD_TEST(test_feature);
   MU_ADD_TEST(test_camera);
   MU_ADD_TEST(test_triangulate_batch);
-  MU_ADD_TEST(test_pose_factor);
+  MU_ADD_TEST(test_prior_factor_vec3);
+  MU_ADD_TEST(test_prior_factor_pose);
   MU_ADD_TEST(test_between_factor);
   MU_ADD_TEST(test_gps_factor);
   MU_ADD_TEST(test_ba_factor);

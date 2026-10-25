@@ -15804,138 +15804,155 @@ int check_factor_so3_jacobian(const void *factor,
   return retval;
 }
 
-/////////////////
-// POSE FACTOR //
-/////////////////
+//////////////////
+// PRIOR FACTOR //
+//////////////////
 
 /**
- * Setup pose factor
+ * Setup prior factor. Pins param's current value as the prior.
+ * param_type decides how: pose-like types (POSE_PARAM, EXTRINSIC_PARAM,
+ * FIDUCIAL_PARAM) get the 7-raw/6-minimal quaternion-aware treatment;
+ * everything else (POSITION_PARAM, VELOCITY_PARAM, FEATURE_PARAM,
+ * IMU_BIASES_PARAM, ...) is treated as a plain additive vector, where
+ * raw size == minimal size == r_size. Only param types with minimal
+ * size <= 6 are supported, matching this factor's fixed-size buffers.
  */
-void pose_factor_setup(pose_factor_t *factor,
-                       real_t *pose,
-                       const real_t var[6]) {
+void prior_factor_setup(prior_factor_t *factor,
+                        real_t *param,
+                        const int param_type,
+                        const real_t var[6]) {
   assert(factor != NULL);
-  assert(pose != NULL);
+  assert(param != NULL);
   assert(var != NULL);
 
-  // Parameters
-  factor->pose_est = pose;
+  const int is_pose_like = (param_type == POSE_PARAM) ||
+                           (param_type == EXTRINSIC_PARAM) ||
+                           (param_type == FIDUCIAL_PARAM);
+  const int local_size = (int) param_local_size(param_type);
+  const int raw_size = is_pose_like ? 7 : local_size;
+  assert(local_size <= 6);
 
-  // Measurement
-  factor->pose_meas[0] = pose[0];
-  factor->pose_meas[1] = pose[1];
-  factor->pose_meas[2] = pose[2];
-  factor->pose_meas[3] = pose[3];
-  factor->pose_meas[4] = pose[4];
-  factor->pose_meas[5] = pose[5];
-  factor->pose_meas[6] = pose[6];
+  // Parameters
+  factor->param_est = param;
+
+  // Measurement: pin the current value as the prior
+  for (int i = 0; i < raw_size; i++) {
+    factor->meas[i] = param[i];
+  }
 
   // Measurement covariance matrix
-  zeros(factor->covar, 6, 6);
-  factor->covar[0] = var[0];
-  factor->covar[7] = var[1];
-  factor->covar[14] = var[2];
-  factor->covar[21] = var[3];
-  factor->covar[28] = var[4];
-  factor->covar[35] = var[5];
+  zeros(factor->covar, local_size, local_size);
+  for (int i = 0; i < local_size; i++) {
+    factor->covar[i * local_size + i] = var[i];
+  }
 
   // Square root information matrix
-  zeros(factor->sqrt_info, 6, 6);
-  factor->sqrt_info[0] = sqrt(1.0 / factor->covar[0]);
-  factor->sqrt_info[7] = sqrt(1.0 / factor->covar[7]);
-  factor->sqrt_info[14] = sqrt(1.0 / factor->covar[14]);
-  factor->sqrt_info[21] = sqrt(1.0 / factor->covar[21]);
-  factor->sqrt_info[28] = sqrt(1.0 / factor->covar[28]);
-  factor->sqrt_info[35] = sqrt(1.0 / factor->covar[35]);
+  zeros(factor->sqrt_info, local_size, local_size);
+  for (int i = 0; i < local_size; i++) {
+    factor->sqrt_info[i * local_size + i] =
+        sqrt(1.0 / factor->covar[i * local_size + i]);
+  }
 
   // Factor residuals, parameters and Jacobians
-  factor->r_size = 6;
+  factor->r_size = local_size;
   factor->num_params = 1;
-  factor->param_types[0] = POSE_PARAM;
-  factor->params[0] = factor->pose_est;
-  factor->jacs[0] = factor->J_pose;
+  factor->param_types[0] = param_type;
+  factor->params[0] = factor->param_est;
+  factor->jacs[0] = factor->J;
 }
 
 /**
- * Evaluate pose factor
+ * Evaluate prior factor
  * @returns `0` for success, `-1` for failure
  */
-int pose_factor_eval(void *factor_ptr) {
+int prior_factor_eval(void *factor_ptr) {
   assert(factor_ptr != NULL);
-  pose_factor_t *factor = (pose_factor_t *) factor_ptr;
+  prior_factor_t *factor = (prior_factor_t *) factor_ptr;
 
-  // Map params
-  const real_t r_est[3] = {factor->params[0][0],
-                           factor->params[0][1],
-                           factor->params[0][2]};
-  const real_t q_est[4] = {factor->params[0][3],
-                           factor->params[0][4],
-                           factor->params[0][5],
-                           factor->params[0][6]};
-  const real_t *r_meas = factor->pose_meas;
-  const real_t *q_meas = factor->pose_meas + 3;
+  const int param_type = factor->param_types[0];
+  const int is_pose_like = (param_type == POSE_PARAM) ||
+                           (param_type == EXTRINSIC_PARAM) ||
+                           (param_type == FIDUCIAL_PARAM);
 
-  // Calculate pose error
-  // -- Translation error
-  // dr = r_meas - r_est;
-  real_t dr[3] = {0};
-  dr[0] = r_meas[0] - r_est[0];
-  dr[1] = r_meas[1] - r_est[1];
-  dr[2] = r_meas[2] - r_est[2];
+  if (is_pose_like) {
+    // Map params
+    const real_t r_est[3] = {factor->params[0][0],
+                             factor->params[0][1],
+                             factor->params[0][2]};
+    const real_t q_est[4] = {factor->params[0][3],
+                             factor->params[0][4],
+                             factor->params[0][5],
+                             factor->params[0][6]};
+    const real_t *r_meas = factor->meas;
+    const real_t *q_meas = factor->meas + 3;
 
-  // -- Rotation error
-  // dq = quat_mul(quat_inv(q_meas), q_est);
-  real_t dq[4] = {0};
-  real_t q_meas_inv[4] = {0};
-  quat_inv(q_meas, q_meas_inv);
-  quat_mul(q_meas_inv, q_est, dq);
+    // -- Translation error: dr = r_meas - r_est
+    real_t dr[3] = {0};
+    dr[0] = r_meas[0] - r_est[0];
+    dr[1] = r_meas[1] - r_est[1];
+    dr[2] = r_meas[2] - r_est[2];
 
-  // dtheta = 2 * dq;
-  real_t dtheta[3] = {0};
-  dtheta[0] = 2 * dq[1];
-  dtheta[1] = 2 * dq[2];
-  dtheta[2] = 2 * dq[3];
+    // -- Rotation error: dq = quat_mul(quat_inv(q_meas), q_est)
+    real_t dq[4] = {0};
+    real_t q_meas_inv[4] = {0};
+    quat_inv(q_meas, q_meas_inv);
+    quat_mul(q_meas_inv, q_est, dq);
 
-  // -- Set residuals
-  // r = factor.sqrt_info * [dr; dtheta];
-  real_t r[6] = {0};
-  r[0] = dr[0];
-  r[1] = dr[1];
-  r[2] = dr[2];
-  r[3] = dtheta[0];
-  r[4] = dtheta[1];
-  r[5] = dtheta[2];
-  dot(factor->sqrt_info, 6, 6, r, 6, 1, factor->r);
+    // dtheta = 2 * dq
+    real_t dtheta[3] = {0};
+    dtheta[0] = 2 * dq[1];
+    dtheta[1] = 2 * dq[2];
+    dtheta[2] = 2 * dq[3];
 
-  // Calculate Jacobians
-  const real_t dqw = dq[0];
-  const real_t dqx = dq[1];
-  const real_t dqy = dq[2];
-  const real_t dqz = dq[3];
+    // -- Set residuals: r = sqrt_info * [dr; dtheta]
+    real_t r[6] = {0};
+    r[0] = dr[0];
+    r[1] = dr[1];
+    r[2] = dr[2];
+    r[3] = dtheta[0];
+    r[4] = dtheta[1];
+    r[5] = dtheta[2];
+    dot(factor->sqrt_info, 6, 6, r, 6, 1, factor->r);
 
-  real_t J[6 * 6] = {0};
+    // Calculate Jacobians
+    const real_t dqw = dq[0];
+    const real_t dqx = dq[1];
+    const real_t dqy = dq[2];
+    const real_t dqz = dq[3];
 
-  J[0] = -1.0;
-  J[1] = 0.0;
-  J[2] = 0.0;
-  J[6] = 0.0;
-  J[7] = -1.0;
-  J[8] = 0.0;
-  J[12] = 0.0;
-  J[13] = 0.0;
-  J[14] = -1.0;
+    real_t J[6 * 6] = {0};
+    J[0] = -1.0;
+    J[7] = -1.0;
+    J[14] = -1.0;
 
-  J[21] = dqw;
-  J[22] = -dqz;
-  J[23] = dqy;
-  J[27] = dqz;
-  J[28] = dqw;
-  J[29] = -dqx;
-  J[33] = -dqy;
-  J[34] = dqx;
-  J[35] = dqw;
+    J[21] = dqw;
+    J[22] = -dqz;
+    J[23] = dqy;
+    J[27] = dqz;
+    J[28] = dqw;
+    J[29] = -dqx;
+    J[33] = -dqy;
+    J[34] = dqx;
+    J[35] = dqw;
 
-  dot(factor->sqrt_info, 6, 6, J, 6, 6, factor->jacs[0]);
+    dot(factor->sqrt_info, 6, 6, J, 6, 6, factor->jacs[0]);
+  } else {
+    // Plain additive: r = sqrt_info * (meas - param_est), J = -I
+    const int n = factor->r_size;
+    const real_t *param_est = factor->params[0];
+
+    real_t r_raw[6] = {0};
+    for (int i = 0; i < n; i++) {
+      r_raw[i] = factor->meas[i] - param_est[i];
+    }
+    dot(factor->sqrt_info, n, n, r_raw, n, 1, factor->r);
+
+    real_t J[6 * 6] = {0};
+    for (int i = 0; i < n; i++) {
+      J[i * n + i] = -1.0;
+    }
+    dot(factor->sqrt_info, n, n, J, n, n, factor->jacs[0]);
+  }
 
   return 0;
 }
