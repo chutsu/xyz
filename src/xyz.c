@@ -15810,12 +15810,8 @@ int check_factor_so3_jacobian(const void *factor,
 
 /**
  * Setup prior factor. Pins param's current value as the prior.
- * param_type decides how: pose-like types (POSE_PARAM, EXTRINSIC_PARAM,
- * FIDUCIAL_PARAM) get the 7-raw/6-minimal quaternion-aware treatment;
- * everything else (POSITION_PARAM, VELOCITY_PARAM, FEATURE_PARAM,
- * IMU_BIASES_PARAM, ...) is treated as a plain additive vector, where
- * raw size == minimal size == r_size. Only param types with minimal
- * size <= 6 are supported, matching this factor's fixed-size buffers.
+ * param_type picks pose-like (quaternion-aware) vs plain-additive
+ * residual/Jacobian form; see prior_factor_eval().
  */
 void prior_factor_setup(prior_factor_t *factor,
                         real_t *param,
