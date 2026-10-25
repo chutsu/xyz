@@ -2466,8 +2466,7 @@ int check_factor_so3_jacobian(const void *factor,
 /////////////////
 
 typedef struct pose_factor_t {
-  real_t pos_meas[3];
-  real_t quat_meas[4];
+  real_t pose_meas[7]; // [pos_meas(3); quat_meas(4)]
   real_t *pose_est;
 
   real_t covar[6 * 6];
@@ -2488,6 +2487,37 @@ void pose_factor_setup(pose_factor_t *factor,
                        real_t *pose,
                        const real_t var[6]);
 int pose_factor_eval(void *factor);
+
+////////////////////
+// BETWEEN FACTOR //
+////////////////////
+
+typedef struct between_factor_t {
+  real_t dpose_meas[7]; // inv(pose_i) * pose_j
+  real_t *pose_i;
+  real_t *pose_j;
+
+  real_t covar[6 * 6];
+  real_t sqrt_info[6 * 6];
+
+  real_t r[6];
+  int r_size;
+
+  int param_types[2];
+  real_t *params[2];
+  int num_params;
+
+  real_t *jacs[2];
+  real_t J_pose_i[6 * 6];
+  real_t J_pose_j[6 * 6];
+} between_factor_t;
+
+void between_factor_setup(between_factor_t *factor,
+                          real_t *pose_i,
+                          real_t *pose_j,
+                          const real_t dpose_meas[7],
+                          const real_t var[6]);
+int between_factor_eval(void *factor_ptr);
 
 ///////////////
 // BA FACTOR //

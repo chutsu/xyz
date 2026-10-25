@@ -15822,13 +15822,13 @@ void pose_factor_setup(pose_factor_t *factor,
   factor->pose_est = pose;
 
   // Measurement
-  factor->pos_meas[0] = pose[0];
-  factor->pos_meas[1] = pose[1];
-  factor->pos_meas[2] = pose[2];
-  factor->quat_meas[0] = pose[3];
-  factor->quat_meas[1] = pose[4];
-  factor->quat_meas[2] = pose[5];
-  factor->quat_meas[3] = pose[6];
+  factor->pose_meas[0] = pose[0];
+  factor->pose_meas[1] = pose[1];
+  factor->pose_meas[2] = pose[2];
+  factor->pose_meas[3] = pose[3];
+  factor->pose_meas[4] = pose[4];
+  factor->pose_meas[5] = pose[5];
+  factor->pose_meas[6] = pose[6];
 
   // Measurement covariance matrix
   zeros(factor->covar, 6, 6);
@@ -15872,8 +15872,8 @@ int pose_factor_eval(void *factor_ptr) {
                            factor->params[0][4],
                            factor->params[0][5],
                            factor->params[0][6]};
-  const real_t *r_meas = factor->pos_meas;
-  const real_t *q_meas = factor->quat_meas;
+  const real_t *r_meas = factor->pose_meas;
+  const real_t *q_meas = factor->pose_meas + 3;
 
   // Calculate pose error
   // -- Translation error
@@ -15936,6 +15936,167 @@ int pose_factor_eval(void *factor_ptr) {
   J[35] = dqw;
 
   dot(factor->sqrt_info, 6, 6, J, 6, 6, factor->jacs[0]);
+
+  return 0;
+}
+
+////////////////////
+// BETWEEN FACTOR //
+////////////////////
+
+/**
+ * Setup between factor. Constrains pose_i and pose_j against a measured
+ * relative pose dpose_meas = T_i^-1 * T_j.
+ */
+void between_factor_setup(between_factor_t *factor,
+                          real_t *pose_i,
+                          real_t *pose_j,
+                          const real_t dpose_meas[7],
+                          const real_t var[6]) {
+  assert(factor != NULL);
+  assert(pose_i != NULL);
+  assert(pose_j != NULL);
+  assert(dpose_meas != NULL);
+  assert(var != NULL);
+
+  // Parameters
+  factor->pose_i = pose_i;
+  factor->pose_j = pose_j;
+
+  // Measurement
+  factor->dpose_meas[0] = dpose_meas[0];
+  factor->dpose_meas[1] = dpose_meas[1];
+  factor->dpose_meas[2] = dpose_meas[2];
+  factor->dpose_meas[3] = dpose_meas[3];
+  factor->dpose_meas[4] = dpose_meas[4];
+  factor->dpose_meas[5] = dpose_meas[5];
+  factor->dpose_meas[6] = dpose_meas[6];
+
+  // Measurement covariance matrix
+  zeros(factor->covar, 6, 6);
+  factor->covar[0] = var[0];
+  factor->covar[7] = var[1];
+  factor->covar[14] = var[2];
+  factor->covar[21] = var[3];
+  factor->covar[28] = var[4];
+  factor->covar[35] = var[5];
+
+  // Square root information matrix
+  zeros(factor->sqrt_info, 6, 6);
+  factor->sqrt_info[0] = sqrt(1.0 / factor->covar[0]);
+  factor->sqrt_info[7] = sqrt(1.0 / factor->covar[7]);
+  factor->sqrt_info[14] = sqrt(1.0 / factor->covar[14]);
+  factor->sqrt_info[21] = sqrt(1.0 / factor->covar[21]);
+  factor->sqrt_info[28] = sqrt(1.0 / factor->covar[28]);
+  factor->sqrt_info[35] = sqrt(1.0 / factor->covar[35]);
+
+  // Factor residuals, parameters and Jacobians
+  factor->r_size = 6;
+  factor->num_params = 2;
+  factor->param_types[0] = POSE_PARAM;
+  factor->param_types[1] = POSE_PARAM;
+  factor->params[0] = factor->pose_i;
+  factor->params[1] = factor->pose_j;
+  factor->jacs[0] = factor->J_pose_i;
+  factor->jacs[1] = factor->J_pose_j;
+}
+
+/**
+ * Evaluate between factor
+ * @returns `0` for success, `-1` for failure
+ */
+int between_factor_eval(void *factor_ptr) {
+  assert(factor_ptr != NULL);
+  between_factor_t *factor = (between_factor_t *) factor_ptr;
+
+  // Map params
+  const real_t *p_i = factor->params[0];
+  const real_t *p_j = factor->params[1];
+  real_t q_i[4] = {0};
+  real_t q_j[4] = {0};
+  pose_get_quat(factor->params[0], q_i);
+  pose_get_quat(factor->params[1], q_j);
+
+  real_t C_i[3 * 3] = {0};
+  real_t C_j[3 * 3] = {0};
+  real_t C_it[3 * 3] = {0};
+  real_t C_jt[3 * 3] = {0};
+  quat2rot(q_i, C_i);
+  quat2rot(q_j, C_j);
+  mat_transpose(C_i, 3, 3, C_it);
+  mat_transpose(C_j, 3, 3, C_jt);
+
+  // Predicted relative transform: r_est = R_i^T * (p_j - p_i),
+  // q_est = q_i^-1 * q_j
+  const real_t dp[3] = {p_j[0] - p_i[0], p_j[1] - p_i[1], p_j[2] - p_i[2]};
+  real_t r_est[3] = {0};
+  dot(C_it, 3, 3, dp, 3, 1, r_est);
+
+  real_t q_i_inv[4] = {0};
+  real_t q_est[4] = {0};
+  quat_inv(q_i, q_i_inv);
+  quat_mul(q_i_inv, q_j, q_est);
+
+  // -- Translation error
+  const real_t *pos_meas = factor->dpose_meas;
+  const real_t dr[3] = {pos_meas[0] - r_est[0],
+                        pos_meas[1] - r_est[1],
+                        pos_meas[2] - r_est[2]};
+
+  // -- Rotation error
+  const real_t *quat_meas = factor->dpose_meas + 3;
+  real_t q_meas_inv[4] = {0};
+  real_t dq[4] = {0};
+  quat_inv(quat_meas, q_meas_inv);
+  quat_mul(q_meas_inv, q_est, dq);
+  const real_t dtheta[3] = {2 * dq[1], 2 * dq[2], 2 * dq[3]};
+
+  // -- Set residuals
+  real_t r[6] = {dr[0], dr[1], dr[2], dtheta[0], dtheta[1], dtheta[2]};
+  dot(factor->sqrt_info, 6, 6, r, 6, 1, factor->r);
+
+  // Calculate Jacobians
+  // -- quat_left_xyz(dq) * (-C_j^T * C_i), the rotation block shared by
+  // both pose_i (negated, see derivation below) and C_ji on its own for
+  // pose_j's block.
+  real_t C_ji[3 * 3] = {0};
+  dot(C_jt, 3, 3, C_i, 3, 3, C_ji);
+
+  real_t left_xyz[3 * 3] = {0};
+  quat_left_xyz(dq, left_xyz);
+
+  real_t dtheta_dqi[3 * 3] = {0};
+  dot(left_xyz, 3, 3, C_ji, 3, 3, dtheta_dqi);
+  for (int i = 0; i < 9; i++) {
+    dtheta_dqi[i] *= -1.0;
+  }
+
+  // -- Jacobian w.r.t. pose_i: [dr;dtheta] = [pos_meas;.] - [r_est(p_i,q_i);
+  //    dtheta(q_i,q_j)], perturbing p_i -> p_i+dp_i, q_i -> q_i*dq(dtheta_i)
+  //    (right perturbation).
+  real_t skew_r_est[3 * 3] = {0};
+  skew(r_est, skew_r_est);
+  real_t neg_skew_r_est[3 * 3] = {0};
+  for (int i = 0; i < 9; i++) {
+    neg_skew_r_est[i] = -skew_r_est[i];
+  }
+
+  real_t J_pose_i[6 * 6] = {0};
+  mat_block_set(J_pose_i, 6, 0, 2, 0, 2, C_it);
+  mat_block_set(J_pose_i, 6, 0, 2, 3, 5, neg_skew_r_est);
+  mat_block_set(J_pose_i, 6, 3, 5, 3, 5, dtheta_dqi);
+  dot(factor->sqrt_info, 6, 6, J_pose_i, 6, 6, factor->jacs[0]);
+
+  // -- Jacobian w.r.t. pose_j
+  real_t neg_C_it[3 * 3] = {0};
+  for (int i = 0; i < 9; i++) {
+    neg_C_it[i] = -C_it[i];
+  }
+
+  real_t J_pose_j[6 * 6] = {0};
+  mat_block_set(J_pose_j, 6, 0, 2, 0, 2, neg_C_it);
+  mat_block_set(J_pose_j, 6, 3, 5, 3, 5, left_xyz);
+  dot(factor->sqrt_info, 6, 6, J_pose_j, 6, 6, factor->jacs[1]);
 
   return 0;
 }

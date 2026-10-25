@@ -6281,6 +6281,31 @@ int test_pose_factor(void) {
   return 0;
 }
 
+int test_between_factor(void) {
+  // Two non-trivially-rotated poses, so both poses' rotation Jacobian
+  // blocks are actually exercised
+  real_t pose_i[7] = {0.1, 0.2, 0.3, 0.9, 0.1, 0.2, 0.3};
+  real_t pose_j[7] = {1.0, 0.5, -0.2, 0.8, -0.3, 0.1, 0.4};
+  quat_normalize(pose_i + 3);
+  quat_normalize(pose_j + 3);
+
+  // Measured relative transform T_i^-1 * T_j
+  real_t dpose_meas[7] = {0.8, 0.3, -0.5, 0.95, 0.1, -0.05, 0.2};
+  quat_normalize(dpose_meas + 3);
+
+  between_factor_t factor;
+  const real_t var[6] = {0.1, 0.1, 0.1, 0.1, 0.1, 0.1};
+  between_factor_setup(&factor, pose_i, pose_j, dpose_meas, var);
+
+  // Check Jacobians
+  const real_t step_size = 1e-8;
+  const real_t tol = 1e-4;
+  CHECK_FACTOR_J(0, factor, between_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(1, factor, between_factor_eval, step_size, tol, 0);
+
+  return 0;
+}
+
 int test_ba_factor(void) {
   // Camera pose
   real_t pose[7] = {0.01, 0.01, 0.0, 0.5, -0.5, 0.5, -0.5};
@@ -11324,6 +11349,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_camera);
   MU_ADD_TEST(test_triangulate_batch);
   MU_ADD_TEST(test_pose_factor);
+  MU_ADD_TEST(test_between_factor);
   MU_ADD_TEST(test_ba_factor);
   MU_ADD_TEST(test_camera_factor);
   MU_ADD_TEST(test_imu_buffer_setup);
