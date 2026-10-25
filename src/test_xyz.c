@@ -9087,18 +9087,18 @@ int test_calib_imucam_env(void) {
                                     q1);
 
     real_t q0_inv[4] = {0};
-    quat_inv(q0, q0_inv);
     real_t dq[4] = {0};
+    quat_inv(q0, q0_inv);
     quat_mul(q0_inv, q1, dq);
     const real_t gyr[3] = {2.0 * dq[1] / dt,
                            2.0 * dq[2] / dt,
                            2.0 * dq[3] / dt};
 
     real_t a_world[3] = {0};
-    test_calib_imucam_env_traj_acc(radius, omega, z_amp, z_omega, t0, a_world);
     real_t a_plus_g[3] = {0};
-    vec3_add(a_world, g_world, a_plus_g);
     real_t acc[3] = {0};
+    test_calib_imucam_env_traj_acc(radius, omega, z_amp, z_omega, t0, a_world);
+    vec3_add(a_world, g_world, a_plus_g);
     quat_transform(q0_inv, a_plus_g, acc);
 
     calib_imucam_add_imu_measurement(calib,

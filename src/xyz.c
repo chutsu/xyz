@@ -22804,7 +22804,7 @@ void calib_camera_solve(calib_camera_t *calib) {
 }
 
 /*******************************************************************************
- * CAMERA-IMU CALIBRATION
+ * IMU-CAMERA CALIBRATION
  ******************************************************************************/
 
 ////////////////////////
@@ -22959,7 +22959,7 @@ void calib_imucam_frameset_add(calib_imucam_frameset_t *fs,
 }
 
 ////////////////////////////
-// CAMERA-IMU CALIBRATOR  //
+// IMU-CAMERA CALIBRATOR  //
 ////////////////////////////
 
 /**
