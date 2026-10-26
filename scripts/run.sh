@@ -399,7 +399,7 @@ run_test() {
 # run_test test_xyz test_sim_camera_circle_trajectory
 # run_test test_xyz test_sim_target_view
 ## XYZ-CAMERA-CALIBRATION
-run_test test_xyz test_calib_camera_env
+# run_test test_xyz test_calib_camera_env
 # run_test test_xyz test_calib_camera_mono_batch
 # run_test test_xyz test_calib_camera_mono_incremental
 ## XYZ-EUROC

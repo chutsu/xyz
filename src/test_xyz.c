@@ -6860,11 +6860,14 @@ int test_imu_factor(void) {
   MU_ASSERT(factor.vel_j == vel_j);
   MU_ASSERT(factor.biases_j == biases_j);
 
-  // Check Jacobians
-  const double tol = 1e-4;
+  // Check Jacobians. tol is looser than other factors' 1e-4 because
+  // sqrt_info's real entries run up to ~1e4 (small IMU noise params ->
+  // large information matrix), which amplifies ordinary finite-
+  // difference float round-off at step_size into absolute differences
+  // around 1e-4 even when the relative error is ~1e-8.
+  const double tol = 1e-3;
   const double step_size = 1e-8;
   const int verbose = 0;
-  eye(factor.sqrt_info, 15, 15);
   CHECK_FACTOR_J(0, factor, imu_factor_eval, step_size, tol, verbose);
   CHECK_FACTOR_J(1, factor, imu_factor_eval, step_size, tol, verbose);
   CHECK_FACTOR_J(2, factor, imu_factor_eval, step_size, tol, verbose);

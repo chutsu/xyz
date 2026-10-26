@@ -17118,30 +17118,35 @@ void imu_factor_F_matrix(const real_t q_i[4],
   IMU_FACTOR_F44();
   IMU_FACTOR_F55();
 
-  // Fill matrix F
+  // Fill matrix F. State block order is [pos(0-2), vel(3-5),
+  // rot(6-8), ba(9-11), bg(12-14)] -- matching imu_factor_eval() and
+  // every *_jac() helper below -- NOT the F11..F55 sub-block numbering
+  // above (that follows the [pos,rot,vel,ba,bg] order the derivation
+  // comments use), so e.g. F12 (a pos-rot block) is placed at cols 6-8
+  // and F13 (a pos-vel block) at cols 3-5.
   zeros(F_dt, 15, 15);
 
-  // -- Row block 1
+  // -- Row block: pos
   mat_block_set(F_dt, 15, 0, 2, 0, 2, F11);
-  mat_block_set(F_dt, 15, 0, 2, 3, 5, F12);
-  mat_block_set(F_dt, 15, 0, 2, 6, 8, F13);
+  mat_block_set(F_dt, 15, 0, 2, 6, 8, F12);
+  mat_block_set(F_dt, 15, 0, 2, 3, 5, F13);
   mat_block_set(F_dt, 15, 0, 2, 9, 11, F14);
   mat_block_set(F_dt, 15, 0, 2, 12, 14, F15);
 
-  // -- Row block 2
-  mat_block_set(F_dt, 15, 3, 5, 3, 5, F22);
-  mat_block_set(F_dt, 15, 3, 5, 12, 14, F25);
+  // -- Row block: rot
+  mat_block_set(F_dt, 15, 6, 8, 6, 8, F22);
+  mat_block_set(F_dt, 15, 6, 8, 12, 14, F25);
 
-  // -- Row block 3
-  mat_block_set(F_dt, 15, 6, 8, 3, 5, F32);
-  mat_block_set(F_dt, 15, 6, 8, 6, 8, F33);
-  mat_block_set(F_dt, 15, 6, 8, 9, 11, F34);
-  mat_block_set(F_dt, 15, 6, 8, 12, 14, F35);
+  // -- Row block: vel
+  mat_block_set(F_dt, 15, 3, 5, 6, 8, F32);
+  mat_block_set(F_dt, 15, 3, 5, 3, 5, F33);
+  mat_block_set(F_dt, 15, 3, 5, 9, 11, F34);
+  mat_block_set(F_dt, 15, 3, 5, 12, 14, F35);
 
-  // -- Row block 4
+  // -- Row block: ba
   mat_block_set(F_dt, 15, 9, 11, 9, 11, F44);
 
-  // -- Row block 5
+  // -- Row block: bg
   mat_block_set(F_dt, 15, 12, 14, 12, 14, F55);
 }
 
@@ -17190,10 +17195,12 @@ void imu_factor_form_G_matrix(const imu_factor_t *factor,
     G12[i] = 0.25 * -dC_j_acc_j_x[i] * dt_sq * 0.5 * dt;
   }
 
-  // G13 = 0.25 * dC_j @ acc_j_x * dt_sq
+  // G13 = 0.25 * dC_j * dt_sq -- own-sample accel-noise column (no
+  // acc_j_x skew: that only belongs on the gyro-noise columns G12/G14,
+  // via the chain rule through the rotation they perturb).
   real_t G13[3 * 3] = {0};
   for (int i = 0; i < 9; i++) {
-    G13[i] = 0.25 * dC_j_acc_j_x[i] * dt_sq;
+    G13[i] = 0.25 * dC_j[i] * dt_sq;
   }
 
   // G14 = 0.25 * -dC_j @ acc_j_x * dt_sq * 0.5 * dt
@@ -17202,17 +17209,20 @@ void imu_factor_form_G_matrix(const imu_factor_t *factor,
     G14[i] = 0.25 * -dC_j_acc_j_x[i] * dt_sq * 0.5 * dt;
   }
 
-  // G22 = eye(3) * dt
+  // G22 = eye(3) * 0.5 * dt -- gyro measurement is midpoint-averaged
+  // (0.5*(w_i+w_j)), so each sample's noise contributes with
+  // coefficient 0.5*dt, same as G31/G33 below carry for the
+  // velocity block's (single-integration) accel-noise columns.
   real_t G22[3 * 3] = {0};
-  G22[0] = dt;
-  G22[4] = dt;
-  G22[8] = dt;
+  G22[0] = 0.5 * dt;
+  G22[4] = 0.5 * dt;
+  G22[8] = 0.5 * dt;
 
-  // G24 = eye(3) * dt
+  // G24 = eye(3) * 0.5 * dt
   real_t G24[3 * 3] = {0};
-  G24[0] = dt;
-  G24[4] = dt;
-  G24[8] = dt;
+  G24[0] = 0.5 * dt;
+  G24[4] = 0.5 * dt;
+  G24[8] = 0.5 * dt;
 
   // G31 = 0.5 * dC_i * dt
   real_t G31[3 * 3] = {0};
@@ -17250,18 +17260,21 @@ void imu_factor_form_G_matrix(const imu_factor_t *factor,
   G56[4] = dt;
   G56[8] = dt;
 
-  // Fill matrix G
+  // Fill matrix G. Row (state) block order is [pos, vel, rot, ba, bg],
+  // matching imu_factor_form_F_matrix() above; columns are noise inputs
+  // ([n_a_i, n_g_i, n_a_j, n_g_j, n_ba, n_bg], 3 each) and are untouched
+  // by that reordering. G22/G24 are rot's rows, G31..G34 are vel's.
   zeros(G_dt, 15, 18);
   mat_block_set(G_dt, 18, 0, 2, 0, 2, G11);
   mat_block_set(G_dt, 18, 0, 2, 3, 5, G12);
   mat_block_set(G_dt, 18, 0, 2, 6, 8, G13);
   mat_block_set(G_dt, 18, 0, 2, 9, 11, G14);
-  mat_block_set(G_dt, 18, 3, 5, 3, 5, G22);
-  mat_block_set(G_dt, 18, 3, 5, 9, 11, G24);
-  mat_block_set(G_dt, 18, 6, 8, 0, 2, G31);
-  mat_block_set(G_dt, 18, 6, 8, 3, 5, G32);
-  mat_block_set(G_dt, 18, 6, 8, 6, 8, G33);
-  mat_block_set(G_dt, 18, 6, 8, 9, 11, G34);
+  mat_block_set(G_dt, 18, 6, 8, 3, 5, G22);
+  mat_block_set(G_dt, 18, 6, 8, 9, 11, G24);
+  mat_block_set(G_dt, 18, 3, 5, 0, 2, G31);
+  mat_block_set(G_dt, 18, 3, 5, 3, 5, G32);
+  mat_block_set(G_dt, 18, 3, 5, 6, 8, G33);
+  mat_block_set(G_dt, 18, 3, 5, 9, 11, G34);
   mat_block_set(G_dt, 18, 9, 11, 12, 14, G45);
   mat_block_set(G_dt, 18, 12, 14, 15, 17, G56);
 }
@@ -17280,6 +17293,15 @@ void imu_factor_setup(imu_factor_t *factor,
                       real_t *pose_j,
                       real_t *vel_j,
                       real_t *biases_j) {
+  assert(factor != NULL);
+  assert(imu_params != NULL);
+  assert(imu_buf != NULL);
+  assert(pose_i != NULL);
+  assert(vel_i != NULL);
+  assert(biases_i != NULL);
+  assert(pose_j != NULL);
+  assert(vel_j != NULL);
+  assert(biases_j != NULL);
   assert(ts_j > ts_i);
 
   // IMU buffer and parameters
