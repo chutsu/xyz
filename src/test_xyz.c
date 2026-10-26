@@ -7603,7 +7603,7 @@ void inertial_odometry_linearize_compact(const void *data,
 int test_inertial_odometry_batch(void) {
   // Setup test data
   imu_test_data_t test_data;
-  setup_imu_test_data(&test_data, 1.0, 0.1);
+  setup_imu_test_data(&test_data, 5.0, 1.0);
 
   // Inertial Odometry
   const int num_partitions = test_data.num_measurements / 20.0;
@@ -7620,10 +7620,10 @@ int test_inertial_odometry_batch(void) {
   // -- Variables
   odom->num_factors = 0;
   odom->factors = malloc(sizeof(imu_factor_t) * num_partitions);
-  odom->timestamps = malloc(sizeof(timestamp_t) * num_partitions + 1);
-  odom->poses = malloc(sizeof(real_t) * 7 * num_partitions + 1);
-  odom->vels = malloc(sizeof(real_t) * 3 * num_partitions + 1);
-  odom->biases = malloc(sizeof(real_t) * 6 * num_partitions + 1);
+  odom->timestamps = malloc(sizeof(timestamp_t) * (num_partitions + 1));
+  odom->poses = malloc(sizeof(real_t) * 7 * (num_partitions + 1));
+  odom->vels = malloc(sizeof(real_t) * 3 * (num_partitions + 1));
+  odom->biases = malloc(sizeof(real_t) * 6 * (num_partitions + 1));
 
   odom->timestamps[0] = test_data.timestamps[0];
   vec_copy(test_data.poses[0], 7, &odom->poses[0]);
@@ -7647,6 +7647,7 @@ int test_inertial_odometry_batch(void) {
     // Setup parameters
     const timestamp_t ts_i = test_data.timestamps[ks];
     const timestamp_t ts_j = test_data.timestamps[ke];
+    odom->timestamps[i] = ts_j;
     vec_copy(test_data.poses[ke], 7, &odom->poses[i * 7]);
     vec_copy(test_data.velocities[ke], 3, &odom->vels[i * 3]);
     zeros(&odom->biases[i * 6], 6, 1);

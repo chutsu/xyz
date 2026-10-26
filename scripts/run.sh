@@ -374,7 +374,7 @@ run_test() {
 # run_test test_xyz test_marg_factor
 # run_test test_xyz test_save_and_load_poses
 # run_test test_xyz test_solver_setup
-# run_test test_xyz test_inertial_odometry_batch
+run_test test_xyz test_inertial_odometry_batch
 # run_test test_xyz test_bundle_adjustment
 ## XYZ-MORTON-CODES
 # run_test test_xyz test_morton_codes_3d
