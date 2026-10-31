@@ -18205,10 +18205,11 @@ void pcd_deskew(pcd_t *pcd,
 }
 
 /**
- * Setup LiDAR factor. Precomputes each of pcd's points in the body
- * frame (fixed, since extrinsic doesn't change); correspondences
- * themselves are NOT found here -- see lidar_factor_eval(), which
- * re-queries `kdtree` fresh on every call.
+ * Setup LiDAR factor. Correspondences are NOT found here -- see
+ * lidar_factor_eval(), which re-queries `kdtree` fresh on every call.
+ * Since `extrinsic` is itself optimizable, pcd's points can't be
+ * pre-transformed into the body frame once here either (unlike a
+ * fixed-extrinsic version) -- eval() re-applies T_BL every call too.
  */
 void lidar_factor_setup(lidar_factor_t *factor,
                         pcd_t *pcd,
@@ -18229,24 +18230,18 @@ void lidar_factor_setup(lidar_factor_t *factor,
   factor->var = var;
   factor->sqrt_info = sqrt(1.0 / var);
 
-  real_t T_BL[4 * 4] = {0};
-  tf(extrinsic, T_BL);
-  factor->points_B = malloc(sizeof(real_t) * 3 * pcd->num_points);
-  for (size_t i = 0; i < pcd->num_points; i++) {
-    const real_t p_L[3] = {pcd->data[i * 3 + 0],
-                           pcd->data[i * 3 + 1],
-                           pcd->data[i * 3 + 2]};
-    tf_point(T_BL, p_L, &factor->points_B[i * 3]);
-  }
-
   // Factor residuals, parameters and Jacobians
   factor->r_size = pcd->num_points * 3;
   factor->r = malloc(sizeof(real_t) * factor->r_size);
-  factor->num_params = 1;
+  factor->num_params = 2;
   factor->param_types[0] = POSE_PARAM;
+  factor->param_types[1] = EXTRINSIC_PARAM;
   factor->params[0] = factor->pose;
+  factor->params[1] = factor->extrinsic;
   factor->J_pose = malloc(sizeof(real_t) * factor->r_size * 6);
+  factor->J_extrinsic = malloc(sizeof(real_t) * factor->r_size * 6);
   factor->jacs[0] = factor->J_pose;
+  factor->jacs[1] = factor->J_extrinsic;
 }
 
 /**
@@ -18258,17 +18253,17 @@ void lidar_factor_free(lidar_factor_t *factor) {
   if (factor == NULL) {
     return;
   }
-  free(factor->points_B);
   free(factor->r);
   free(factor->J_pose);
+  free(factor->J_extrinsic);
 }
 
 /**
  * Evaluate LiDAR factor. Point-to-point: for each of pcd's points,
- * re-finds its nearest neighbor in `kdtree` at the CURRENT pose (a
- * fresh kdtree_nn() search every call -- real ICP re-association, not
- * a correspondence frozen at setup()) and measures straight-line
- * distance to it.
+ * re-finds its nearest neighbor in `kdtree` at the CURRENT pose/
+ * extrinsic (a fresh kdtree_nn() search every call -- real ICP
+ * re-association, not a correspondence frozen at setup()) and measures
+ * straight-line distance to it.
  * @returns `0` for success, `-1` for failure
  */
 int lidar_factor_eval(void *factor_ptr) {
@@ -18283,8 +18278,26 @@ int lidar_factor_eval(void *factor_ptr) {
   real_t C_WB[3 * 3] = {0};
   quat2rot(q_WB, C_WB);
 
+  const real_t *p_BL = factor->params[1];
+  const real_t q_BL[4] = {factor->params[1][3],
+                          factor->params[1][4],
+                          factor->params[1][5],
+                          factor->params[1][6]};
+  real_t C_BL[3 * 3] = {0};
+  quat2rot(q_BL, C_BL);
+
   for (size_t i = 0; i < factor->pcd->num_points; i++) {
-    const real_t *p_B = &factor->points_B[i * 3];
+    const real_t p_L[3] = {factor->pcd->data[i * 3 + 0],
+                           factor->pcd->data[i * 3 + 1],
+                           factor->pcd->data[i * 3 + 2]};
+
+    // p_B = R_BL * p_L + t_BL -- recomputed every call, since extrinsic
+    // is itself optimizable
+    real_t p_B[3] = {0};
+    quat_transform(q_BL, p_L, p_B);
+    p_B[0] += p_BL[0];
+    p_B[1] += p_BL[1];
+    p_B[2] += p_BL[2];
 
     // Predicted world-frame point: p_W = R_WB * p_B + t_WB
     real_t p_W[3] = {0};
@@ -18316,26 +18329,58 @@ int lidar_factor_eval(void *factor_ptr) {
     //    -skew(p_B)*dtheta, with an extra sign flip from r = nn - p_W.
     real_t skew_pB[3 * 3] = {0};
     skew(p_B, skew_pB);
-    real_t R_skew[3 * 3] = {0};
-    dot(C_WB, 3, 3, skew_pB, 3, 3, R_skew);
+    real_t R_WB_skew_pB[3 * 3] = {0};
+    dot(C_WB, 3, 3, skew_pB, 3, 3, R_WB_skew_pB);
 
-    real_t J_block[3 * 6] = {0};
-    J_block[0] = -1.0;
-    J_block[7] = -1.0;
-    J_block[14] = -1.0;
-    J_block[3] = R_skew[0];
-    J_block[4] = R_skew[1];
-    J_block[5] = R_skew[2];
-    J_block[9] = R_skew[3];
-    J_block[10] = R_skew[4];
-    J_block[11] = R_skew[5];
-    J_block[15] = R_skew[6];
-    J_block[16] = R_skew[7];
-    J_block[17] = R_skew[8];
+    real_t J_pose_block[3 * 6] = {0};
+    J_pose_block[0] = -1.0;
+    J_pose_block[7] = -1.0;
+    J_pose_block[14] = -1.0;
+    J_pose_block[3] = R_WB_skew_pB[0];
+    J_pose_block[4] = R_WB_skew_pB[1];
+    J_pose_block[5] = R_WB_skew_pB[2];
+    J_pose_block[9] = R_WB_skew_pB[3];
+    J_pose_block[10] = R_WB_skew_pB[4];
+    J_pose_block[11] = R_WB_skew_pB[5];
+    J_pose_block[15] = R_WB_skew_pB[6];
+    J_pose_block[16] = R_WB_skew_pB[7];
+    J_pose_block[17] = R_WB_skew_pB[8];
 
-    real_t *J_row = &factor->J_pose[i * 3 * 6];
+    real_t *J_pose_row = &factor->J_pose[i * 3 * 6];
     for (int e = 0; e < 18; e++) {
-      J_row[e] = factor->sqrt_info * J_block[e];
+      J_pose_row[e] = factor->sqrt_info * J_pose_block[e];
+    }
+
+    // -- Jacobian w.r.t. extrinsic (same right-perturbation convention
+    //    on T_BL): p_B = R_BL*p_L + t_BL, so by the exact same
+    //    derivation as the pose block above (with R_WB*(.) chained on
+    //    the front, since p_W = R_WB*p_B + t_WB):
+    //    d(r)/d(dp_BL) = -R_WB
+    //    d(r)/d(dtheta_BL) = R_WB * R_BL * skew(p_L)
+    real_t skew_pL[3 * 3] = {0};
+    skew(p_L, skew_pL);
+    real_t R_BL_skew_pL[3 * 3] = {0};
+    dot(C_BL, 3, 3, skew_pL, 3, 3, R_BL_skew_pL);
+    real_t R_WB_R_BL_skew_pL[3 * 3] = {0};
+    dot(C_WB, 3, 3, R_BL_skew_pL, 3, 3, R_WB_R_BL_skew_pL);
+
+    real_t J_ext_block[3 * 6] = {0};
+    for (int e = 0; e < 9; e++) {
+      J_ext_block[(e / 3) * 6 + (e % 3)] = -C_WB[e];
+    }
+    J_ext_block[3] = R_WB_R_BL_skew_pL[0];
+    J_ext_block[4] = R_WB_R_BL_skew_pL[1];
+    J_ext_block[5] = R_WB_R_BL_skew_pL[2];
+    J_ext_block[9] = R_WB_R_BL_skew_pL[3];
+    J_ext_block[10] = R_WB_R_BL_skew_pL[4];
+    J_ext_block[11] = R_WB_R_BL_skew_pL[5];
+    J_ext_block[15] = R_WB_R_BL_skew_pL[6];
+    J_ext_block[16] = R_WB_R_BL_skew_pL[7];
+    J_ext_block[17] = R_WB_R_BL_skew_pL[8];
+
+    real_t *J_ext_row = &factor->J_extrinsic[i * 3 * 6];
+    for (int e = 0; e < 18; e++) {
+      J_ext_row[e] = factor->sqrt_info * J_ext_block[e];
     }
   }
 

@@ -6380,18 +6380,22 @@ int test_lidar_factor(void) {
   quat_perturb(pose + 3, 1, -0.03);
   quat_normalize(pose + 3);
 
-  // Fixed, identity lidar-to-body extrinsic
-  real_t extrinsic[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+  // Lidar-to-body extrinsic, optimizable -- small non-trivial rotation
+  // so its own rotation Jacobian block is actually exercised
+  real_t extrinsic[7] = {0.01, -0.02, 0.01, 1.0, 0.0, 0.0, 0.0};
+  quat_perturb(extrinsic + 3, 2, 0.04);
+  quat_normalize(extrinsic + 3);
 
   lidar_factor_t factor;
   const real_t var = 0.01;
   lidar_factor_setup(&factor, src_pcd, ref_pcd->kdtree, pose, extrinsic, var);
   MU_ASSERT(factor.r_size == num_src * 3);
 
-  // Check Jacobian
+  // Check Jacobians
   const real_t step_size = 1e-8;
   const real_t tol = 1e-4;
   CHECK_FACTOR_J(0, factor, lidar_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(1, factor, lidar_factor_eval, step_size, tol, 0);
 
   // Clean up
   lidar_factor_free(&factor);
