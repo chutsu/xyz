@@ -42,9 +42,12 @@ Modules
 - CALIB-IMUCAM - IMU-camera calibration
 - EUROC - EuRoC MAV dataset loader
 - KITTI - KITTI dataset loader
-- OPENGL - OpenGL math, shaders, cameras
-- GUI - GLFW window and input handling
-- GL-PRIMITIVES - 3D drawables (points, lines, meshes, text)
+
+The ``opengl/`` directory holds a separate, self-contained OpenGL/GLFW
+rendering module built on top of the library (math, shaders, camera,
+window/input handling, and 3D drawables: points, lines, meshes, text).
+It has its own ``opengl/Makefile`` and isn't part of ``make libxyz``/
+``make tests`` -- build ``libxyz`` first, then ``cd opengl && make test``.
 
 Build
 -----

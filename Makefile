@@ -48,10 +48,6 @@ $(BLD_DIR)/%.o: src/%.c src/%.h Makefile $(BLD_DIR)/.cflags
 	@echo "CC [$(notdir $<)]"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
-$(BLD_DIR)/libglad.a:
-	@gcc -c deps/src/glad/glad.c -o $(BLD_DIR)/glad.o \
-		&& ar rcs $(BLD_DIR)/libglad.a $(BLD_DIR)/glad.o
-
 $(BLD_DIR)/libxyz.a: $(LIBXYZ_OBJS)
 	@echo "AR [libxyz.a]"
 	@$(AR) $(ARFLAGS) \
@@ -150,7 +146,6 @@ libxyz: ## Build libxyz
 .PHONY: _libxyz_internal
 _libxyz_internal: \
 	setup \
-	$(BLD_DIR)/libglad.a \
 	$(BLD_DIR)/libxyz.a \
 	$(TESTS)
 

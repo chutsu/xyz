@@ -19,15 +19,12 @@ CXX := clang++
 
 
 # LIBRARIES
+# (GLAD/GLFW/assimp/freetype are NOT needed here -- they moved to the
+# self-contained opengl/ module along with the code that used them)
 STB_CFLAGS:=-I$(DEPS_DIR)/src/stb
 OPENSSL_LDFLAGS := -lssl -lcrypto
-GLAD_LDFLAGS := -lglad
-OPENGL_LDFLAGS := $(GLAD_LDFLAGS) -lGL
-FREETYPE_CFLAGS := $(shell pkg-config --cflags freetype2)
-FREETYPE_LDFLAGS := $(shell pkg-config --libs freetype2)
 BLAS_LDFLAGS := -lblas -llapack -llapacke
 SUITESPARSE_LDFLAGS := -llapack -lcamd -lamd -lccolamd -lcolamd -lcholmod -lcxsparse
-ASSIMP_LDFLAGS := -lassimp
 APRILTAG_LDFLAGS := -lapriltag
 OPENCV_CFLAGS := $(shell pkg-config --cflags opencv4)
 OPENCV_LDFLAGS := $(shell pkg-config --libs opencv4)
@@ -68,10 +65,8 @@ endif
 CFLAGS += \
 	-I$(INC_DIR) \
 	-I$(DEPS_DIR)/include \
-	-I$(DEPS_DIR)/src/glad \
 	-fPIC \
-	$(STB_CFLAGS) \
-	$(FREETYPE_CFLAGS)
+	$(STB_CFLAGS)
 
 
 # CXXFLAGS (benchmark_xyz.cpp: C++ wrapper around xyz + OpenCV comparisons.
@@ -88,10 +83,8 @@ endif
 CXXFLAGS += \
 	-I$(INC_DIR) \
 	-I$(DEPS_DIR)/include \
-	-I$(DEPS_DIR)/src/glad \
 	-fPIC \
 	$(STB_CFLAGS) \
-	$(FREETYPE_CFLAGS) \
 	$(OPENCV_CFLAGS)
 
 
@@ -103,14 +96,10 @@ LDFLAGS= \
 	$(RPATH) \
 	$(XYZ_LDFLAGS) \
 	$(APRILTAG_LDFLAGS) \
-	$(OPENGL_LDFLAGS) \
 	$(SUITESPARSE_LDFLAGS) \
 	$(BLAS_LDFLAGS) \
 	$(OPENSSL_LDFLAGS) \
-	$(ASSIMP_LDFLAGS) \
 	$(YAML_LDFLAGS) \
-	$(FREETYPE_LDFLAGS) \
-	-lglfw \
 	-lstdc++ \
 	-lpthread \
 	-lm \
@@ -131,6 +120,7 @@ LIBXYZ_OBJS := $(BLD_DIR)/xyz.o
 
 
 # TESTS
+# (the opengl/ module is self-contained -- see opengl/Makefile)
 TESTS := $(BLD_DIR)/test_xyz
 
 # BENCHMARKS
