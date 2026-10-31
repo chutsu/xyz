@@ -10791,7 +10791,6 @@ void test_suite(void) {
   MU_ADD_TEST(test_kitti_calib_load);
   MU_ADD_TEST(test_kitti_raw_load);
 
-  // test_gl_*/test_gui* moved to opengl/test_opengl.c
   // MU_ADD_TEST(test_sandbox_optflow);
   // MU_ADD_TEST(test_sandbox_direct);
 }

@@ -13017,7 +13017,7 @@ int hedborg_essential_matrix(const real_t *hpts_i,
  * Form a camera-to-target look-at transform. Returns `T_WC`, the camera's
  * pose (`cam_pos`, oriented towards `target`) in the same frame `cam_pos`,
  * `target` and `up_axis` are expressed in -- following the convention
- * that in robotics (unlike OpenGL) the camera looks down its own +z axis.
+ * that in robotics where the camera looks down its own +z axis.
  */
 void lookat(const real_t cam_pos[3],
             const real_t target[3],

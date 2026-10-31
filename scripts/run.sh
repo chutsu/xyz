@@ -70,22 +70,6 @@ run_test() {
   exit
 }
 
-# opengl/ is a self-contained module with its own Makefile (see
-# opengl/Makefile) -- it isn't built by the root `make libxyz`, so it needs
-# its own run_test variant pointed at opengl/build/opengl/test_opengl.
-run_test_opengl() {
-  tmux send-keys -t $TARGET -R C-l C-m
-  tmux send-keys -t $TARGET -R "\
-    cd ~/code/xyz/opengl \
-      && clear \
-      && make ../build/opengl/test_opengl -j \
-      && cd ../build/opengl \
-      && ./test_opengl --target $1 \
-      && cd ~/code/xyz
-  " C-m C-m
-  exit
-}
-
 # CMD="cd ~/code/xyz && make libxyz -j"
 # CMD="cd ~/code/xyz && make ci"
 # CMD="cd ~/code/xyz && make tests -j"
@@ -431,27 +415,4 @@ run_test test_xyz test_inertial_odometry_batch
 # run_test test_xyz test_kitti_velodyne_load
 # run_test test_xyz test_kitti_calib_load
 # run_test test_xyz test_kitti_raw_load
-## XYZ-OPENGL (self-contained module -- see opengl/Makefile)
-# run_test_opengl test_gl_zeros
-# run_test_opengl test_gl_ones
-# run_test_opengl test_gl_eye
-# run_test_opengl test_gl_equals
-# run_test_opengl test_gl_mat_set
-# run_test_opengl test_gl_mat_val
-# run_test_opengl test_gl_transpose
-# run_test_opengl test_gl_vec3_cross
-# run_test_opengl test_gl_dot
-# run_test_opengl test_gl_norm
-# run_test_opengl test_gl_normalize
-# run_test_opengl test_gl_perspective
-# run_test_opengl test_gl_ortho
-# run_test_opengl test_gl_lookat
-# run_test_opengl test_gl_compile
-# run_test_opengl test_gl_link
-# run_test_opengl test_gl_shader
-# run_test_opengl test_gl_camera_setup
-# run_test_opengl test_gl_model_load
-# run_test_opengl test_gl_cube3d
-# run_test_opengl test_gui
-
 # run_test test_xyz test_sandbox_optflow

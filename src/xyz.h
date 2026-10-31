@@ -37,9 +37,6 @@
  *   - CALIB-IMUCAM ...... IMU-camera calibration
  *   - EUROC ............. EuRoC MAV dataset loader
  *   - KITTI ............. KITTI dataset loader
- *
- * OpenGL/GLFW rendering (math, shaders, camera, window/input handling,
- * 3D drawables) lives separately in the self-contained opengl/ module.
  */
 
 #pragma once
@@ -1560,15 +1557,12 @@ typedef struct keypoint_t {
 // IMAGE  //
 ////////////
 
-#ifndef IMAGE_T
-#define IMAGE_T
 typedef struct image_t {
   int width;
   int height;
   int channels;
   uint8_t *data;
 } image_t;
-#endif
 
 typedef struct imagef32_t {
   int width;
