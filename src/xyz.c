@@ -15067,6 +15067,100 @@ kdtree_data_t *kdtree_nns(const kdtree_t *kdtree,
   return data;
 }
 
+// Insert (p, sq_dist) into the bounded, ascending-by-distance candidate
+// list [best_points, best_dists] of current size `count` (capacity
+// `k`), keeping only the k closest points seen so far. Returns the new
+// count.
+static int _kdtree_knn_insert(float *best_points,
+                              float *best_dists,
+                              int count,
+                              const int k,
+                              const float p[3],
+                              const float sq_dist) {
+  if (count == k && sq_dist >= best_dists[count - 1]) {
+    return count; // Not better than the current worst candidate
+  }
+
+  int i = (count < k) ? count : count - 1;
+  if (count < k) {
+    count++;
+  }
+  while (i > 0 && best_dists[i - 1] > sq_dist) {
+    best_dists[i] = best_dists[i - 1];
+    best_points[i * 3 + 0] = best_points[(i - 1) * 3 + 0];
+    best_points[i * 3 + 1] = best_points[(i - 1) * 3 + 1];
+    best_points[i * 3 + 2] = best_points[(i - 1) * 3 + 2];
+    i--;
+  }
+  best_dists[i] = sq_dist;
+  best_points[i * 3 + 0] = p[0];
+  best_points[i * 3 + 1] = p[1];
+  best_points[i * 3 + 2] = p[2];
+
+  return count;
+}
+
+static int _kdtree_knn(const kdtree_node_t *node,
+                       const float target[3],
+                       const int k,
+                       float *best_points,
+                       float *best_dists,
+                       int count,
+                       int depth) {
+  if (node == NULL) {
+    return count;
+  }
+
+  float sq_dist = 0.0f;
+  sq_dist += (node->p[0] - target[0]) * (node->p[0] - target[0]);
+  sq_dist += (node->p[1] - target[1]) * (node->p[1] - target[1]);
+  sq_dist += (node->p[2] - target[2]) * (node->p[2] - target[2]);
+  count =
+      _kdtree_knn_insert(best_points, best_dists, count, k, node->p, sq_dist);
+
+  // Search the closer subtree first
+  const int axis = node->k;
+  const float diff = target[axis] - node->p[axis];
+  const kdtree_node_t *closer = (diff <= 0) ? node->left : node->right;
+  const kdtree_node_t *farther = (diff <= 0) ? node->right : node->left;
+  count =
+      _kdtree_knn(closer, target, k, best_points, best_dists, count, depth + 1);
+
+  // Search the farther subtree only if it could still hold a point
+  // closer than our current k-th best (or we don't have k yet)
+  const float worst_sq_dist = (count < k) ? INFINITY : best_dists[count - 1];
+  if ((diff * diff) < worst_sq_dist) {
+    count = _kdtree_knn(farther,
+                        target,
+                        k,
+                        best_points,
+                        best_dists,
+                        count,
+                        depth + 1);
+  }
+
+  return count;
+}
+
+/**
+ * Find the `k` nearest neighbors of `target` in `kdtree`. `best_points`
+ * (capacity `k * 3`) and `best_dists` (capacity `k`) are filled in
+ * ascending order of squared distance. Returns the number of neighbors
+ * actually found (<= k, e.g. if the tree holds fewer than k points).
+ */
+int kdtree_knn(const kdtree_t *kdtree,
+               const float target[3],
+               const int k,
+               float *best_points,
+               float *best_dists) {
+  assert(kdtree != NULL);
+  assert(target != NULL);
+  assert(k > 0);
+  assert(best_points != NULL);
+  assert(best_dists != NULL);
+  return _kdtree_knn(kdtree->root, target, k, best_points, best_dists, 0, 0);
+}
+
 /*******************************************************************************
  * STATE-ESTIMATION
  ******************************************************************************/
@@ -18110,153 +18204,143 @@ void pcd_deskew(pcd_t *pcd,
   }
 }
 
-// /**
-//  * Setup lidar factor
-//  */
-// void lidar_factor_setup(lidar_factor_t *factor,
-//                         pcd_t *pcd,
-//                         pose_t *pose,
-//                         const real_t var[3]) {
-//   assert(factor != NULL);
-//   assert(pcd != NULL);
-//   assert(pose != NULL);
-//   assert(var != NULL);
-//
-//   // Parameters
-//   factor->pcd = pcd;
-//   factor->pose = pose;
-//
-//   // Measurement covariance
-//   zeros(factor->covar, 3, 3);
-//   factor->covar[0] = var[0];
-//   factor->covar[4] = var[1];
-//   factor->covar[8] = var[2];
-//
-//   // Square-root information matrix
-//   zeros(factor->sqrt_info, 3, 3);
-//   factor->sqrt_info[0] = sqrt(1.0 / factor->covar[0]);
-//   factor->sqrt_info[4] = sqrt(1.0 / factor->covar[1]);
-//   factor->sqrt_info[8] = sqrt(1.0 / factor->covar[2]);
-//
-//   // Factor parameters, residuals and Jacobians
-//   factor->r_size = pcd->num_points * 3;
-//   factor->num_params = 1;
-//   factor->param_types[0] = POSE_PARAM;
-//   factor->params[0] = factor->pose->data;
-//   factor->jacs[0] = factor->J_pose;
-// }
-//
-// static float *pcd_transform(pcd_t *pcd, const real_t *T_WL) {
-//   TF_INV(T_WL, T_LW);
-//   TF_ROT(T_LW, C_LW);
-//   TF_TRANS(T_LW, r_LW);
-//
-//   float C_LW_f[3 * 3] = {0};
-//   float r_LW_f[3 * 3] = {0};
-//   for (int i = 0; i < 9; ++i) {
-//     C_LW_f[i] = C_LW[i];
-//   }
-//   for (int i = 0; i < 3; ++i) {
-//     r_LW_f[i] = r_LW[i];
-//   }
-//
-//   float *points_W = malloc(sizeof(real_t) * 3 * pcd->num_points);
-//   dotf(pcd->data, pcd->num_points, 3, C_LW_f, 3, 3, points_W);
-//   for (size_t i = 0; i < pcd->num_points; ++i) {
-//     points_W[i * 3 + 0] += r_LW_f[0];
-//     points_W[i * 3 + 1] += r_LW_f[1];
-//     points_W[i * 3 + 2] += r_LW_f[2];
-//   }
-//
-//   return points_W;
-// }
-//
-// void lidar_factor_jacobian(real_t *C_WL, float *p_W_est, real_t J_pose[3 *
-// 6]) {
-//   // J_pos = -1.0 * eye(3)
-//   real_t J_pos[3 * 3] = {0};
-//   J_pos[0] = -1.0;
-//   J_pos[4] = -1.0;
-//   J_pos[8] = -1.0;
-//
-//   // J_rot = C_WL @ skew(p_W_est)
-//   // clang-format off
-//   real_t xP[3 * 3] = {0};
-//   xP[0] = 0.0;         xP[1] = -p_W_est[2]; xP[2] = p_W_est[1];
-//   xP[3] = p_W_est[2];  xP[4] = 0.0;         xP[5] = -p_W_est[0];
-//   xP[6] = -p_W_est[1]; xP[7] = p_W_est[0];  xP[8] = 0.0;
-//   // clang-format on
-//   DOT(C_WL, 3, 3, xP, 3, 3, J_rot);
-//
-//   // J_pose = zeros((3, 6))
-//   // J[0:3, 0:3] = J_pos
-//   // J[0:3, 3:6] = J_rot
-//   mat_block_set(J_pose, 6, 0, 2, 0, 2, J_pos);
-//   mat_block_set(J_pose, 6, 0, 2, 3, 5, J_rot);
-// }
-//
-// /**
-//  * Evaluate lidar factor
-//  */
-// void lidar_factor_eval(void *factor_ptr) {
-//   lidar_factor_t *factor = (lidar_factor_t *) factor_ptr;
-//   assert(factor != NULL);
-//   assert(factor->pose);
-//   assert(factor->pcd);
-//
-//   // Map params
-//   TF(factor->params[0], T_WB);
-//   TF(factor->params[1], T_BL);
-//   TF_CHAIN(T_WL, 2, T_WB, T_BL);
-//   TF_ROT(T_WL, C_WL);
-//   TF_INV(T_WL, T_LW);
-//   TF_ROT(T_LW, C_LW);
-//
-//   // Transform lidar scan points to world frame and obtain closest points
-//   float *points_est = pcd_transform(factor->pcd, T_WL);
-//   float *points_map = malloc(sizeof(real_t) * 3 * factor->pcd->num_points);
-//   for (size_t i = 0; i < factor->pcd->num_points; ++i) {
-//     float point[3] = {0};
-//     float dist = 0.0f;
-//     kdtree_nn(factor->kdtree, &points_est[i * 3], point, &dist);
-//     points_map[i * 3 + 0] = point[0];
-//     points_map[i * 3 + 1] = point[1];
-//     points_map[i * 3 + 2] = point[2];
-//   }
-//
-//   // Calculate residuals
-//   factor->r = malloc(sizeof(real_t) * 3 * factor->pcd->num_points);
-//   for (size_t i = 0; i < factor->pcd->num_points; ++i) {
-//     factor->r[i * 3 + 0] = points_map[i * 3 + 0] - points_est[i * 3 + 0];
-//     factor->r[i * 3 + 1] = points_map[i * 3 + 1] - points_est[i * 3 + 1];
-//     factor->r[i * 3 + 2] = points_map[i * 3 + 2] - points_est[i * 3 + 2];
-//   }
-//
-//   // Calculate jacobians
-//   // -- Form: -1 * sqrt_info
-//   real_t neg_sqrt_info[3 * 3] = {0};
-//   mat_copy(factor->sqrt_info, 3, 3, neg_sqrt_info);
-//   mat_scale(neg_sqrt_info, 3, 3, -1.0);
-//   // -- Fill jacobians
-//   const size_t num_rows = 3 * factor->pcd->num_points;
-//   const size_t num_cols = 6;
-//   if (factor->J_pose) {
-//     free(factor->J_pose);
-//   }
-//   factor->J_pose = malloc(sizeof(real_t) * num_rows * num_cols);
-//
-//   const int stride = 6;
-//   for (size_t i = 0; i < factor->pcd->num_points; ++i) {
-//     const int rs = i * 3 + 0;
-//     const int re = i * 3 + 2;
-//     const int cs = 0;
-//     const int ce = 5;
-//
-//     real_t J_pose[3 * 6] = {0};
-//     lidar_factor_jacobian(C_WL, &points_est[i * 3], J_pose);
-//     mat_block_set(factor->J_pose, stride, rs, re, cs, ce, J_pose);
-//   }
-// }
+/**
+ * Setup LiDAR factor. Precomputes each of pcd's points in the body
+ * frame (fixed, since extrinsic doesn't change); correspondences
+ * themselves are NOT found here -- see lidar_factor_eval(), which
+ * re-queries `kdtree` fresh on every call.
+ */
+void lidar_factor_setup(lidar_factor_t *factor,
+                        pcd_t *pcd,
+                        kdtree_t *kdtree,
+                        real_t *pose,
+                        real_t *extrinsic,
+                        const real_t var) {
+  assert(factor != NULL);
+  assert(pcd != NULL);
+  assert(kdtree != NULL);
+  assert(pose != NULL);
+  assert(extrinsic != NULL);
+
+  factor->pcd = pcd;
+  factor->kdtree = kdtree;
+  factor->pose = pose;
+  factor->extrinsic = extrinsic;
+  factor->var = var;
+  factor->sqrt_info = sqrt(1.0 / var);
+
+  real_t T_BL[4 * 4] = {0};
+  tf(extrinsic, T_BL);
+  factor->points_B = malloc(sizeof(real_t) * 3 * pcd->num_points);
+  for (size_t i = 0; i < pcd->num_points; i++) {
+    const real_t p_L[3] = {pcd->data[i * 3 + 0],
+                           pcd->data[i * 3 + 1],
+                           pcd->data[i * 3 + 2]};
+    tf_point(T_BL, p_L, &factor->points_B[i * 3]);
+  }
+
+  // Factor residuals, parameters and Jacobians
+  factor->r_size = pcd->num_points * 3;
+  factor->r = malloc(sizeof(real_t) * factor->r_size);
+  factor->num_params = 1;
+  factor->param_types[0] = POSE_PARAM;
+  factor->params[0] = factor->pose;
+  factor->J_pose = malloc(sizeof(real_t) * factor->r_size * 6);
+  factor->jacs[0] = factor->J_pose;
+}
+
+/**
+ * Free LiDAR factor's heap-allocated buffers (everything
+ * lidar_factor_setup() itself allocated -- pcd, kdtree, pose and
+ * extrinsic are caller-owned and untouched).
+ */
+void lidar_factor_free(lidar_factor_t *factor) {
+  if (factor == NULL) {
+    return;
+  }
+  free(factor->points_B);
+  free(factor->r);
+  free(factor->J_pose);
+}
+
+/**
+ * Evaluate LiDAR factor. Point-to-point: for each of pcd's points,
+ * re-finds its nearest neighbor in `kdtree` at the CURRENT pose (a
+ * fresh kdtree_nn() search every call -- real ICP re-association, not
+ * a correspondence frozen at setup()) and measures straight-line
+ * distance to it.
+ * @returns `0` for success, `-1` for failure
+ */
+int lidar_factor_eval(void *factor_ptr) {
+  assert(factor_ptr != NULL);
+  lidar_factor_t *factor = (lidar_factor_t *) factor_ptr;
+
+  const real_t *p_WB = factor->params[0];
+  const real_t q_WB[4] = {factor->params[0][3],
+                          factor->params[0][4],
+                          factor->params[0][5],
+                          factor->params[0][6]};
+  real_t C_WB[3 * 3] = {0};
+  quat2rot(q_WB, C_WB);
+
+  for (size_t i = 0; i < factor->pcd->num_points; i++) {
+    const real_t *p_B = &factor->points_B[i * 3];
+
+    // Predicted world-frame point: p_W = R_WB * p_B + t_WB
+    real_t p_W[3] = {0};
+    quat_transform(q_WB, p_B, p_W);
+    p_W[0] += p_WB[0];
+    p_W[1] += p_WB[1];
+    p_W[2] += p_WB[2];
+
+    // Fresh nearest-neighbor search, every eval() call
+    const float target[3] = {(float) p_W[0], (float) p_W[1], (float) p_W[2]};
+    float nn_point[3] = {0};
+    float nn_dist = 0.0f;
+    kdtree_nn(factor->kdtree, target, nn_point, &nn_dist);
+
+    // -- Residual: r = sqrt_info * (nn_point - p_W)
+    const real_t r_raw[3] = {(real_t) nn_point[0] - p_W[0],
+                             (real_t) nn_point[1] - p_W[1],
+                             (real_t) nn_point[2] - p_W[2]};
+    real_t *r_row = &factor->r[i * 3];
+    r_row[0] = factor->sqrt_info * r_raw[0];
+    r_row[1] = factor->sqrt_info * r_raw[1];
+    r_row[2] = factor->sqrt_info * r_raw[2];
+
+    // -- Jacobian w.r.t. pose (right-perturbation: p->p+dp,
+    //    q->q*dq(dtheta)):
+    //    d(r)/d(dp) = -I3
+    //    d(r)/d(dtheta) = R_WB * skew(p_B), since perturbing q_WB
+    //    rotates R_WB by R_WB*(I+skew(dtheta)) and skew(dtheta)*p_B =
+    //    -skew(p_B)*dtheta, with an extra sign flip from r = nn - p_W.
+    real_t skew_pB[3 * 3] = {0};
+    skew(p_B, skew_pB);
+    real_t R_skew[3 * 3] = {0};
+    dot(C_WB, 3, 3, skew_pB, 3, 3, R_skew);
+
+    real_t J_block[3 * 6] = {0};
+    J_block[0] = -1.0;
+    J_block[7] = -1.0;
+    J_block[14] = -1.0;
+    J_block[3] = R_skew[0];
+    J_block[4] = R_skew[1];
+    J_block[5] = R_skew[2];
+    J_block[9] = R_skew[3];
+    J_block[10] = R_skew[4];
+    J_block[11] = R_skew[5];
+    J_block[15] = R_skew[6];
+    J_block[16] = R_skew[7];
+    J_block[17] = R_skew[8];
+
+    real_t *J_row = &factor->J_pose[i * 3 * 6];
+    for (int e = 0; e < 18; e++) {
+      J_row[e] = factor->sqrt_info * J_block[e];
+    }
+  }
+
+  return 0;
+}
 
 ////////////////////////
 // JOINT-ANGLE FACTOR //

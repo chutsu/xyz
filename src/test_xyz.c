@@ -6348,6 +6348,59 @@ int test_gps_factor(void) {
   return 0;
 }
 
+int test_lidar_factor(void) {
+  // Reference/target cloud: a flat patch on the z=0 plane
+  const int num_ref = 500;
+  float *ref_data = malloc(sizeof(float) * num_ref * 3);
+  for (int i = 0; i < num_ref; i++) {
+    ref_data[i * 3 + 0] = randf(-1.0, 1.0);
+    ref_data[i * 3 + 1] = randf(-1.0, 1.0);
+    ref_data[i * 3 + 2] = 0.0;
+  }
+  pcd_t *ref_pcd = pcd_malloc(0, 0, ref_data, NULL, num_ref);
+  free(ref_data);
+
+  // Source scan: points near the same region, so the fresh kdtree_nn()
+  // search lidar_factor_eval() does every call finds a real neighbor
+  const int num_src = 50;
+  float *src_data = malloc(sizeof(float) * num_src * 3);
+  for (int i = 0; i < num_src; i++) {
+    src_data[i * 3 + 0] = randf(-0.8, 0.8);
+    src_data[i * 3 + 1] = randf(-0.8, 0.8);
+    src_data[i * 3 + 2] = randf(-0.02, 0.02);
+  }
+  pcd_t *src_pcd = pcd_malloc(0, 0, src_data, NULL, num_src);
+  free(src_data);
+
+  // Pose: small, non-trivial transform (so the rotation Jacobian block
+  // is actually exercised) that keeps the source points near the
+  // reference cloud's region
+  real_t pose[7] = {0.05, -0.03, 0.02, 1.0, 0.0, 0.0, 0.0};
+  quat_perturb(pose + 3, 0, 0.05);
+  quat_perturb(pose + 3, 1, -0.03);
+  quat_normalize(pose + 3);
+
+  // Fixed, identity lidar-to-body extrinsic
+  real_t extrinsic[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+
+  lidar_factor_t factor;
+  const real_t var = 0.01;
+  lidar_factor_setup(&factor, src_pcd, ref_pcd->kdtree, pose, extrinsic, var);
+  MU_ASSERT(factor.r_size == num_src * 3);
+
+  // Check Jacobian
+  const real_t step_size = 1e-8;
+  const real_t tol = 1e-4;
+  CHECK_FACTOR_J(0, factor, lidar_factor_eval, step_size, tol, 0);
+
+  // Clean up
+  lidar_factor_free(&factor);
+  pcd_free(src_pcd);
+  pcd_free(ref_pcd);
+
+  return 0;
+}
+
 int test_ba_factor(void) {
   // Camera pose
   real_t pose[7] = {0.01, 0.01, 0.0, 0.5, -0.5, 0.5, -0.5};
@@ -8485,6 +8538,60 @@ int test_kdtree_nn(void) {
   kdtree_free(kdtree);
   free(points);
   free(points_gnd);
+
+  return 0;
+}
+
+static int cmp_sq_dist(const void *a, const void *b) {
+  const real_t da = ((const real_t *) a)[0];
+  const real_t db = ((const real_t *) b)[0];
+  return (da > db) - (da < db);
+}
+
+int test_kdtree_knn(void) {
+  // Generate random 3d points
+  const int N = 2000;
+  float *points = malloc(sizeof(float) * N * 3);
+  for (int i = 0; i < N; ++i) {
+    points[i * 3 + 0] = randf(-100.0, 100.0);
+    points[i * 3 + 1] = randf(-100.0, 100.0);
+    points[i * 3 + 2] = randf(-100.0, 100.0);
+  }
+
+  // Build kdtree
+  kdtree_t *kdtree = kdtree_malloc(points, N);
+
+  // Find k nearest neighbors
+  const int k = 8;
+  const float target[3] = {5.0, 3.0, 0.0};
+  float best_points[8 * 3] = {0};
+  float best_dists[8] = {0};
+  const int count = kdtree_knn(kdtree, target, k, best_points, best_dists);
+  MU_ASSERT(count == k);
+
+  // Brute-force ground truth: every point's squared distance to target,
+  // sorted ascending -- the first k should match kdtree_knn()'s result
+  real_t *sq_dists = malloc(sizeof(real_t) * N);
+  for (int i = 0; i < N; ++i) {
+    const real_t dx = points[i * 3 + 0] - target[0];
+    const real_t dy = points[i * 3 + 1] - target[1];
+    const real_t dz = points[i * 3 + 2] - target[2];
+    sq_dists[i] = dx * dx + dy * dy + dz * dz;
+  }
+  qsort(sq_dists, N, sizeof(real_t), cmp_sq_dist);
+
+  // Assert: ascending order, and each distance matches brute force
+  for (int i = 0; i < k; i++) {
+    if (i > 0) {
+      MU_ASSERT(best_dists[i] >= best_dists[i - 1]);
+    }
+    MU_ASSERT(fabs(best_dists[i] - sq_dists[i]) < 1e-3);
+  }
+
+  // Clean up
+  kdtree_free(kdtree);
+  free(points);
+  free(sq_dists);
 
   return 0;
 }
@@ -11398,6 +11505,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_prior_factor_pose);
   MU_ADD_TEST(test_between_factor);
   MU_ADD_TEST(test_gps_factor);
+  MU_ADD_TEST(test_lidar_factor);
   MU_ADD_TEST(test_ba_factor);
   MU_ADD_TEST(test_camera_factor);
   MU_ADD_TEST(test_imu_buffer_setup);
@@ -11443,6 +11551,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_kdtree_node);
   MU_ADD_TEST(test_kdtree);
   MU_ADD_TEST(test_kdtree_nn);
+  MU_ADD_TEST(test_kdtree_knn);
 
   // SIMULATION
   MU_ADD_TEST(test_sim_features_save_load);

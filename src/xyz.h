@@ -2219,6 +2219,11 @@ void kdtree_nn(const kdtree_t *kdtree,
 kdtree_data_t *kdtree_nns(const kdtree_t *kdtree,
                           const float *query_points,
                           const size_t n);
+int kdtree_knn(const kdtree_t *kdtree,
+               const float target[3],
+               const int k,
+               float *best_points,
+               float *best_dists);
 
 /*******************************************************************************
  * STATE-ESTIMATION
@@ -2763,32 +2768,46 @@ void pcd_deskew(pcd_t *points,
                 const real_t T_WL_km1[4 * 4],
                 const real_t T_WL_km2[4 * 4]);
 
+// Point-to-point LiDAR scan-matching factor. Unlike the other factors
+// in this file, correspondences are NOT frozen at setup() -- every
+// lidar_factor_eval() call re-queries `kdtree` (a reference cloud's
+// spatial index, assumed already expressed in the same world frame
+// `pose` estimates, e.g. a local submap) for each of pcd's points'
+// CURRENT nearest neighbor, so the match can change as `pose` is
+// refined. This is real ICP re-association, at the cost of a kdtree_nn
+// search per point on every residual/Jacobian evaluation.
 typedef struct lidar_factor_t {
-  pcd_t *pcd;
-  kdtree_t *kdtree;
+  pcd_t *pcd;       // Source scan, LIDAR-local frame
+  kdtree_t *kdtree; // Target/reference cloud's spatial index, world frame
 
-  real_t *pose;
-  real_t *extrinsic;
+  real_t *pose;      // T_WB, optimizable (POSE_PARAM)
+  real_t *extrinsic; // T_BL, fixed lidar-to-body extrinsic
 
-  real_t covar[3 * 3];
-  real_t sqrt_info[3 * 3];
+  real_t *points_B; // [pcd->num_points * 3] scan points in body frame
+                    // (fixed: extrinsic doesn't change, precomputed once)
+
+  real_t var;       // Per-point noise variance
+  real_t sqrt_info; // 1 / sqrt(var)
 
   real_t *r;
   int r_size;
 
-  int param_types[2];
-  real_t *params[2];
+  int param_types[1];
+  real_t *params[1];
   int num_params;
 
   real_t *jacs[1];
-  real_t *J_pose;
+  real_t *J_pose; // [r_size * 6], heap-allocated
 } lidar_factor_t;
 
-// void lidar_factor_setup(lidar_factor_t *factor,
-//                         pcd_t *pcd,
-//                         pose_t *pose_k,
-//                         const real_t var[3]);
-// void lidar_factor_eval(void *factor);
+void lidar_factor_setup(lidar_factor_t *factor,
+                        pcd_t *pcd,
+                        kdtree_t *kdtree,
+                        real_t *pose,
+                        real_t *extrinsic,
+                        const real_t var);
+void lidar_factor_free(lidar_factor_t *factor);
+int lidar_factor_eval(void *factor_ptr);
 
 ////////////////////////
 // JOINT-ANGLE FACTOR //
