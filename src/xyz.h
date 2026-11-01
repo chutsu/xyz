@@ -2814,6 +2814,14 @@ void joint_factor_copy(const joint_factor_t *src, joint_factor_t *dst);
 int joint_factor_eval(void *factor_ptr);
 int joint_factor_equals(const joint_factor_t *j0, const joint_factor_t *j1);
 
+////////////////////////
+// GEOMETRIC OBSERVER //
+////////////////////////
+
+typedef struct {
+
+} gobs_t;
+
 //////////////
 // CAMCHAIN //
 //////////////
