@@ -2705,9 +2705,9 @@ int imu_factor_eval(void *factor_ptr);
 ////////////////
 
 typedef struct gps_factor_t {
-  real_t gps_meas[3]; // GPS position fix, world frame
+  real_t gps_meas[3];
   real_t *pose_est;
-  real_t *gps_lever; // Antenna offset from body origin, body frame
+  real_t *gps_lever;
 
   real_t covar[3 * 3];
   real_t sqrt_info[3 * 3];

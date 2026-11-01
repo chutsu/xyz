@@ -36,8 +36,7 @@ run_script() {
   exit
 }
 
-# run_script note-fundamental_matrix.py
-# run_script note-essential_matrix.py
+# run_script plot_inertial_odometry.py
 
 ###############################################################################
 # C
