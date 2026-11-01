@@ -18484,6 +18484,135 @@ error:
   return 0;
 }
 
+////////////////////////
+// GEOMETRIC OBSERVER //
+////////////////////////
+
+/** Initialize `obs` to identity pose at rest, zero biases, Earth gravity. */
+void geom_observer_setup(geom_observer_t *obs) {
+  assert(obs != NULL);
+
+  vec3_copy((real_t[3]){0.0, 0.0, 0.0}, obs->pos);
+  vec3_copy((real_t[3]){0.0, 0.0, 0.0}, obs->vel);
+  quat_setup(obs->quat);
+  vec3_copy((real_t[3]){0.0, 0.0, 0.0}, obs->ba);
+  vec3_copy((real_t[3]){0.0, 0.0, 0.0}, obs->bg);
+  vec3_copy((real_t[3]){0.0, 0.0, -9.81}, obs->g);
+
+  obs->k_pos = 1.0;
+  obs->k_vel = 1.0;
+  obs->k_rot = 1.0;
+  obs->k_bg = 0.1;
+}
+
+/**
+ * Propagate `obs` by `dt` using IMU measurements `a_m`, `w_m` (exact
+ * SO(3)/R^3 integration). Biases are held constant; see
+ * geom_observer_correct().
+ */
+void geom_observer_propagate(geom_observer_t *obs,
+                             const real_t a_m[3],
+                             const real_t w_m[3],
+                             const real_t dt) {
+  assert(obs != NULL);
+  assert(a_m != NULL);
+  assert(w_m != NULL);
+
+  // Bias-corrected IMU measurements
+  real_t a[3] = {0};
+  real_t w[3] = {0};
+  vec3_sub(a_m, obs->ba, a);
+  vec3_sub(w_m, obs->bg, w);
+
+  // Specific force rotated into the world frame, plus gravity
+  real_t acc_W[3] = {0};
+  quat_transform(obs->quat, a, acc_W);
+  vec3_add(acc_W, obs->g, acc_W);
+
+  // Position: p += v * dt + 0.5 * acc_W * dt^2
+  real_t dp[3] = {0};
+  real_t dp2[3] = {0};
+  vec3_scale(obs->vel, dt, dp);
+  vec3_scale(acc_W, 0.5 * dt * dt, dp2);
+  vec3_add(dp, dp2, dp);
+  vec3_add(obs->pos, dp, obs->pos);
+
+  // Velocity: v += acc_W * dt
+  real_t dv[3] = {0};
+  vec3_scale(acc_W, dt, dv);
+  vec3_add(obs->vel, dv, obs->vel);
+
+  // Attitude: exact exponential update on SO(3), via the quaternion
+  // exponential map (quat_delta() is exact, not small-angle -- it uses
+  // sinc() rather than a first-order approximation).
+  real_t dalpha[3] = {0};
+  real_t dq[4] = {0};
+  real_t q_new[4] = {0};
+  vec3_scale(w, dt, dalpha);
+  quat_delta(dalpha, dq);
+  quat_mul(obs->quat, dq, q_new);
+  quat_normalize(q_new);
+  vec_copy(q_new, 4, obs->quat);
+}
+
+/**
+ * Fuse registered pose `pos_meas`/`quat_meas` into `obs` via proportional
+ * feedback + Mahony-style gyro-bias estimation. `obs->ba` is untouched.
+ */
+void geom_observer_correct(geom_observer_t *obs,
+                           const real_t pos_meas[3],
+                           const real_t quat_meas[4],
+                           const real_t dt) {
+  assert(obs != NULL);
+  assert(pos_meas != NULL);
+  assert(quat_meas != NULL);
+
+  // Position error, world frame
+  real_t e_pos[3] = {0};
+  vec3_sub(pos_meas, obs->pos, e_pos);
+
+  // Attitude error, exact SO(3) log map, expressed in the body frame:
+  // e_rot = Log(R^T * R_meas), i.e. the rotation needed to bring the
+  // current estimate to the measurement.
+  real_t C[3 * 3] = {0};
+  real_t C_meas[3 * 3] = {0};
+  quat2rot(obs->quat, C);
+  quat2rot(quat_meas, C_meas);
+
+  real_t C_t[3 * 3] = {0};
+  mat_transpose(C, 3, 3, C_t);
+  real_t C_err[3 * 3] = {0};
+  dot(C_t, 3, 3, C_meas, 3, 3, C_err);
+
+  real_t e_rot[3] = {0};
+  so3_log(C_err, e_rot);
+
+  // Position / velocity correction: proportional feedback pulling the
+  // propagated estimate toward the measured pose.
+  real_t dpos[3] = {0};
+  vec3_scale(e_pos, obs->k_pos * dt, dpos);
+  vec3_add(obs->pos, dpos, obs->pos);
+
+  real_t dvel[3] = {0};
+  vec3_scale(e_pos, obs->k_vel * dt, dvel);
+  vec3_add(obs->vel, dvel, obs->vel);
+
+  // Attitude correction: rotate the estimate toward the measurement.
+  real_t dalpha[3] = {0};
+  vec3_scale(e_rot, obs->k_rot * dt, dalpha);
+  real_t dq[4] = {0};
+  quat_delta(dalpha, dq);
+  real_t q_new[4] = {0};
+  quat_mul(obs->quat, dq, q_new);
+  quat_normalize(q_new);
+  vec_copy(q_new, 4, obs->quat);
+
+  // Gyroscope bias correction
+  real_t dbg[3] = {0};
+  vec3_scale(e_rot, obs->k_bg * dt, dbg);
+  vec3_sub(obs->bg, dbg, obs->bg);
+}
+
 //////////////
 // CAMCHAIN //
 //////////////

@@ -2818,9 +2818,31 @@ int joint_factor_equals(const joint_factor_t *j0, const joint_factor_t *j1);
 // GEOMETRIC OBSERVER //
 ////////////////////////
 
-typedef struct {
+typedef struct geom_observer_t {
+  // State
+  real_t pos[3];  // Position, world frame
+  real_t vel[3];  // Velocity, world frame
+  real_t quat[4]; // Orientation q_WS (Hamilton, [qw qx qy qz])
+  real_t ba[3];   // Accelerometer bias, body frame
+  real_t bg[3];   // Gyroscope bias, body frame
+  real_t g[3];    // Gravity vector, world frame
 
-} gobs_t;
+  // Correction gains
+  real_t k_pos; // Position correction gain
+  real_t k_vel; // Velocity correction gain
+  real_t k_rot; // Attitude correction gain
+  real_t k_bg;  // Gyroscope bias correction gain
+} geom_observer_t;
+
+void geom_observer_setup(geom_observer_t *obs);
+void geom_observer_propagate(geom_observer_t *obs,
+                             const real_t a_m[3],
+                             const real_t w_m[3],
+                             const real_t dt);
+void geom_observer_correct(geom_observer_t *obs,
+                           const real_t pos_meas[3],
+                           const real_t quat_meas[4],
+                           const real_t dt);
 
 //////////////
 // CAMCHAIN //

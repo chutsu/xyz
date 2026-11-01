@@ -6958,6 +6958,82 @@ int test_joint_factor(void) {
   return 0;
 }
 
+int test_geom_observer_propagate(void) {
+  geom_observer_t obs;
+  geom_observer_setup(&obs);
+
+  // Stationary, level IMU: specific force exactly cancels gravity, no
+  // rotation -- state should not move.
+  const real_t a_level[3] = {0.0, 0.0, 9.81};
+  const real_t w_zero[3] = {0.0, 0.0, 0.0};
+  const real_t dt = 0.01;
+  for (int k = 0; k < 100; k++) {
+    geom_observer_propagate(&obs, a_level, w_zero, dt);
+  }
+  MU_ASSERT(fabs(obs.pos[0]) < 1e-8);
+  MU_ASSERT(fabs(obs.pos[1]) < 1e-8);
+  MU_ASSERT(fabs(obs.pos[2]) < 1e-8);
+  MU_ASSERT(fabs(obs.vel[0]) < 1e-8);
+  MU_ASSERT(fabs(obs.vel[1]) < 1e-8);
+  MU_ASSERT(fabs(obs.vel[2]) < 1e-8);
+  MU_ASSERT(fabs(obs.quat[0] - 1.0) < 1e-8);
+  MU_ASSERT(fabs(obs.quat[1]) < 1e-8);
+  MU_ASSERT(fabs(obs.quat[2]) < 1e-8);
+  MU_ASSERT(fabs(obs.quat[3]) < 1e-8);
+
+  // Constant upward acceleration of 1 m/s^2 for 1 second: v -> 1, p -> 0.5
+  geom_observer_setup(&obs);
+  const real_t a_up[3] = {0.0, 0.0, 9.81 + 1.0};
+  for (int k = 0; k < 100; k++) {
+    geom_observer_propagate(&obs, a_up, w_zero, dt);
+  }
+  MU_ASSERT(fabs(obs.vel[2] - 1.0) < 1e-3);
+  MU_ASSERT(fabs(obs.pos[2] - 0.5) < 1e-3);
+
+  return 0;
+}
+
+int test_geom_observer_correct(void) {
+  geom_observer_t obs;
+  geom_observer_setup(&obs);
+
+  // Simulate a stationary body with a persistent, unknown gyroscope bias:
+  // the measured gyro reads the bias even though the true angular
+  // velocity is zero, so the propagated attitude will drift unless the
+  // correction step learns the bias.
+  const real_t bg_true[3] = {0.0, 0.0, 0.02};
+  const real_t a_level[3] = {0.0, 0.0, 9.81};
+  const real_t pos_true[3] = {0.0, 0.0, 0.0};
+  const real_t quat_true[4] = {1.0, 0.0, 0.0, 0.0};
+
+  const real_t dt = 0.01;
+  const int correct_every = 10; // Correction at 10 Hz (every 0.1s)
+  const real_t correct_dt = dt * correct_every;
+  const int num_steps = 20000; // 200 seconds of simulated time
+
+  for (int k = 0; k < num_steps; k++) {
+    geom_observer_propagate(&obs, a_level, bg_true, dt);
+
+    if ((k + 1) % correct_every == 0) {
+      geom_observer_correct(&obs, pos_true, quat_true, correct_dt);
+    }
+  }
+
+  MU_ASSERT(fabs(obs.bg[0] - bg_true[0]) < 1e-3);
+  MU_ASSERT(fabs(obs.bg[1] - bg_true[1]) < 1e-3);
+  MU_ASSERT(fabs(obs.bg[2] - bg_true[2]) < 1e-3);
+
+  real_t rpy[3] = {0};
+  quat2euler(obs.quat, rpy);
+  MU_ASSERT(fabs(rpy[0]) < 1e-2);
+  MU_ASSERT(fabs(rpy[1]) < 1e-2);
+  MU_ASSERT(fabs(rpy[2]) < 1e-2);
+
+  MU_ASSERT(vec3_norm(obs.pos) < 1e-2);
+
+  return 0;
+}
+
 typedef struct test_calib_camera_data_t {
   real_t T_WF[4 * 4];
   real_t T_WB[4 * 4];
@@ -10727,6 +10803,10 @@ void test_suite(void) {
   MU_ADD_TEST(test_imu_factor_form_F_matrix);
   MU_ADD_TEST(test_imu_factor);
   MU_ADD_TEST(test_joint_factor);
+
+  // GEOMETRIC OBSERVER
+  MU_ADD_TEST(test_geom_observer_propagate);
+  MU_ADD_TEST(test_geom_observer_correct);
   MU_ADD_TEST(test_camchain);
   MU_ADD_TEST(test_calib_camera_factor);
   MU_ADD_TEST(test_calib_imucam_factor);
