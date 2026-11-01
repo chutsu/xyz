@@ -17940,7 +17940,6 @@ pcd_t *pcd_malloc(const timestamp_t ts_start,
   }
 
   pcd->num_points = num_points;
-  pcd->kdtree = kdtree_malloc(pcd->data, pcd->num_points);
 
   return pcd;
 }
@@ -17952,7 +17951,6 @@ void pcd_free(pcd_t *pcd) {
 
   free(pcd->data);
   free(pcd->time_diffs);
-  kdtree_free(pcd->kdtree);
   free(pcd);
 }
 

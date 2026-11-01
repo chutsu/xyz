@@ -6386,9 +6386,11 @@ int test_lidar_factor(void) {
   quat_perturb(extrinsic + 3, 2, 0.04);
   quat_normalize(extrinsic + 3);
 
+  kdtree_t *ref_kdtree = kdtree_malloc(ref_pcd->data, ref_pcd->num_points);
+
   lidar_factor_t factor;
   const real_t var = 0.01;
-  lidar_factor_setup(&factor, src_pcd, ref_pcd->kdtree, pose, extrinsic, var);
+  lidar_factor_setup(&factor, src_pcd, ref_kdtree, pose, extrinsic, var);
   MU_ASSERT(factor.r_size == num_src * 3);
 
   // Check Jacobians
@@ -6399,6 +6401,7 @@ int test_lidar_factor(void) {
 
   // Clean up
   lidar_factor_free(&factor);
+  kdtree_free(ref_kdtree);
   pcd_free(src_pcd);
   pcd_free(ref_pcd);
 

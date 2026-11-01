@@ -2707,7 +2707,6 @@ typedef struct pcd_t {
   float *data;
   float *time_diffs;
   size_t num_points;
-  kdtree_t *kdtree;
 } pcd_t;
 
 pcd_t *pcd_malloc(const timestamp_t ts_start,
