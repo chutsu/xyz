@@ -7563,59 +7563,43 @@ int test_save_and_load_poses(void) {
 }
 
 int test_assoc_pose_data(void) {
-  // const double threshold = 0.01;
-  // const char *matches_fpath = "./gnd_est_matches.csv";
-  // const char *gnd_data_path = "./test_data/euroc/MH01_groundtruth.csv";
-  // const char *est_data_path = "./test_data/euroc/MH01_estimate.csv";
-  //
-  // // Load ground-truth poses
-  // int num_gnd_poses = 0;
-  // pose_t *gnd_poses = load_poses(gnd_data_path, &num_gnd_poses);
-  // printf("num_gnd_poses: %d\n", num_gnd_poses);
-  //
-  // // Load estimate poses
-  // int num_est_poses = 0;
-  // pose_t *est_poses = load_poses(est_data_path, &num_est_poses);
-  // printf("num_est_poses: %d\n", num_est_poses);
-  //
-  // // Associate data
-  // size_t num_matches = 0;
-  // int **matches = assoc_pose_data(gnd_poses,
-  //                                 num_gnd_poses,
-  //                                 est_poses,
-  //                                 num_est_poses,
-  //                                 threshold,
-  //                                 &num_matches);
-  // printf("Time Associated:\n");
-  // printf(" - [%s]\n", gnd_data_path);
-  // printf(" - [%s]\n", est_data_path);
-  // printf("threshold:  %.4f [s]\n", threshold);
-  // printf("num_matches: %ld\n", num_matches);
-  //
-  // // Save matches to file
-  // FILE *matches_csv = fopen(matches_fpath, "w");
-  // fprintf(matches_csv, "#gnd_idx,est_idx\n");
-  // for (size_t i = 0; i < num_matches; i++) {
-  //   uint64_t gnd_ts = gnd_poses[matches[i][0]].ts;
-  //   uint64_t est_ts = est_poses[matches[i][1]].ts;
-  //   double t_diff = fabs(ts2sec(gnd_ts - est_ts));
-  //   if (t_diff > threshold) {
-  //     printf("ERROR! Time difference > threshold!\n");
-  //     printf("ground_truth_index: %d\n", matches[i][0]);
-  //     printf("estimate_index: %d\n", matches[i][1]);
-  //     break;
-  //   }
-  //   fprintf(matches_csv, "%d,%d\n", matches[i][0], matches[i][1]);
-  // }
-  // fclose(matches_csv);
-  //
-  // // Clean up
-  // for (size_t i = 0; i < num_matches; i++) {
-  //   free(matches[i]);
-  // }
-  // free(matches);
-  // free(gnd_poses);
-  // free(est_poses);
+  // Synthetic ground-truth timestamps: 10 poses, evenly spaced 0.1s apart
+  const int num_gnd = 10;
+  timestamp_t gnd_ts[10] = {0};
+  for (int i = 0; i < num_gnd; i++) {
+    gnd_ts[i] = sec2ts(i * 0.1);
+  }
+
+  // Synthetic estimate timestamps: every other ground-truth timestamp
+  // (indices 0, 2, 4, 6, 8), each nudged by +5ms -- well within the 10ms
+  // threshold, so the expected match is known exactly up front.
+  const int num_est = 5;
+  timestamp_t est_ts[5] = {0};
+  for (int i = 0; i < num_est; i++) {
+    est_ts[i] = sec2ts((i * 2) * 0.1 + 0.005);
+  }
+
+  const double threshold = 0.01;
+  size_t num_matches = 0;
+  int **matches = assoc_pose_data(gnd_ts,
+                                  num_gnd,
+                                  est_ts,
+                                  num_est,
+                                  threshold,
+                                  &num_matches);
+
+  MU_ASSERT(matches != NULL);
+  MU_ASSERT(num_matches == (size_t) num_est);
+  for (size_t i = 0; i < num_matches; i++) {
+    MU_ASSERT(matches[i][0] == (int) (i * 2));
+    MU_ASSERT(matches[i][1] == (int) i);
+  }
+
+  // Clean up
+  for (size_t i = 0; i < num_matches; i++) {
+    free(matches[i]);
+  }
+  free(matches);
 
   return 0;
 }
@@ -10832,7 +10816,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_marg_factor);
   MU_ADD_TEST(test_marg_factor_schur_complement_failure);
   MU_ADD_TEST(test_save_and_load_poses);
-  // MU_ADD_TEST(test_assoc_pose_data);
+  MU_ADD_TEST(test_assoc_pose_data);
   MU_ADD_TEST(test_solver_setup);
   MU_ADD_TEST(test_inertial_odometry_batch);
   MU_ADD_TEST(test_bundle_adjustment);

@@ -3039,12 +3039,12 @@ int load_poses(const char *data_path,
                timestamp_t **timestamps,
                real_t **poses,
                int *num_poses);
-// int **assoc_pose_data(pose_t *gnd_poses,
-//                       size_t num_gnd_poses,
-//                       pose_t *est_poses,
-//                       size_t num_est_poses,
-//                       double threshold,
-//                       size_t *num_matches);
+int **assoc_pose_data(const timestamp_t *gnd_ts,
+                      const size_t num_gnd,
+                      const timestamp_t *est_ts,
+                      const size_t num_est,
+                      const double threshold,
+                      size_t *num_matches);
 
 ////////////
 // SOLVER //
