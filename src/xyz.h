@@ -2751,35 +2751,6 @@ void lidar_factor_free(lidar_factor_t *factor);
 int lidar_factor_eval(void *factor_ptr);
 
 ////////////////////////
-// JOINT-ANGLE FACTOR //
-////////////////////////
-
-typedef struct joint_factor_t {
-  real_t *joint;
-
-  real_t z[1];
-  real_t covar[1];
-  real_t sqrt_info[1];
-
-  int r_size;
-  int num_params;
-  int param_types[1];
-
-  real_t *params[1];
-  real_t r[1];
-  real_t *jacs[1];
-  real_t J_joint[1 * 1];
-} joint_factor_t;
-
-void joint_factor_setup(joint_factor_t *factor,
-                        real_t *joint0,
-                        const real_t z,
-                        const real_t var);
-void joint_factor_copy(const joint_factor_t *src, joint_factor_t *dst);
-int joint_factor_eval(void *factor_ptr);
-int joint_factor_equals(const joint_factor_t *j0, const joint_factor_t *j1);
-
-////////////////////////
 // GEOMETRIC OBSERVER //
 ////////////////////////
 

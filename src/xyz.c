@@ -6012,6 +6012,13 @@ int eig_sym(const real_t *A, const int m, const int n, real_t *V, real_t *w) {
 
 /**
  * Invert matrix `A` of size `m` x `n` with Eigen-decomposition.
+ * @returns `0` for success, `-1` if the eigen-decomposition itself fails
+ * to converge (see eig_sym()). A near-zero eigenvalue (singular/rank-
+ * deficient `A`) does not fail outright -- its reciprocal is zeroed
+ * instead of left as +-inf, same tolerance-based pseudo-inverse
+ * marg_factor_hessian_decomp() uses, so a singular `A` yields a
+ * detectably-wrong (rather than NaN/inf-poisoned) `A_inv` that a
+ * downstream check_inv() can catch.
  */
 int eig_inv(real_t *A, const int m, const int n, const int c, real_t *A_inv) {
   assert(A != NULL);
@@ -6029,9 +6036,17 @@ int eig_inv(real_t *A, const int m, const int n, const int c, real_t *A_inv) {
   real_t *Lambda_inv = malloc(sizeof(real_t) * m * m);
   real_t *w = malloc(sizeof(real_t) * m);
 
-  eig_sym(A, m, m, V, w);
+  if (eig_sym(A, m, m, V, w) != 0) {
+    free(V);
+    free(Vt);
+    free(Lambda_inv);
+    free(w);
+    return -1;
+  }
+
+  const real_t tol = 1e-18;
   for (int i = 0; i < m; i++) {
-    w[i] = 1.0 / w[i];
+    w[i] = (fabs(w[i]) > tol) ? (1.0 / w[i]) : 0.0;
   }
   mat_diag_set(Lambda_inv, m, m, w);
   mat_transpose(V, m, m, Vt);
@@ -18186,103 +18201,6 @@ int lidar_factor_eval(void *factor_ptr) {
 }
 
 ////////////////////////
-// JOINT-ANGLE FACTOR //
-////////////////////////
-
-/**
- * Setup joint-angle factor
- */
-void joint_factor_setup(joint_factor_t *factor,
-                        real_t *joint,
-                        const real_t z,
-                        const real_t var) {
-  assert(factor != NULL);
-  assert(joint != NULL);
-
-  // Parameters
-  factor->joint = joint;
-  factor->num_params = 1;
-
-  // Measurement
-  factor->z[0] = z;
-
-  // Measurement covariance matrix
-  factor->covar[0] = var;
-
-  // Square-root information matrix
-  factor->sqrt_info[0] = sqrt(1.0 / factor->covar[0]);
-
-  // Factor residuals, parameters and Jacobians
-  factor->r_size = 1;
-  factor->num_params = 1;
-  factor->param_types[0] = JOINT_PARAM;
-  factor->params[0] = factor->joint;
-  factor->jacs[0] = factor->J_joint;
-}
-
-/**
- * Copy joint factor.
- */
-void joint_factor_copy(const joint_factor_t *src, joint_factor_t *dst) {
-  assert(src != NULL);
-  assert(dst != NULL);
-
-  dst->joint = src->joint;
-  dst->z[0] = src->z[0];
-  dst->covar[0] = src->covar[0];
-  dst->sqrt_info[0] = src->sqrt_info[0];
-
-  dst->r_size = src->r_size;
-  dst->num_params = src->num_params;
-  dst->param_types[0] = src->param_types[0];
-
-  dst->params[0] = src->params[0];
-  dst->r[0] = src->r[0];
-  dst->J_joint[0] = src->J_joint[0];
-}
-
-/**
- * Evaluate joint-angle factor
- * @returns `0` for success, `-1` for failure
- */
-int joint_factor_eval(void *factor_ptr) {
-  assert(factor_ptr != NULL);
-
-  // Map factor
-  joint_factor_t *factor = (joint_factor_t *) factor_ptr;
-
-  // Calculate residuals
-  factor->r[0] = factor->sqrt_info[0] * (factor->z[0] - factor->joint[0]);
-
-  // Calculate Jacobians
-  factor->jacs[0][0] = -1 * factor->sqrt_info[0];
-
-  return 0;
-}
-
-/**
- * Check if two joint factors are equal in value.
- */
-int joint_factor_equals(const joint_factor_t *j0, const joint_factor_t *j1) {
-  CHECK(vec_equals(j0->z, j1->z, 1));
-  CHECK(mat_equals(j0->covar, j1->covar, 1, 1, 1e-8));
-  CHECK(mat_equals(j0->sqrt_info, j1->sqrt_info, 1, 1, 1e-8));
-
-  CHECK(j0->r_size == j1->r_size);
-  CHECK(j0->num_params == j1->num_params);
-  CHECK(j0->param_types[0] == j1->param_types[0]);
-
-  CHECK(vec_equals(j0->params[0], j1->params[0], 1));
-  CHECK(vec_equals(j0->r, j1->r, 1));
-  CHECK(vec_equals(j0->jacs[0], j1->jacs[0], 1));
-  CHECK(mat_equals(j0->J_joint, j1->J_joint, 1, 1, 1e-8));
-
-  return 1;
-error:
-  return 0;
-}
-
-////////////////////////
 // GEOMETRIC OBSERVER //
 ////////////////////////
 
@@ -19819,6 +19737,14 @@ void marg_factor_marginalize(marg_factor_t *marg,
   marg_factor_schur_complement(marg);
   marg->time_schur_complement = toc();
   marg->time_total += marg->time_schur_complement;
+
+  // marg_factor_schur_complement() may fail (e.g. Hmm, the block being
+  // marginalized, is singular/rank-deficient), in which case H_marg/b_marg
+  // are left as uninitialized memory. Bail out here rather than have
+  // marg_factor_hessian_decomp() eigen-decompose garbage.
+  if (marg->schur_complement_ok == 0) {
+    return;
+  }
 
   // Decompose marginalized Hessian
   tic();

@@ -6941,26 +6941,6 @@ int test_imu_factor(void) {
   return 0;
 }
 
-int test_joint_factor(void) {
-  // Joint angle
-  real_t joint[1] = {0.01};
-
-  // Joint angle factor
-  joint_factor_t factor;
-  const real_t var = 0.1;
-  joint_factor_setup(&factor, joint, 0.01, var);
-
-  // Evaluate
-  joint_factor_eval(&factor);
-
-  // Check Jacobians
-  const double tol = 1e-4;
-  const double step_size = 1e-8;
-  CHECK_FACTOR_J(0, factor, joint_factor_eval, step_size, tol, 0);
-
-  return 0;
-}
-
 int test_geom_observer_propagate(void) {
   geom_observer_t obs;
   geom_observer_setup(&obs);
@@ -7489,6 +7469,45 @@ int test_marg_factor(void) {
   // printf("marg->time_fejs:             %.4fs\n", marg->time_fejs);
   // printf("------------------------------------\n");
   // printf("marg->time_total:            %.4fs\n", marg->time_total);
+
+  marg_factor_free(marg);
+  rbt_free(marg_params);
+  rbt_free(fix_params);
+
+  return 0;
+}
+
+int test_marg_factor_schur_complement_failure(void) {
+  // Pose, feature, camera
+  real_t pose[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
+  real_t p_W[3] = {1.0, 0.0, 0.0};
+  camera_t cam;
+  const int cam_idx = 0;
+  const int cam_res[2] = {640, 480};
+  const real_t cam_data[8] = {320, 240, 320, 240, 0.0, 0.0, 0.0, 0.0};
+  camera_setup(&cam, cam_idx, cam_res, "pinhole", "radtan4", cam_data);
+
+  // Bundle adjustment factor is set up but deliberately never evaluated
+  // -- its residual and Jacobian blocks stay all-zero, so it contributes
+  // nothing to the Hessian. Since it is the ONLY factor touching `pose`,
+  // the Hmm block for marginalizing `pose` is the exact zero matrix --
+  // guaranteed singular -- which should make the Schur complement fail.
+  ba_factor_t factor = {0};
+  real_t var[2] = {1.0, 1.0};
+  real_t z[2] = {0.0, 0.0};
+  ba_factor_setup(&factor, pose, NULL, p_W, &cam, z, var);
+
+  rbt_t *marg_params = rbt_malloc(default_cmp);
+  rbt_t *fix_params = rbt_malloc(default_cmp);
+  rbt_insert(marg_params, pose, NULL);
+
+  marg_factor_t *marg = marg_factor_malloc();
+  marg_factor_add(marg, BA_FACTOR, &factor);
+  marg_factor_marginalize(marg, marg_params, fix_params);
+
+  MU_ASSERT(marg->schur_complement_ok == 0);
+  MU_ASSERT(marg->eigen_decomp_ok == 0);
+  MU_ASSERT(marg->marginalized == 0);
 
   marg_factor_free(marg);
   rbt_free(marg_params);
@@ -10805,15 +10824,13 @@ void test_suite(void) {
   MU_ADD_TEST(test_imu_initial_attitude);
   MU_ADD_TEST(test_imu_factor_form_F_matrix);
   MU_ADD_TEST(test_imu_factor);
-  MU_ADD_TEST(test_joint_factor);
-
-  // GEOMETRIC OBSERVER
   MU_ADD_TEST(test_geom_observer_propagate);
   MU_ADD_TEST(test_geom_observer_correct);
   MU_ADD_TEST(test_camchain);
   MU_ADD_TEST(test_calib_camera_factor);
   MU_ADD_TEST(test_calib_imucam_factor);
   MU_ADD_TEST(test_marg_factor);
+  MU_ADD_TEST(test_marg_factor_schur_complement_failure);
   MU_ADD_TEST(test_save_and_load_poses);
   // MU_ADD_TEST(test_assoc_pose_data);
   MU_ADD_TEST(test_solver_setup);
