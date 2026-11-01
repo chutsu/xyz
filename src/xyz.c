@@ -16213,10 +16213,13 @@ int between_factor_eval(void *factor_ptr) {
 ///////////////
 
 /**
- * Setup bundle adjustment factor
+ * Setup bundle adjustment factor. `extrinsic` may be NULL, in which case
+ * `pose` is treated as the camera pose T_WC directly; otherwise `pose` is
+ * the body pose T_WB and `extrinsic` the body-camera extrinsic T_BC.
  */
 void ba_factor_setup(ba_factor_t *factor,
                      real_t *pose,
+                     real_t *extrinsic,
                      real_t *feature,
                      camera_t *camera,
                      const real_t z[2],
@@ -16229,9 +16232,9 @@ void ba_factor_setup(ba_factor_t *factor,
 
   // Parameters
   factor->pose = pose;
+  factor->extrinsic = extrinsic;
   factor->feature = feature;
   factor->camera = camera;
-  factor->num_params = 3;
 
   // Measurement covariance
   factor->covar[0] = var[0];
@@ -16251,257 +16254,41 @@ void ba_factor_setup(ba_factor_t *factor,
 
   // Factor parameters, residuals and Jacobians
   factor->r_size = 2;
-  factor->num_params = 3;
 
-  factor->param_types[0] = POSE_PARAM;
-  factor->param_types[1] = FEATURE_PARAM;
-  factor->param_types[2] = CAMERA_PARAM;
+  int idx = 0;
+  factor->param_types[idx] = POSE_PARAM;
+  factor->params[idx] = factor->pose;
+  factor->jacs[idx] = factor->J_pose;
+  idx++;
 
-  factor->params[0] = factor->pose;
-  factor->params[1] = factor->feature;
-  factor->params[2] = factor->camera->data;
-
-  factor->jacs[0] = factor->J_pose;
-  factor->jacs[1] = factor->J_feature;
-  factor->jacs[2] = factor->J_camera;
-}
-
-/**
- * Camera pose jacobian
- */
-static void ba_factor_pose_jacobian(const real_t Jh_weighted[2 * 3],
-                                    const real_t T_WC[4 * 4],
-                                    const real_t p_W[3],
-                                    real_t *J) {
-  // Pre-check
-  if (J == NULL) {
-    return;
+  if (factor->extrinsic) {
+    factor->param_types[idx] = EXTRINSIC_PARAM;
+    factor->params[idx] = factor->extrinsic;
+    factor->jacs[idx] = factor->J_extrinsic;
+    idx++;
   }
 
-  // Jh_weighted = -1 * sqrt_info * Jh;
-  // J_pos = Jh_weighted * -C_CW;
-  // J_rot = Jh_weighted * -C_CW * skew(p_W - r_WC) * -C_WC;
-  // J = [J_pos, J_rot]
+  factor->param_types[idx] = FEATURE_PARAM;
+  factor->params[idx] = factor->feature;
+  factor->jacs[idx] = factor->J_feature;
+  idx++;
 
-  // Setup
-  real_t C_WC[3 * 3] = {0};
-  real_t C_CW[3 * 3] = {0};
-  real_t r_WC[3] = {0};
-  tf_rot_get(T_WC, C_WC);
-  tf_trans_get(T_WC, r_WC);
-  mat_transpose(C_WC, 3, 3, C_CW);
+  factor->param_types[idx] = CAMERA_PARAM;
+  factor->params[idx] = factor->camera->data;
+  factor->jacs[idx] = factor->J_camera;
+  idx++;
 
-  // J_pos = -1 * sqrt_info * Jh * -C_CW;
-  real_t J_pos[2 * 3] = {0};
-  real_t neg_C_CW[3 * 3] = {0};
-  mat_copy(C_CW, 3, 3, neg_C_CW);
-  mat_scale(neg_C_CW, 3, 3, -1.0);
-  dot(Jh_weighted, 2, 3, neg_C_CW, 3, 3, J_pos);
-
-  J[0] = J_pos[0];
-  J[1] = J_pos[1];
-  J[2] = J_pos[2];
-
-  J[6] = J_pos[3];
-  J[7] = J_pos[4];
-  J[8] = J_pos[5];
-
-  /**
-   * Jh_weighted = -1 * sqrt_info * Jh;
-   * J_rot = Jh_weighted * -C_CW * skew(p_W - r_WC) * -C_WC;
-   * where:
-   *
-   *   A = -C_CW;
-   *   B = skew(p_W - r_WC);
-   *   C = -C_WC;
-   */
-  real_t J_rot[2 * 3] = {0};
-  real_t A[3 * 3] = {0};
-  mat_copy(neg_C_CW, 3, 3, A);
-
-  real_t B[3 * 3] = {0};
-  real_t dp[3] = {0};
-  dp[0] = p_W[0] - r_WC[0];
-  dp[1] = p_W[1] - r_WC[1];
-  dp[2] = p_W[2] - r_WC[2];
-  skew(dp, B);
-
-  real_t C[3 * 3] = {0};
-  mat_copy(C_WC, 3, 3, C);
-  mat_scale(C, 3, 3, -1.0);
-
-  real_t AB[3 * 3] = {0};
-  real_t ABC[3 * 3] = {0};
-  dot(A, 3, 3, B, 3, 3, AB);
-  dot(AB, 3, 3, C, 3, 3, ABC);
-  dot(Jh_weighted, 2, 3, ABC, 3, 3, J_rot);
-
-  J[3] = J_rot[0];
-  J[4] = J_rot[1];
-  J[5] = J_rot[2];
-
-  J[9] = J_rot[3];
-  J[10] = J_rot[4];
-  J[11] = J_rot[5];
-}
-
-/**
- * Feature jacobian
- */
-static void ba_factor_feature_jacobian(const real_t Jh_weighted[2 * 3],
-                                       const real_t T_WC[4 * 4],
-                                       real_t *J) {
-  // Pre-check
-  if (J == NULL) {
-    return;
-  }
-
-  // Jh_weighted = -1 * sqrt_info * Jh;
-  // J = Jh_weighted * C_CW;
-  real_t C_WC[3 * 3] = {0};
-  real_t C_CW[3 * 3] = {0};
-  tf_rot_get(T_WC, C_WC);
-  mat_transpose(C_WC, 3, 3, C_CW);
-  dot(Jh_weighted, 2, 3, C_CW, 3, 3, J);
-}
-
-/**
- * Camera parameters jacobian
- */
-static void ba_factor_camera_jacobian(const real_t neg_sqrt_info[2 * 2],
-                                      const real_t J_cam_params[2 * 8],
-                                      real_t *J) {
-  // Pre-check
-  if (J == NULL) {
-    return;
-  }
-
-  // J = -1 * sqrt_info * J_cam_params;
-  dot(neg_sqrt_info, 2, 2, J_cam_params, 2, 8, J);
-}
-
-/**
- * Evaluate bundle adjustment factor
- * @returns `0` for success, `-1` for failure
- */
-int ba_factor_eval(void *factor_ptr) {
-  assert(factor_ptr != NULL);
-  ba_factor_t *factor = (ba_factor_t *) factor_ptr;
-
-  // Map params
-  real_t T_WCi[4 * 4] = {0};
-  tf(factor->params[0], T_WCi);
-  const real_t *p_W = factor->params[1];
-  const real_t *cam_params = factor->params[2];
-
-  // Calculate residuals
-  // -- Project point from world to image plane
-  real_t T_CiW[4 * 4] = {0};
-  real_t p_Ci[3] = {0};
-  real_t z_hat[2];
-  tf_inv(T_WCi, T_CiW);
-  tf_point(T_CiW, p_W, p_Ci);
-  camera_project(factor->camera, p_Ci, z_hat);
-  // -- Residual
-  real_t r[2] = {0};
-  r[0] = factor->z[0] - z_hat[0];
-  r[1] = factor->z[1] - z_hat[1];
-  // -- Weighted residual
-  dot(factor->sqrt_info, 2, 2, r, 2, 1, factor->r);
-
-  // Calculate jacobians
-  // -- Form: -1 * sqrt_info
-  real_t neg_sqrt_info[2 * 2] = {0};
-  mat_copy(factor->sqrt_info, 2, 2, neg_sqrt_info);
-  mat_scale(neg_sqrt_info, 2, 2, -1.0);
-  // -- Form: Jh_weighted = -1 * sqrt_info * Jh
-  real_t Jh[2 * 3] = {0};
-  real_t Jh_w[2 * 3] = {0};
-  pinhole_radtan4_project_jacobian(cam_params, p_Ci, Jh);
-  dot(neg_sqrt_info, 2, 2, Jh, 2, 3, Jh_w);
-  // -- Form: J_cam_params
-  real_t J_cam_params[2 * 8] = {0};
-  pinhole_radtan4_params_jacobian(cam_params, p_Ci, J_cam_params);
-  // -- Fill jacobians
-  ba_factor_pose_jacobian(Jh_w, T_WCi, p_W, factor->jacs[0]);
-  ba_factor_feature_jacobian(Jh_w, T_WCi, factor->jacs[1]);
-  ba_factor_camera_jacobian(neg_sqrt_info, J_cam_params, factor->jacs[2]);
-
-  return 0;
-}
-
-///////////////////
-// CAMERA FACTOR //
-///////////////////
-
-/**
- * Setup camera factor
- */
-void camera_factor_setup(camera_factor_t *factor,
-                         real_t *pose,
-                         real_t *extrinsic,
-                         real_t *feature,
-                         camera_t *camera,
-                         const real_t z[2],
-                         const real_t var[2]) {
-  assert(factor != NULL);
-  assert(pose != NULL);
-  assert(extrinsic != NULL);
-  assert(feature != NULL);
-  assert(camera != NULL);
-  assert(z != NULL);
-  assert(var != NULL);
-
-  // Parameters
-  factor->pose = pose;
-  factor->extrinsic = extrinsic;
-  factor->feature = feature;
-  factor->camera = camera;
-
-  // Measurement covariance matrix
-  factor->covar[0] = var[0];
-  factor->covar[1] = 0.0;
-  factor->covar[2] = 0.0;
-  factor->covar[3] = var[1];
-
-  // Square-root information matrix
-  factor->sqrt_info[0] = sqrt(1.0 / factor->covar[0]);
-  factor->sqrt_info[1] = 0.0;
-  factor->sqrt_info[2] = 0.0;
-  factor->sqrt_info[3] = sqrt(1.0 / factor->covar[3]);
-
-  // Measurement
-  factor->z[0] = z[0];
-  factor->z[1] = z[1];
-
-  // Parameters, residuals, jacobians
-  factor->r_size = 2;
-  factor->num_params = 4;
-
-  factor->param_types[0] = POSE_PARAM;
-  factor->param_types[1] = EXTRINSIC_PARAM;
-  factor->param_types[2] = FEATURE_PARAM;
-  factor->param_types[3] = CAMERA_PARAM;
-
-  factor->params[0] = factor->pose;
-  factor->params[1] = factor->extrinsic;
-  factor->params[2] = factor->feature;
-  factor->params[3] = factor->camera->data;
-
-  factor->jacs[0] = factor->J_pose;
-  factor->jacs[1] = factor->J_extrinsic;
-  factor->jacs[2] = factor->J_feature;
-  factor->jacs[3] = factor->J_camera;
+  factor->num_params = idx;
 }
 
 /**
  * Pose jacobian
  */
-static void camera_factor_pose_jacobian(const real_t Jh_w[2 * 3],
-                                        const real_t T_WB[4 * 4],
-                                        const real_t T_BC[4 * 4],
-                                        const real_t p_W[3],
-                                        real_t J[2 * 6]) {
+static void ba_factor_pose_jacobian(const real_t Jh_w[2 * 3],
+                                    const real_t T_WB[4 * 4],
+                                    const real_t T_BC[4 * 4],
+                                    const real_t p_W[3],
+                                    real_t J[2 * 6]) {
   assert(Jh_w != NULL);
   assert(T_BC != NULL);
   assert(T_WB != NULL);
@@ -16578,10 +16365,10 @@ static void camera_factor_pose_jacobian(const real_t Jh_w[2 * 3],
 /**
  * Body-camera extrinsic jacobian
  */
-static void camera_factor_extrinsic_jacobian(const real_t Jh_w[2 * 3],
-                                             const real_t T_BC[4 * 4],
-                                             const real_t p_C[3],
-                                             real_t J[2 * 6]) {
+static void ba_factor_extrinsic_jacobian(const real_t Jh_w[2 * 3],
+                                         const real_t T_BC[4 * 4],
+                                         const real_t p_C[3],
+                                         real_t J[2 * 6]) {
   assert(Jh_w != NULL);
   assert(T_BC != NULL);
   assert(p_C != NULL);
@@ -16648,33 +16435,18 @@ static void camera_factor_extrinsic_jacobian(const real_t Jh_w[2 * 3],
 }
 
 /**
- * Camera parameters jacobian
- */
-static void camera_factor_camera_jacobian(const real_t neg_sqrt_info[2 * 2],
-                                          const real_t J_cam_params[2 * 8],
-                                          real_t J[2 * 8]) {
-  assert(neg_sqrt_info != NULL);
-  assert(J_cam_params != NULL);
-  assert(J != NULL);
-
-  // J = -1 * sqrt_info * J_cam_params;
-  dot(neg_sqrt_info, 2, 2, J_cam_params, 2, 8, J);
-}
-
-/**
  * Feature jacobian
  */
-static void camera_factor_feature_jacobian(const real_t Jh_w[2 * 3],
-                                           const real_t T_WB[4 * 4],
-                                           const real_t T_BC[4 * 4],
-                                           real_t J[2 * 3]) {
+static void ba_factor_feature_jacobian(const real_t Jh_w[2 * 3],
+                                       const real_t T_WB[4 * 4],
+                                       const real_t T_BC[4 * 4],
+                                       real_t J[2 * 3]) {
   if (J == NULL) {
     return;
   }
   assert(Jh_w != NULL);
   assert(T_WB != NULL);
   assert(T_BC != NULL);
-  assert(J != NULL);
 
   // Jh_w = -1 * sqrt_info * Jh;
   // J = Jh_w * C_CW;
@@ -16692,36 +16464,58 @@ static void camera_factor_feature_jacobian(const real_t Jh_w[2 * 3],
 }
 
 /**
- * Evaluate vision factor
+ * Camera parameters jacobian
+ */
+static void ba_factor_camera_jacobian(const real_t neg_sqrt_info[2 * 2],
+                                      const real_t J_cam_params[2 * 8],
+                                      real_t J[2 * 8]) {
+  // Pre-check
+  if (J == NULL) {
+    return;
+  }
+
+  // J = -1 * sqrt_info * J_cam_params;
+  dot(neg_sqrt_info, 2, 2, J_cam_params, 2, 8, J);
+}
+
+/**
+ * Evaluate bundle adjustment factor. `factor->extrinsic` being NULL is
+ * handled by treating the body-camera extrinsic as identity, so `pose`
+ * doubles as the camera pose and no extrinsic Jacobian is filled.
  * @returns `0` for success, `-1` for failure
  */
-int camera_factor_eval(void *factor_ptr) {
-  camera_factor_t *factor = (camera_factor_t *) factor_ptr;
-  assert(factor != NULL);
-  assert(factor->pose);
-  assert(factor->extrinsic);
-  assert(factor->feature);
-  assert(factor->camera);
+int ba_factor_eval(void *factor_ptr) {
+  assert(factor_ptr != NULL);
+  ba_factor_t *factor = (ba_factor_t *) factor_ptr;
 
   // Map params
+  int idx = 0;
   real_t T_WB[4 * 4] = {0};
-  real_t T_BCi[4 * 4] = {0};
-  tf(factor->params[0], T_WB);
-  tf(factor->params[1], T_BCi);
-  const real_t *p_W = factor->params[2];
-  const real_t *cam_params = factor->params[3];
+  tf(factor->params[idx], T_WB);
+  idx++;
 
-  // Form camera pose
-  TF_CHAIN(T_WCi, 2, T_WB, T_BCi);
-  TF_INV(T_WCi, T_CiW);
+  real_t T_BC[4 * 4] = {0};
+  if (factor->extrinsic) {
+    tf(factor->params[idx], T_BC);
+    idx++;
+  } else {
+    eye(T_BC, 4, 4);
+  }
 
-  // Transform feature from world to camera frame
-  TF_POINT(T_CiW, p_W, p_Ci);
+  const real_t *p_W = factor->params[idx];
+  idx++;
+  const real_t *cam_params = factor->params[idx];
+  idx++;
+
+  // Form camera pose and transform feature from world to camera frame
+  TF_CHAIN(T_WC, 2, T_WB, T_BC);
+  TF_INV(T_WC, T_CW);
+  TF_POINT(T_CW, p_W, p_C);
 
   // Calculate residuals
   // -- Project point from world to image plane
-  real_t z_hat[2];
-  camera_project(factor->camera, p_Ci, z_hat);
+  real_t z_hat[2] = {0};
+  camera_project(factor->camera, p_C, z_hat);
   // -- Residual
   real_t r[2] = {0};
   r[0] = factor->z[0] - z_hat[0];
@@ -16734,19 +16528,25 @@ int camera_factor_eval(void *factor_ptr) {
   real_t neg_sqrt_info[2 * 2] = {0};
   mat_copy(factor->sqrt_info, 2, 2, neg_sqrt_info);
   mat_scale(neg_sqrt_info, 2, 2, -1.0);
-  // -- Form: Jh_ = -1 * sqrt_info * Jh
+  // -- Form: Jh_w = -1 * sqrt_info * Jh
   real_t Jh[2 * 3] = {0};
-  real_t Jh_[2 * 3] = {0};
-  pinhole_radtan4_project_jacobian(cam_params, p_Ci, Jh);
-  dot(neg_sqrt_info, 2, 2, Jh, 2, 3, Jh_);
+  real_t Jh_w[2 * 3] = {0};
+  pinhole_radtan4_project_jacobian(cam_params, p_C, Jh);
+  dot(neg_sqrt_info, 2, 2, Jh, 2, 3, Jh_w);
   // -- Form: J_cam_params
   real_t J_cam_params[2 * 8] = {0};
-  pinhole_radtan4_params_jacobian(cam_params, p_Ci, J_cam_params);
-  // -- Fill Jacobians
-  camera_factor_pose_jacobian(Jh_, T_WB, T_BCi, p_W, factor->jacs[0]);
-  camera_factor_extrinsic_jacobian(Jh_, T_BCi, p_Ci, factor->jacs[1]);
-  camera_factor_feature_jacobian(Jh_, T_WB, T_BCi, factor->jacs[2]);
-  camera_factor_camera_jacobian(neg_sqrt_info, J_cam_params, factor->jacs[3]);
+  pinhole_radtan4_params_jacobian(cam_params, p_C, J_cam_params);
+  // -- Fill jacobians
+  int jidx = 0;
+  ba_factor_pose_jacobian(Jh_w, T_WB, T_BC, p_W, factor->jacs[jidx]);
+  jidx++;
+  if (factor->extrinsic) {
+    ba_factor_extrinsic_jacobian(Jh_w, T_BC, p_C, factor->jacs[jidx]);
+    jidx++;
+  }
+  ba_factor_feature_jacobian(Jh_w, T_WB, T_BC, factor->jacs[jidx]);
+  jidx++;
+  ba_factor_camera_jacobian(neg_sqrt_info, J_cam_params, factor->jacs[jidx]);
 
   return 0;
 }
@@ -19399,7 +19199,6 @@ marg_factor_t *marg_factor_malloc(void) {
 
   // Factors
   marg->ba_factors = list_malloc();
-  marg->camera_factors = list_malloc();
   marg->imu_factors = list_malloc();
   marg->calib_camera_factors = list_malloc();
   marg->calib_imucam_factors = list_malloc();
@@ -19480,7 +19279,6 @@ void marg_factor_free(marg_factor_t *marg) {
 
   // Factors
   list_free(marg->ba_factors);
-  list_free(marg->camera_factors);
   list_free(marg->imu_factors);
   list_free(marg->calib_camera_factors);
   list_free(marg->calib_imucam_factors);
@@ -19562,7 +19360,6 @@ void marg_factor_add(marg_factor_t *marg, int factor_type, void *factor_ptr) {
       marg->marg_factor = factor_ptr;
       break;
     case BA_FACTOR: list_push(marg->ba_factors, factor_ptr); break;
-    case CAMERA_FACTOR: list_push(marg->camera_factors, factor_ptr); break;
     case IMU_FACTOR: list_push(marg->imu_factors, factor_ptr); break;
     case CALIB_CAMERA_FACTOR:
       list_push(marg->calib_camera_factors, factor_ptr);
@@ -19706,18 +19503,9 @@ static void marg_factor_hessian_form(marg_factor_t *marg) {
     while (node != NULL) {
       ba_factor_t *factor = (ba_factor_t *) node->value;
       marg_track_pose(marg, factor->pose);
-      marg_track_feature(marg, factor->feature);
-      marg_track_camera(marg, factor->camera->data);
-      node = node->next;
-    }
-  }
-  // -- Track camera factor params
-  {
-    list_node_t *node = marg->camera_factors->first;
-    while (node != NULL) {
-      camera_factor_t *factor = (camera_factor_t *) node->value;
-      marg_track_pose(marg, factor->pose);
-      marg_track_extrinsic(marg, factor->extrinsic);
+      if (factor->extrinsic) {
+        marg_track_extrinsic(marg, factor->extrinsic);
+      }
       marg_track_feature(marg, factor->feature);
       marg_track_camera(marg, factor->camera->data);
       node = node->next;
@@ -19842,7 +19630,6 @@ static void marg_factor_hessian_form(marg_factor_t *marg) {
 
   // param_index_print(marg->param_index);
   MARG_H(marg, ba_factor_t, marg->ba_factors, H, b, ls);
-  MARG_H(marg, camera_factor_t, marg->camera_factors, H, b, ls);
   MARG_H(marg, imu_factor_t, marg->imu_factors, H, b, ls);
   MARG_H(marg, calib_camera_factor_t, marg->calib_camera_factors, H, b, ls);
   MARG_H(marg, calib_imucam_factor_t, marg->calib_imucam_factors, H, b, ls);

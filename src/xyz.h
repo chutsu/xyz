@@ -2517,6 +2517,7 @@ int between_factor_eval(void *factor_ptr);
 
 typedef struct ba_factor_t {
   real_t *pose;
+  real_t *extrinsic; // NULL => `pose` is the camera pose T_WC directly
   real_t *feature;
   camera_t *camera;
 
@@ -2527,60 +2528,25 @@ typedef struct ba_factor_t {
   real_t r[2];
   int r_size;
 
-  int param_types[3];
-  real_t *params[3];
-  int num_params;
-
-  real_t *jacs[3];
-  real_t J_pose[2 * 6];
-  real_t J_feature[2 * 3];
-  real_t J_camera[2 * 8];
-} ba_factor_t;
-
-void ba_factor_setup(ba_factor_t *factor,
-                     real_t *pose,
-                     real_t *feature,
-                     camera_t *camera,
-                     const real_t z[2],
-                     const real_t var[2]);
-int ba_factor_eval(void *factor_ptr);
-
-///////////////////
-// CAMERA FACTOR //
-///////////////////
-
-typedef struct camera_factor_t {
-  real_t *pose;
-  real_t *extrinsic;
-  camera_t *camera;
-  real_t *feature;
-
-  real_t covar[2 * 2];
-  real_t sqrt_info[2 * 2];
-  real_t z[2];
-
-  real_t r[2];
-  int r_size;
-
-  int num_params;
   int param_types[4];
   real_t *params[4];
+  int num_params;
 
   real_t *jacs[4];
   real_t J_pose[2 * 6];
   real_t J_extrinsic[2 * 6];
   real_t J_feature[2 * 3];
   real_t J_camera[2 * 8];
-} camera_factor_t;
+} ba_factor_t;
 
-void camera_factor_setup(camera_factor_t *factor,
-                         real_t *pose,
-                         real_t *extrinsic,
-                         real_t *feature,
-                         camera_t *camera,
-                         const real_t z[2],
-                         const real_t var[2]);
-int camera_factor_eval(void *factor_ptr);
+void ba_factor_setup(ba_factor_t *factor,
+                     real_t *pose,
+                     real_t *extrinsic,
+                     real_t *feature,
+                     camera_t *camera,
+                     const real_t z[2],
+                     const real_t var[2]);
+int ba_factor_eval(void *factor_ptr);
 
 ////////////////
 // IMU FACTOR //
@@ -2973,7 +2939,6 @@ int calib_imucam_factor_eval(void *factor_ptr);
 
 #define MARG_FACTOR 1
 #define BA_FACTOR 2
-#define CAMERA_FACTOR 3
 #define IDF_FACTOR 4
 #define IMU_FACTOR 5
 #define CALIB_CAMERA_FACTOR 6
@@ -3022,7 +2987,6 @@ typedef struct marg_factor_t {
 
   // Factors
   list_t *ba_factors;
-  list_t *camera_factors;
   list_t *imu_factors;
   list_t *calib_camera_factors;
   list_t *calib_imucam_factors;

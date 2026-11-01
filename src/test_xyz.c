@@ -6434,7 +6434,7 @@ int test_ba_factor(void) {
   // Bundle adjustment factor
   ba_factor_t factor;
   real_t var[2] = {1.0, 1.0};
-  ba_factor_setup(&factor, pose, p_W, &cam, z, var);
+  ba_factor_setup(&factor, pose, NULL, p_W, &cam, z, var);
 
   // Check Jacobians
   const real_t step_size = 1e-8;
@@ -6446,7 +6446,7 @@ int test_ba_factor(void) {
   return 0;
 }
 
-int test_camera_factor(void) {
+int test_ba_factor_extrinsic(void) {
   // Body pose T_WB
   real_t pose[7] = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0};
 
@@ -6475,18 +6475,18 @@ int test_camera_factor(void) {
   TF_POINT(T_CiW, p_W, p_Ci);
   pinhole_radtan4_project(cam_data, p_Ci, z);
 
-  // Setup camera factor
-  camera_factor_t factor;
+  // Setup bundle adjustment factor (with extrinsic)
+  ba_factor_t factor;
   real_t var[2] = {1.0, 1.0};
-  camera_factor_setup(&factor, pose, cam_ext, p_W, &cam, z, var);
+  ba_factor_setup(&factor, pose, cam_ext, p_W, &cam, z, var);
 
   // Check Jacobians
   const real_t step_size = 1e-8;
   const real_t tol = 1e-4;
-  CHECK_FACTOR_J(0, factor, camera_factor_eval, step_size, tol, 0);
-  CHECK_FACTOR_J(1, factor, camera_factor_eval, step_size, tol, 0);
-  CHECK_FACTOR_J(2, factor, camera_factor_eval, step_size, tol, 0);
-  CHECK_FACTOR_J(3, factor, camera_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(0, factor, ba_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(1, factor, ba_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(2, factor, ba_factor_eval, step_size, tol, 0);
+  CHECK_FACTOR_J(3, factor, ba_factor_eval, step_size, tol, 0);
 
   return 0;
 }
@@ -7363,7 +7363,7 @@ int test_marg_factor(void) {
   real_t poses[5 * 7] = {0};
   real_t points[10 * 3] = {0};
   real_t keypoints[10 * 2 * 5] = {0};
-  camera_factor_t factors[5 * 10] = {0};
+  ba_factor_t factors[5 * 10] = {0};
 
   for (int i = 0; i < num_features; ++i) {
     const real_t dx = randf(-0.5, 0.5);
@@ -7411,12 +7411,12 @@ int test_marg_factor(void) {
       keypoints[i * 2 + 0] = z[0] + 0.001;
       keypoints[i * 2 + 1] = z[1] - 0.001;
 
-      // Setup camera factor
-      camera_factor_t *cam_factor = &factors[factor_idx];
+      // Setup bundle adjustment factor (with extrinsic)
+      ba_factor_t *cam_factor = &factors[factor_idx];
       real_t *feature = &points[i * 3];
       real_t var[2] = {1.0, 1.0};
-      camera_factor_setup(cam_factor, pose, cam_ext, feature, &cam, z, var);
-      camera_factor_eval(cam_factor);
+      ba_factor_setup(cam_factor, pose, cam_ext, feature, &cam, z, var);
+      ba_factor_eval(cam_factor);
       factor_idx++;
     }
   }
@@ -7446,8 +7446,8 @@ int test_marg_factor(void) {
   real_t *g = calloc(sv_size, sizeof(real_t));
   real_t *r = calloc(r_size, sizeof(real_t));
   for (int i = 0; i < (num_poses * num_features); i++) {
-    camera_factor_t *factor = &factors[i];
-    camera_factor_eval(factor);
+    ba_factor_t *factor = &factors[i];
+    ba_factor_eval(factor);
     vec_copy(factor->r, factor->r_size, &r[r_idx]);
     solver_fill_hessian(param_index,
                         factor->num_params,
@@ -7474,7 +7474,7 @@ int test_marg_factor(void) {
 
   marg_factor_t *marg = marg_factor_malloc();
   for (int i = 0; i < (num_poses * num_features); i++) {
-    marg_factor_add(marg, CAMERA_FACTOR, &factors[i]);
+    marg_factor_add(marg, BA_FACTOR, &factors[i]);
   }
   marg_factor_marginalize(marg, marg_params, fix_params);
   // marg_factor_eval(marg);
@@ -7912,7 +7912,7 @@ void bundle_adjuster_add_frame(bundle_adjuster_t *ba,
 
     const real_t var[2] = {1.0, 1.0};
     ba_factor_t *factor = malloc(sizeof(ba_factor_t));
-    ba_factor_setup(factor, frame_pose, p, ba->camera, kp, var);
+    ba_factor_setup(factor, frame_pose, NULL, p, ba->camera, kp, var);
     arr_push_back(ba->factors, factor);
   }
 }
@@ -10793,7 +10793,7 @@ void test_suite(void) {
   MU_ADD_TEST(test_gps_factor);
   MU_ADD_TEST(test_lidar_factor);
   MU_ADD_TEST(test_ba_factor);
-  MU_ADD_TEST(test_camera_factor);
+  MU_ADD_TEST(test_ba_factor_extrinsic);
   MU_ADD_TEST(test_imu_buffer_setup);
   MU_ADD_TEST(test_imu_buffer_add);
   MU_ADD_TEST(test_imu_buffer_clear);
